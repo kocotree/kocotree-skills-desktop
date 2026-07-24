@@ -62,7 +62,7 @@ ZIP 本地解析和平台版本安装属于客户端能力，不通过服务端 
 
 | 能力 | 匿名 | 登录用户 | 协作者 | Owner | 管理员 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 浏览公开 Skill、版本、Tag、文件树 | 是 | 是 | 是 | 是 | 是 |
+| 浏览公开 Skill、版本、Tag、文件树 | 否 | 是 | 是 | 是 | 是 |
 | 安装与安装上报 | 否 | 是 | 是 | 是 | 是 |
 | 创建 Skill | 否 | 是 | 是 | 是 | 是 |
 | 发布 ACTIVE Skill 新版本 | 否 | 是 | 是 | 是 | 是 |
@@ -76,6 +76,9 @@ ZIP 本地解析和平台版本安装属于客户端能力，不通过服务端 
 | 处理停用 Owner | 否 | 否 | 否 | 否 | 是 |
 
 管理员不能在有效 Owner 存在时强制转移所有权，也不能直接修改该 Skill 的展示名称。
+
+除飞书登录入口、OAuth 回调、桌面一次性换码和健康检查外，所有业务接口都必须携带
+`Authorization: Bearer <token>`。
 
 ## 4. 核心 DTO
 
@@ -197,7 +200,7 @@ Authorization: Bearer <token>
 GET /api/tags?query=开发
 ```
 
-匿名可用，返回 `ApiResponse<Tag[]>`。创建 Tag 通过 Skill 创建、版本发布或平台信息修改请求中的 `newTagNames` 完成。
+需要登录，返回 `ApiResponse<Tag[]>`。创建 Tag 通过 Skill 创建、版本发布或平台信息修改请求中的 `newTagNames` 完成。
 
 ## 7. Skill 查询
 
@@ -401,7 +404,7 @@ Authorization: Bearer <token>
 GET /api/skills/{skillId}/installation-status?versionId={versionId}
 ```
 
-该接口允许匿名调用；登录状态只用于服务端审计，不扩大返回字段。`versionId` 来自本地安装凭证，可选。响应不返回 ZIP、下载地址或完整平台展示信息。
+该接口必须登录并携带 Bearer Token。`versionId` 来自本地安装凭证，可选。响应不返回 ZIP、下载地址或完整平台展示信息。
 
 归档且本地安装版本已撤回时返回：
 
@@ -674,6 +677,6 @@ export interface SkillSummaryDto {
 ## 15. 模拟接口要求
 
 - 模拟实现与真实 HTTP 客户端实现同一 TypeScript 应用接口；HTTP 客户端校验响应 `code` 后向页面返回 `data`。
-- 覆盖匿名浏览、登录恢复动作、新建、更新、并发冲突、撤回、归档、所有权邀请、历史版本安装和安装上报。
+- 覆盖登录后浏览、登录恢复动作、新建、更新、并发冲突、撤回、归档、所有权邀请、历史版本安装和安装上报。
 - 模拟数据不能被 React 组件直接导入。
 - 本地安装状态与服务端 DTO 明确隔离。

@@ -211,7 +211,7 @@
 
 差异：
 
-- desktop 允许匿名查询，旧后端要求登录。
+- desktop 和后端都要求登录并携带 Bearer Token。
 - desktop 接收 `query`，旧后端只有分页。
 - 旧后端返回 `{ items, total, page, pageSize }`，desktop 目标是
   `{ code, data: Tag[], msg }`。
@@ -231,7 +231,7 @@
 | `sort` | 无 | 新增 `UPDATED_DESC`、`CREATED_DESC`、`INSTALLS_DESC` |
 | `page` | `page` | 直接复用 |
 | `pageSize` | `pageSize` | 直接复用 |
-| 可匿名 | 必须登录 | 改为可选 Bearer Token |
+| 必须登录 | 必须登录 | 统一由 HTTP Client 自动携带 Bearer Token |
 
 响应字段对应：
 
@@ -255,7 +255,7 @@
 
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
-| `GET /api/skills/{skillId}` | `GET /api/skills/{idOrSlug}` | B | 路径基本兼容；旧后端可继续允许 ID/slug，但响应 DTO 和匿名访问需调整 |
+| `GET /api/skills/{skillId}` | `GET /api/skills/{idOrSlug}` | B | 路径基本兼容；旧后端可继续允许 ID/slug，但响应 DTO 需要调整 |
 
 旧详情已经包含：
 
@@ -548,12 +548,13 @@ VITE_API_BASE_URL=https://skills-api.example.com
 
 优先级 P0：
 
-1. 实现 desktop `HttpSkillApi` 公共请求、错误解析和 API Base URL。
-2. 接入设备授权登录和 Bearer Token 安全存储。
-3. 对齐当前用户、Tag、Skill 列表和详情 DTO。
-4. 增加指定版本下载凭证。
-5. 让 Tauri 安装器使用真实签名 URL 和服务端包哈希。
-6. 增加幂等安装事件上报。
+1. 实现 desktop `HttpSkillApi` 公共请求、错误解析和 API Base URL。**已完成**
+2. 接入飞书直接授权登录和 Bearer Token 会话存储。**已完成**
+3. 对齐当前用户、Tag 和 Skill 列表 DTO。**已完成**
+4. 对齐 Skill 详情 DTO。
+5. 增加指定版本下载凭证。
+6. 让 Tauri 安装器使用真实签名 URL 和服务端包哈希。
+7. 增加幂等安装事件上报。
 
 阶段一验收：
 

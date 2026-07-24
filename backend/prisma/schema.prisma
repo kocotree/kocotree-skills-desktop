@@ -14,6 +14,29 @@ enum UserStatus {
   @@map("user_status")
 }
 
+enum SkillStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+
+  @@map("skill_status")
+}
+
+enum SkillVersionStatus {
+  DRAFT
+  PUBLISHED
+  REVOKED
+
+  @@map("skill_version_status")
+}
+
+enum SkillFileType {
+  FILE
+  FOLDER
+
+  @@map("skill_file_type")
+}
+
 model User {
   id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   feishuOpenId  String      @unique @map("feishu_open_id")
@@ -27,8 +50,100 @@ model User {
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   tokens        UserToken[]
+  createdSkills Skill[]     @relation("SkillCreatedBy")
+  createdSkillVersions SkillVersion[] @relation("SkillVersionCreatedBy")
 
   @@map("users")
+}
+
+model Skill {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug            String         @unique
+  name            String
+  description     String         @default("")
+  readmeTitle     String?        @map("readme_title")
+  latestVersionId String?        @map("latest_version_id") @db.Uuid
+  status          SkillStatus    @default(DRAFT)
+  repoUrl         String?        @map("repo_url")
+  installCount    Int            @default(0) @map("install_count")
+  createdBy       String?        @map("created_by") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  creator         User?          @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  versions        SkillVersion[] @relation("SkillVersions")
+  latestVersion   SkillVersion?  @relation("LatestSkillVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
+  tags            SkillTag[]
+
+  @@index([status], map: "skills_status_idx")
+  @@index([installCount(sort: Desc)], map: "skills_install_count_idx")
+  @@index([createdAt(sort: Desc)], map: "skills_created_at_idx")
+  @@map("skills")
+}
+
+model SkillVersion {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skillId        String             @map("skill_id") @db.Uuid
+  version        String
+  ossBucket      String             @map("oss_bucket")
+  ossObjectKey   String             @map("oss_object_key")
+  ossEtag        String?            @map("oss_etag")
+  packageSize    BigInt?            @map("package_size")
+  checksumSha256 String             @map("checksum_sha256")
+  manifestJson   Json               @default("{}") @map("manifest_json")
+  readmeMd       String?            @map("readme_md")
+  changelog      String?
+  status         SkillVersionStatus @default(DRAFT)
+  publishedAt    DateTime?          @map("published_at") @db.Timestamptz(6)
+  createdBy      String?            @map("created_by") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  skill          Skill              @relation("SkillVersions", fields: [skillId], references: [id], onDelete: Cascade)
+  latestForSkill Skill[]            @relation("LatestSkillVersion")
+  creator        User?              @relation("SkillVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  files          SkillFile[]
+
+  @@unique([skillId, version], map: "skill_versions_unique_version")
+  @@index([skillId], map: "skill_versions_skill_id_idx")
+  @@index([status], map: "skill_versions_status_idx")
+  @@index([publishedAt(sort: Desc)], map: "skill_versions_published_at_idx")
+  @@map("skill_versions")
+}
+
+model SkillFile {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  versionId      String        @map("version_id") @db.Uuid
+  path           String
+  type           SkillFileType
+  sizeBytes      BigInt?       @map("size_bytes")
+  checksumSha256 String?       @map("checksum_sha256")
+  sortOrder      Int           @default(0) @map("sort_order")
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  version        SkillVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, path], map: "skill_files_version_path_idx")
+  @@index([versionId], map: "skill_files_version_id_idx")
+  @@map("skill_files")
+}
+
+model Tag {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug      String     @unique
+  name      String
+  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  skills    SkillTag[]
+
+  @@map("tags")
+}
+
+model SkillTag {
+  skillId String @map("skill_id") @db.Uuid
+  tagId   String @map("tag_id") @db.Uuid
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([skillId, tagId])
+  @@index([tagId], map: "skill_tags_tag_id_idx")
+  @@map("skill_tags")
 }
 
 model UserToken {

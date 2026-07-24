@@ -3,30 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { SkillApiError, type UserDto } from "./contracts";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ??
-  (import.meta.env.DEV ? "http://localhost:4000" : "");
+import { apiUrl, readApiData } from "./httpClient";
 const CALLBACK_SCHEME = "kocotree-skills:";
 const CALLBACK_HOST = "auth";
 const CUSTOM_CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
 const TOKEN_STORAGE_KEY = "kocotree.desktop.session-token";
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
-
-interface ApiResponse<T> {
-  code: number;
-  data: T;
-  msg: string;
-}
-
-interface ApiErrorResponse {
-  code?: number;
-  data?: {
-    errorCode?: string;
-  };
-  msg?: string;
-}
 
 interface ExchangeResult {
   user: UserDto;
@@ -43,43 +26,6 @@ interface PendingLogin {
   resolve: (user: UserDto) => void;
   reject: (reason: unknown) => void;
   timeoutId: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function apiUrl(path: string): string {
-  if (!API_BASE_URL) {
-    throw new SkillApiError(
-      "API_BASE_URL_MISSING",
-      "正式构建缺少 VITE_API_BASE_URL",
-    );
-  }
-  return `${API_BASE_URL.replace(/\/$/, "")}${path}`;
-}
-
-async function readApiData<T>(response: Response): Promise<T> {
-  const payload = (await response.json().catch(() => null)) as unknown;
-  if (!response.ok) {
-    const error = isRecord(payload) ? (payload as ApiErrorResponse) : null;
-    throw new SkillApiError(
-      error?.data?.errorCode || `HTTP_${response.status}`,
-      error?.msg || `请求失败：${response.status}`,
-    );
-  }
-  if (
-    !isRecord(payload) ||
-    typeof payload.code !== "number" ||
-    typeof payload.msg !== "string" ||
-    !("data" in payload)
-  ) {
-    throw new SkillApiError(
-      "INVALID_API_RESPONSE",
-      "服务端返回了无法识别的响应",
-    );
-  }
-  return (payload as unknown as ApiResponse<T>).data;
 }
 
 /** Tauri 桌面端飞书 OAuth 身份适配器。 */
@@ -270,6 +216,14 @@ export class DesktopAuthApi {
     } finally {
       this.clearToken();
     }
+  }
+
+  getAccessToken(): string | null {
+    return this.token;
+  }
+
+  invalidateSession(): void {
+    this.clearToken();
   }
 
   private clearToken(): void {

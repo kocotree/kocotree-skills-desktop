@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { config } from "./config";
 import { authRoutes } from "./routes/auth.route";
+import { catalogRoutes } from "./routes/catalog.route";
 
 export function buildApp() {
   const app = Fastify({
@@ -13,6 +14,9 @@ export function buildApp() {
     methods: ["GET", "POST", "OPTIONS"],
   });
   void app.register(authRoutes, {
+    prefix: "/api",
+  });
+  void app.register(catalogRoutes, {
     prefix: "/api",
   });
   app.get("/health", async () => ({

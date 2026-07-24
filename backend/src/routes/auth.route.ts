@@ -1,37 +1,12 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
+import {
+  failure,
+  readBearerToken,
+  requireAuth,
+  success,
+} from "../http";
 import { authService } from "../services/auth.service";
 import { feishuService } from "../services/feishu.service";
-
-function success<T>(data: T, code = 200) {
-  return {
-    code,
-    data,
-    msg: "success",
-  };
-}
-
-function failure(
-  reply: FastifyReply,
-  statusCode: number,
-  errorCode: string,
-  msg: string,
-) {
-  return reply.code(statusCode).send({
-    code: statusCode,
-    data: { errorCode },
-    msg,
-  });
-}
-
-function unauthenticated(reply: FastifyReply, msg: string) {
-  return failure(reply, 401, "UNAUTHENTICATED", msg);
-}
-
-function readBearerToken(authorization?: string): string | null {
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(" ");
-  return scheme === "Bearer" && token ? token : null;
-}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get("/auth/feishu/login", async (request, reply) => {
@@ -109,7 +84,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/auth/logout", async (request, reply) => {
     const token = readBearerToken(request.headers.authorization);
     if (!token) {
-      return unauthenticated(reply, "未提供登录凭证");
+      return failure(
+        reply,
+        401,
+        "UNAUTHENTICATED",
+        "未提供登录凭证",
+      );
     }
 
     await authService.logout(token);
@@ -117,14 +97,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get("/users/me", async (request, reply) => {
-    const token = readBearerToken(request.headers.authorization);
-    if (!token) {
-      return unauthenticated(reply, "未提供登录凭证");
-    }
-
-    const auth = await authService.authenticate(token);
+    const auth = await requireAuth(request, reply);
     if (!auth) {
-      return unauthenticated(reply, "登录凭证无效或已过期");
+      return;
     }
 
     return success(auth.user);

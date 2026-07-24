@@ -1,10 +1,32 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { SkillApi } from "./contracts";
+import type { ListSkillsQuery, SkillApi } from "./contracts";
 import { DesktopAuthApi } from "./desktopAuthApi";
+import { HttpCatalogApi } from "./httpCatalogApi";
+import { AuthenticatedHttpClient } from "./httpClient";
 import { MockSkillApi } from "./mockSkillApi";
+
+export const AUTH_INVALIDATED_EVENT = "kocotree-auth-invalidated";
 
 class IncrementalSkillApi extends MockSkillApi {
   private readonly auth = new DesktopAuthApi();
+  private readonly catalog = new HttpCatalogApi(
+    new AuthenticatedHttpClient(
+      () => this.auth.getAccessToken(),
+      () => {
+        this.auth.invalidateSession();
+        this.setCurrentUser(null);
+        window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT));
+      },
+    ),
+  );
+
+  override listTags(query?: string) {
+    return this.catalog.listTags(query);
+  }
+
+  override listSkills(query: ListSkillsQuery = {}) {
+    return this.catalog.listSkills(query);
+  }
 
   override async getCurrentUser() {
     const user = await this.auth.getCurrentUser();

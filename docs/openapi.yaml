@@ -69,7 +69,8 @@ paths:
       tags: [Tags]
       summary: 获取 Tag 列表
       operationId: listTags
-      security: []
+      security:
+        - BearerAuth: []
       parameters:
         - name: query
           in: query
@@ -92,7 +93,6 @@ paths:
       summary: 获取公开 Skill 列表
       operationId: listSkills
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - name: query
@@ -159,7 +159,6 @@ paths:
       description: 归档 Skill 仅对其 Owner、协作者和管理员返回完整详情。
       operationId: getSkill
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'
@@ -201,7 +200,6 @@ paths:
       summary: 获取版本历史
       operationId: listSkillVersions
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'
@@ -252,7 +250,6 @@ paths:
       summary: 获取版本详情
       operationId: getSkillVersion
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'
@@ -272,7 +269,6 @@ paths:
       summary: 获取版本文件树
       operationId: listVersionFiles
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'
@@ -292,7 +288,6 @@ paths:
       summary: 获取文本文件内容
       operationId: getVersionFileContent
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'
@@ -390,7 +385,6 @@ paths:
       summary: 查询已安装 Skill 的在线状态
       operationId: getInstallationStatus
       security:
-        - {}
         - BearerAuth: []
       parameters:
         - $ref: '#/components/parameters/SkillId'

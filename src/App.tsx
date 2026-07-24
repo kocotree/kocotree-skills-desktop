@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Dropdown, Modal, Tooltip, Toast, ToastViewport } from "./components/ui";
 import {
+  AUTH_INVALIDATED_EVENT,
   skillApi,
   installer,
   localSkillService,
@@ -134,13 +135,19 @@ function SkillCard({
  * @returns Skill 浏览页面的 React 元素。
  */
 function BrowsePage({
+  authenticated,
+  authResolved,
   installedSkillIds,
+  onLogin,
   onOpen,
   refreshKey,
   highlightedSkillId,
   onHighlightComplete,
 }: {
+  authenticated: boolean;
+  authResolved: boolean;
   installedSkillIds: Set<string>;
+  onLogin: () => void;
   onOpen: (skill: SkillSummaryDto) => void;
   refreshKey: number;
   highlightedSkillId: string | null;
@@ -169,6 +176,10 @@ function BrowsePage({
   }, [highlightedSkillId, loading, onHighlightComplete, skills]);
 
   useEffect(() => {
+    if (!authenticated) {
+      setTags([]);
+      return;
+    }
     let active = true;
     skillApi.listTags().then((items) => {
       if (active) setTags(items);
@@ -176,9 +187,15 @@ function BrowsePage({
       console.error("[KocotreeSkills] Tag 加载失败", reason);
     });
     return () => { active = false; };
-  }, []);
+  }, [authenticated]);
 
   useEffect(() => {
+    if (!authenticated) {
+      setSkills([]);
+      setError("");
+      setLoading(false);
+      return;
+    }
     let active = true;
     const timer = window.setTimeout(() => {
       setLoading(true);
@@ -196,7 +213,38 @@ function BrowsePage({
         .finally(() => { if (active) setLoading(false); });
     }, 180);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [query, refreshKey, sort, tagId]);
+  }, [authenticated, query, refreshKey, sort, tagId]);
+
+  if (!authResolved) {
+    return (
+      <main className="page-content browse-page">
+        <header className="page-heading">
+          <h1>Skill 浏览</h1>
+        </header>
+        <section className="empty-state">
+          <span>正在加载登录状态...</span>
+        </section>
+      </main>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="page-content browse-page">
+        <header className="page-heading">
+          <h1>Skill 浏览</h1>
+        </header>
+        <section className="empty-state">
+          <AppIcon name="library" size={30} />
+          <strong>登录后浏览 Skill</strong>
+          <span>Skill 市场和标签数据仅对已登录用户开放。</span>
+          <Button theme="solid" type="primary" onClick={onLogin}>
+            使用飞书登录
+          </Button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="page-content browse-page">
@@ -304,6 +352,7 @@ function App() {
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const [loginVisible, setLoginVisible] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -321,7 +370,25 @@ function App() {
   useEffect(() => {
     skillApi.getCurrentUser().then(setCurrentUser).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 当前用户状态加载失败", reason);
-    });
+      setCurrentUser(null);
+    }).finally(() => setAuthResolved(true));
+  }, []);
+
+  useEffect(() => {
+    const handleInvalidated = () => {
+      setCurrentUser(null);
+      setAuthResolved(true);
+      setUnreadCount(0);
+      setSelectedSkill(null);
+      setLoginVisible(true);
+    };
+    window.addEventListener(AUTH_INVALIDATED_EVENT, handleInvalidated);
+    return () => {
+      window.removeEventListener(
+        AUTH_INVALIDATED_EVENT,
+        handleInvalidated,
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -644,7 +711,7 @@ function App() {
           ) : (
             <button className="sidebar-user" type="button" aria-label="登录 Kocotree Skills" title="登录 Kocotree Skills" onClick={() => setLoginVisible(true)}>
               <span className="connection-dot" />
-              <span><strong>未登录</strong><small>浏览无需登录 · 点击登录</small></span>
+              <span><strong>未登录</strong><small>登录后浏览 Skill</small></span>
             </button>
           )}
         </div>
@@ -653,7 +720,10 @@ function App() {
       <div className="main-area">
         {activePage === "browse" ? (
           <BrowsePage
+            authenticated={currentUser !== null}
+            authResolved={authResolved}
             installedSkillIds={installedSkillIds}
+            onLogin={() => setLoginVisible(true)}
             onOpen={handleOpenSkill}
             refreshKey={browseRefreshKey}
             highlightedSkillId={highlightedBrowseSkillId}

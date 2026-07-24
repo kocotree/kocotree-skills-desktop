@@ -4,6 +4,7 @@ import { MockLocalSkillService } from "./mockLocalSkillService";
 import { TauriInstaller } from "./tauriInstaller";
 
 export * from "./contracts";
+export { AUTH_INVALIDATED_EVENT } from "./incrementalSkillApi";
 export * from "./skillPackage";
 
 /** 在线能力按模块逐步从 Mock 迁移到真实后端。 */
