@@ -1,9 +1,16 @@
 import { createHash } from "node:crypto";
 import type { SkillFile, User } from "@prisma/client";
+import { config } from "../config";
 import {
   catalogRepository,
   type ListSkillsInput,
 } from "../repositories/catalog.repository";
+import {
+  isPreviewableTextPath,
+  normalizePackagePath,
+  readFileFromPackage,
+} from "./skill-package.service";
+import { storageService } from "./storage.service";
 
 type SkillRecord = Awaited<
   ReturnType<typeof catalogRepository.listSkills>
@@ -189,6 +196,98 @@ export const catalogService = {
       total: result.total,
       page,
       pageSize,
+    };
+  },
+
+  async listVersionFiles(skillId: string, versionId: string) {
+    const version = await catalogRepository.getSkillVersionFiles(
+      skillId,
+      versionId,
+    );
+    if (!version) return null;
+
+    const maxPreviewBytes = config.skillPreviewTextMaxKb * 1024;
+    return version.files.map((file) => ({
+      path: file.path,
+      type: file.type === "FOLDER"
+        ? ("DIRECTORY" as const)
+        : ("FILE" as const),
+      size:
+        file.type === "FOLDER"
+          ? null
+          : Number(file.sizeBytes || 0),
+      sha256: file.checksumSha256
+        ? normalizeSha256(file.checksumSha256)
+        : null,
+      previewable:
+        file.type === "FILE" &&
+        isPreviewableTextPath(file.path) &&
+        (!file.sizeBytes ||
+          file.sizeBytes <= BigInt(maxPreviewBytes)),
+    }));
+  },
+
+  async getVersionFileContent(
+    skillId: string,
+    versionId: string,
+    requestedPath: string,
+  ) {
+    const filePath = normalizePackagePath(requestedPath);
+    if (!filePath) {
+      return { status: "INVALID_PATH" as const };
+    }
+
+    const version = await catalogRepository.getSkillVersionFiles(
+      skillId,
+      versionId,
+    );
+    if (!version) {
+      return { status: "VERSION_NOT_FOUND" as const };
+    }
+
+    const file = version.files.find(
+      (entry) => entry.path === filePath && entry.type === "FILE",
+    );
+    if (!file) {
+      return { status: "FILE_NOT_FOUND" as const };
+    }
+    if (!isPreviewableTextPath(file.path)) {
+      return { status: "PREVIEW_UNAVAILABLE" as const };
+    }
+
+    const maxPreviewBytes = config.skillPreviewTextMaxKb * 1024;
+    if (
+      file.sizeBytes &&
+      file.sizeBytes > BigInt(maxPreviewBytes)
+    ) {
+      return { status: "PREVIEW_TOO_LARGE" as const };
+    }
+
+    const packageBuffer = await storageService.getObject(
+      version.ossObjectKey,
+    );
+    const contentBuffer = await readFileFromPackage(
+      packageBuffer,
+      filePath,
+    );
+    if (!contentBuffer) {
+      return { status: "FILE_NOT_FOUND" as const };
+    }
+
+    const sha256 = file.checksumSha256
+      ? normalizeSha256(file.checksumSha256)
+      : `sha256:${createHash("sha256")
+          .update(contentBuffer)
+          .digest("hex")}`;
+    return {
+      status: "OK" as const,
+      data: {
+        path: filePath,
+        content: contentBuffer.toString("utf8"),
+        sha256,
+        encoding: "UTF-8" as const,
+        size: contentBuffer.byteLength,
+      },
     };
   },
 };

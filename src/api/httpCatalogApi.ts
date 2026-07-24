@@ -1,7 +1,9 @@
 import type {
+  FileEntryDto,
   ListSkillsQuery,
   ListVersionsQuery,
   SkillDetailDto,
+  SkillFileContentDto,
   SkillPageDto,
   TagDto,
   VersionPageDto,
@@ -21,7 +23,7 @@ function queryString(
   return query ? `?${query}` : "";
 }
 
-/** 已迁移到真实后端的 Tag 与 Skill 列表接口。 */
+/** 已迁移到真实后端的 Skill 浏览、详情、版本和文件接口。 */
 export class HttpCatalogApi {
   constructor(private readonly http: AuthenticatedHttpClient) {}
 
@@ -57,6 +59,27 @@ export class HttpCatalogApi {
       `/api/skills/${encodeURIComponent(skillId)}/versions${queryString({
         page: query.page,
         pageSize: query.pageSize,
+      })}`,
+    );
+  }
+
+  listVersionFiles(
+    skillId: string,
+    versionId: string,
+  ): Promise<FileEntryDto[]> {
+    return this.http.request<FileEntryDto[]>(
+      `/api/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/files`,
+    );
+  }
+
+  getVersionFileContent(
+    skillId: string,
+    versionId: string,
+    path: string,
+  ): Promise<SkillFileContentDto> {
+    return this.http.request<SkillFileContentDto>(
+      `/api/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/files/content${queryString({
+        path,
       })}`,
     );
   }

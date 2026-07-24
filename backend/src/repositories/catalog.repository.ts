@@ -158,4 +158,33 @@ export const catalogRepository = {
 
     return { skill, items, total };
   },
+
+  getSkillVersionFiles(skillId: string, versionId: string) {
+    return prisma.skillVersion.findFirst({
+      where: {
+        id: versionId,
+        skillId,
+        status: {
+          in: ["PUBLISHED", "REVOKED"],
+        },
+        skill: {
+          status: "PUBLISHED",
+        },
+      },
+      select: {
+        id: true,
+        ossObjectKey: true,
+        files: {
+          orderBy: [
+            {
+              sortOrder: "asc",
+            },
+            {
+              path: "asc",
+            },
+          ],
+        },
+      },
+    });
+  },
 };

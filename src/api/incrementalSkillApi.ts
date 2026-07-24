@@ -43,6 +43,22 @@ class IncrementalSkillApi extends MockSkillApi {
     return this.catalog.listSkillVersions(skillId, query);
   }
 
+  override listVersionFiles(skillId: string, versionId: string) {
+    return this.catalog.listVersionFiles(skillId, versionId);
+  }
+
+  override getVersionFileContent(
+    skillId: string,
+    versionId: string,
+    path: string,
+  ) {
+    return this.catalog.getVersionFileContent(
+      skillId,
+      versionId,
+      path,
+    );
+  }
+
   override async getCurrentUser() {
     const user = await this.auth.getCurrentUser();
     this.setCurrentUser(user);
@@ -62,7 +78,7 @@ class IncrementalSkillApi extends MockSkillApi {
 }
 
 /**
- * 迁移期间只在 Tauri 环境替换真实身份方法，其余在线能力继续由 Mock 提供。
+ * Tauri 环境使用已迁移的真实接口，尚未迁移的业务能力继续由 Mock 提供。
  */
 export function createIncrementalSkillApi(): SkillApi {
   return isTauri() ? new IncrementalSkillApi() : new MockSkillApi();

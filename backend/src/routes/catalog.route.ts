@@ -106,4 +106,125 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
     }
     return success(result);
   });
+
+  app.get(
+    "/skills/:skillId/versions/:versionId/files",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply);
+      if (!auth) return;
+
+      const params = request.params as {
+        skillId?: string;
+        versionId?: string;
+      };
+      const skillId = params.skillId?.trim() || "";
+      const versionId = params.versionId?.trim() || "";
+      if (
+        !UUID_PATTERN.test(skillId) ||
+        !UUID_PATTERN.test(versionId)
+      ) {
+        return failure(
+          reply,
+          404,
+          "VERSION_NOT_FOUND",
+          "没有找到该 Skill 版本",
+        );
+      }
+
+      const files = await catalogService.listVersionFiles(
+        skillId,
+        versionId,
+      );
+      if (!files) {
+        return failure(
+          reply,
+          404,
+          "VERSION_NOT_FOUND",
+          "没有找到该 Skill 版本",
+        );
+      }
+      return success(files);
+    },
+  );
+
+  app.get(
+    "/skills/:skillId/versions/:versionId/files/content",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply);
+      if (!auth) return;
+
+      const params = request.params as {
+        skillId?: string;
+        versionId?: string;
+      };
+      const skillId = params.skillId?.trim() || "";
+      const versionId = params.versionId?.trim() || "";
+      if (
+        !UUID_PATTERN.test(skillId) ||
+        !UUID_PATTERN.test(versionId)
+      ) {
+        return failure(
+          reply,
+          404,
+          "VERSION_NOT_FOUND",
+          "没有找到该 Skill 版本",
+        );
+      }
+
+      const query = request.query as { path?: unknown };
+      if (
+        typeof query.path !== "string" ||
+        !query.path.trim() ||
+        query.path.length > 1_000
+      ) {
+        return failure(
+          reply,
+          400,
+          "INVALID_REQUEST",
+          "文件路径无效",
+        );
+      }
+
+      const result = await catalogService.getVersionFileContent(
+        skillId,
+        versionId,
+        query.path,
+      );
+      if (result.status === "OK") {
+        return success(result.data);
+      }
+      if (result.status === "INVALID_PATH") {
+        return failure(
+          reply,
+          400,
+          "INVALID_REQUEST",
+          "文件路径无效",
+        );
+      }
+      if (result.status === "VERSION_NOT_FOUND") {
+        return failure(
+          reply,
+          404,
+          "VERSION_NOT_FOUND",
+          "没有找到该 Skill 版本",
+        );
+      }
+      if (result.status === "FILE_NOT_FOUND") {
+        return failure(
+          reply,
+          404,
+          "FILE_NOT_FOUND",
+          "没有找到该版本中的文件",
+        );
+      }
+      return failure(
+        reply,
+        422,
+        "FILE_PREVIEW_UNAVAILABLE",
+        result.status === "PREVIEW_TOO_LARGE"
+          ? "文件过大，无法在线预览"
+          : "该文件类型不支持文本预览",
+      );
+    },
+  );
 };

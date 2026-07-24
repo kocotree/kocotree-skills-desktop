@@ -31,4 +31,15 @@ export const config = {
         "DESKTOP_TOKEN_TTL_SECONDS",
         60 * 60 * 24 * 180,
     ),
+    storageDriver: process.env.STORAGE_DRIVER || "aliyun-oss",
+    ossRegion: process.env.OSS_REGION || "oss-cn-hangzhou",
+    ossBucket: process.env.OSS_BUCKET || "kocotree-skill-storage",
+    ossEndpoint:
+        process.env.OSS_ENDPOINT || "oss-cn-hangzhou.aliyuncs.com",
+    ossAccessKeyId: process.env.OSS_ACCESS_KEY_ID || "",
+    ossAccessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || "",
+    skillPreviewTextMaxKb: readNumber(
+        "SKILL_PREVIEW_TEXT_MAX_KB",
+        1024,
+    ),
 };
