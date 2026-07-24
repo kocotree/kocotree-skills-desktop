@@ -7,6 +7,8 @@ const SORTS = new Set([
   "CREATED_DESC",
   "INSTALLS_DESC",
 ]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function positiveInteger(
   value: unknown,
@@ -61,6 +63,47 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       page,
       pageSize,
     });
+    return success(result);
+  });
+
+  app.get("/skills/:skillId", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    const params = request.params as { skillId?: string };
+    const skillId = params.skillId?.trim() || "";
+    if (!UUID_PATTERN.test(skillId)) {
+      return failure(reply, 404, "SKILL_NOT_FOUND", "没有找到该 Skill");
+    }
+
+    const skill = await catalogService.getSkill(skillId);
+    if (!skill) {
+      return failure(reply, 404, "SKILL_NOT_FOUND", "没有找到该 Skill");
+    }
+    return success(skill);
+  });
+
+  app.get("/skills/:skillId/versions", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    const params = request.params as { skillId?: string };
+    const skillId = params.skillId?.trim() || "";
+    if (!UUID_PATTERN.test(skillId)) {
+      return failure(reply, 404, "SKILL_NOT_FOUND", "没有找到该 Skill");
+    }
+
+    const query = request.query as Record<string, unknown>;
+    const page = positiveInteger(query.page, 1, 1_000_000);
+    const pageSize = positiveInteger(query.pageSize, 20, 100);
+    const result = await catalogService.listSkillVersions(
+      skillId,
+      page,
+      pageSize,
+    );
+    if (!result) {
+      return failure(reply, 404, "SKILL_NOT_FOUND", "没有找到该 Skill");
+    }
     return success(result);
   });
 };

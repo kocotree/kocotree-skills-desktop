@@ -1,7 +1,7 @@
 # Kocotree Skills Desktop Backend
 
 这个目录承载从旧项目逐步迁移到 desktop 项目的后端能力。当前已经迁移飞书授权登录、
-Tag 查询和 Skill 列表；上传、详情、下载等接口仍待后续迁移。
+Tag 查询、Skill 列表、Skill 详情和版本历史；上传、文件预览和下载等接口仍待后续迁移。
 
 ## 当前接口
 
@@ -15,6 +15,8 @@ Tag 查询和 Skill 列表；上传、详情、下载等接口仍待后续迁移
 | `GET /api/users/me` | 获取当前登录用户 |
 | `GET /api/tags?query=...` | 查询 Tag |
 | `GET /api/skills?query=...&tagId=...&sort=...` | 分页浏览 Skill |
+| `GET /api/skills/:skillId` | 获取 Skill 详情 |
+| `GET /api/skills/:skillId/versions` | 分页获取版本历史 |
 
 除健康检查和登录流程接口外，以上业务接口都要求
 `Authorization: Bearer <token>`。
@@ -115,8 +117,8 @@ macOS 的 `tauri dev` 使用 loopback 回调，不依赖系统注册自定义协
 
 ## 当前边界
 
-- 飞书登录、当前用户、Tag 和 Skill 列表使用真实后端。
-- Skill 详情、上传、下载和管理类接口暂时继续使用前端 Mock。
+- 飞书登录、当前用户、Tag、Skill 列表、详情和版本历史使用真实后端。
+- 文件树、文件预览、上传、下载和管理类接口暂时继续使用前端 Mock。
 - 真实飞书身份会同步给 Mock 业务接口，使登录后的现有演示页面仍可工作。
 - Bearer Token 当前保存在 webview 的 `sessionStorage`，关闭会话后需要重新登录。后续可单独
   迁移到系统凭据存储。

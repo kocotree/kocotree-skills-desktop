@@ -9,6 +9,23 @@ export interface ListSkillsInput {
   pageSize: number;
 }
 
+const skillInclude = {
+  creator: true,
+  tags: {
+    include: {
+      tag: true,
+    },
+  },
+  latestVersion: {
+    include: {
+      creator: true,
+      files: {
+        orderBy: [{ type: "asc" }, { path: "asc" }],
+      },
+    },
+  },
+} satisfies Prisma.SkillInclude;
+
 export const catalogRepository = {
   listTags(query?: string) {
     return prisma.tag.findMany({
@@ -73,26 +90,72 @@ export const catalogRepository = {
         orderBy,
         skip: (input.page - 1) * input.pageSize,
         take: input.pageSize,
-        include: {
-          creator: true,
-          tags: {
-            include: {
-              tag: true,
-            },
-          },
-          latestVersion: {
-            include: {
-              creator: true,
-              files: {
-                orderBy: [{ type: "asc" }, { path: "asc" }],
-              },
-            },
-          },
-        },
+        include: skillInclude,
       }),
       prisma.skill.count({ where }),
     ]);
 
     return { items, total };
+  },
+
+  getSkill(skillId: string) {
+    return prisma.skill.findFirst({
+      where: {
+        id: skillId,
+        status: "PUBLISHED",
+        latestVersionId: {
+          not: null,
+        },
+      },
+      include: skillInclude,
+    });
+  },
+
+  async listSkillVersions(
+    skillId: string,
+    page: number,
+    pageSize: number,
+  ) {
+    const where: Prisma.SkillVersionWhereInput = {
+      skillId,
+      status: {
+        in: ["PUBLISHED", "REVOKED"],
+      },
+    };
+    const [skill, items, total] = await prisma.$transaction([
+      prisma.skill.findFirst({
+        where: {
+          id: skillId,
+          status: "PUBLISHED",
+        },
+        select: {
+          id: true,
+          slug: true,
+          description: true,
+        },
+      }),
+      prisma.skillVersion.findMany({
+        where,
+        orderBy: [
+          {
+            publishedAt: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          creator: true,
+          files: {
+            orderBy: [{ type: "asc" }, { path: "asc" }],
+          },
+        },
+      }),
+      prisma.skillVersion.count({ where }),
+    ]);
+
+    return { skill, items, total };
   },
 };

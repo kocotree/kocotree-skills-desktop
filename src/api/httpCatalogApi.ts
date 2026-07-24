@@ -1,7 +1,10 @@
 import type {
   ListSkillsQuery,
+  ListVersionsQuery,
+  SkillDetailDto,
   SkillPageDto,
   TagDto,
+  VersionPageDto,
 } from "./contracts";
 import type { AuthenticatedHttpClient } from "./httpClient";
 
@@ -34,6 +37,24 @@ export class HttpCatalogApi {
         query: query.query,
         tagId: query.tagId,
         sort: query.sort,
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+    );
+  }
+
+  getSkill(skillId: string): Promise<SkillDetailDto> {
+    return this.http.request<SkillDetailDto>(
+      `/api/skills/${encodeURIComponent(skillId)}`,
+    );
+  }
+
+  listSkillVersions(
+    skillId: string,
+    query: ListVersionsQuery = {},
+  ): Promise<VersionPageDto> {
+    return this.http.request<VersionPageDto>(
+      `/api/skills/${encodeURIComponent(skillId)}/versions${queryString({
         page: query.page,
         pageSize: query.pageSize,
       })}`,

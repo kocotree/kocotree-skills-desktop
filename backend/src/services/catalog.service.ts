@@ -8,6 +8,7 @@ import {
 type SkillRecord = Awaited<
   ReturnType<typeof catalogRepository.listSkills>
 >["items"][number];
+type VersionRecord = NonNullable<SkillRecord["latestVersion"]>;
 
 function normalizeSha256(value: string): string {
   return value.startsWith("sha256:") ? value : `sha256:${value}`;
@@ -36,21 +37,24 @@ function toUserDto(user: User | null) {
   };
 }
 
-function extractSkillName(skill: SkillRecord): string {
-  const frontmatterName = skill.latestVersion?.readmeMd?.match(
+function extractSkillName(
+  slug: string,
+  version: Pick<VersionRecord, "readmeMd" | "files">,
+): string {
+  const frontmatterName = version.readmeMd?.match(
     /^name:\s*["']?([^"'\r\n]+)["']?\s*$/im,
   )?.[1]?.trim();
   if (frontmatterName) {
     return frontmatterName;
   }
 
-  const skillMd = skill.latestVersion?.files.find(
+  const skillMd = version.files.find(
     (file) => file.path.toLowerCase().endsWith("skill.md"),
   );
   const firstSegment = skillMd?.path.split("/").filter(Boolean)[0];
   return firstSegment && firstSegment.toLowerCase() !== "skill.md"
     ? firstSegment
-    : skill.slug;
+    : slug;
 }
 
 function contentHash(files: SkillFile[]): string {
@@ -64,13 +68,16 @@ function contentHash(files: SkillFile[]): string {
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 }
 
-function toSkillSummary(skill: SkillRecord) {
-  const version = skill.latestVersion;
-  if (!version) {
-    throw new Error(`Skill ${skill.id} is missing latest version`);
-  }
-  const owner = toUserDto(skill.creator);
-  const uploadedBy = toUserDto(version.creator || skill.creator);
+function toVersionDto(
+  skill: {
+    id: string;
+    slug: string;
+    description: string;
+    creator?: User | null;
+  },
+  version: VersionRecord,
+) {
+  const uploadedBy = toUserDto(version.creator || skill.creator || null);
   const skillDescription = skill.description || "暂无描述";
   const publishedAt = (
     version.publishedAt ||
@@ -78,8 +85,41 @@ function toSkillSummary(skill: SkillRecord) {
   ).toISOString();
 
   return {
+    id: version.id,
+    skillId: skill.id,
+    version: version.version,
+    status:
+      version.status === "REVOKED"
+        ? ("WITHDRAWN" as const)
+        : ("PUBLISHED" as const),
+    skillName: extractSkillName(skill.slug, version),
+    skillDescription,
+    changelog: version.changelog || "首次发布",
+    baseVersionId: null,
+    packageSize: Number(version.packageSize || 1),
+    packageSha256: normalizeSha256(version.checksumSha256),
+    contentHash: contentHash(version.files),
+    uploadedBy,
+    publishedAt,
+    withdrawnBy: null,
+    withdrawnAt: null,
+    withdrawalReason: null,
+  };
+}
+
+function toSkillSummary(skill: SkillRecord) {
+  const version = skill.latestVersion;
+  if (!version) {
+    throw new Error(`Skill ${skill.id} is missing latest version`);
+  }
+  const owner = toUserDto(skill.creator);
+  const currentVersion = toVersionDto(skill, version);
+  const uploadedBy = currentVersion.uploadedBy;
+  const skillDescription = skill.description || "暂无描述";
+
+  return {
     id: skill.id,
-    skillName: extractSkillName(skill),
+    skillName: currentVersion.skillName,
     displayName: skill.name,
     skillDescription,
     displayDescription: skillDescription,
@@ -89,24 +129,7 @@ function toSkillSummary(skill: SkillRecord) {
       id: tag.id,
       name: tag.name,
     })),
-    currentVersion: {
-      id: version.id,
-      skillId: skill.id,
-      version: version.version,
-      status: "PUBLISHED" as const,
-      skillName: extractSkillName(skill),
-      skillDescription,
-      changelog: version.changelog || "首次发布",
-      baseVersionId: null,
-      packageSize: Number(version.packageSize || 0),
-      packageSha256: normalizeSha256(version.checksumSha256),
-      contentHash: contentHash(version.files),
-      uploadedBy,
-      publishedAt,
-      withdrawnBy: null,
-      withdrawnAt: null,
-      withdrawalReason: null,
-    },
+    currentVersion,
     installCount: skill.installCount,
     derivedFrom: null,
     updatedBy: uploadedBy,
@@ -134,6 +157,38 @@ export const catalogService = {
       total: result.total,
       page: input.page,
       pageSize: input.pageSize,
+    };
+  },
+
+  async getSkill(skillId: string) {
+    const skill = await catalogRepository.getSkill(skillId);
+    if (!skill) return null;
+    return {
+      ...toSkillSummary(skill),
+      collaborators: [],
+      derivedChain: [],
+    };
+  },
+
+  async listSkillVersions(
+    skillId: string,
+    page: number,
+    pageSize: number,
+  ) {
+    const result = await catalogRepository.listSkillVersions(
+      skillId,
+      page,
+      pageSize,
+    );
+    const skill = result.skill;
+    if (!skill) return null;
+    return {
+      items: result.items.map((version) =>
+        toVersionDto(skill, version),
+      ),
+      total: result.total,
+      page,
+      pageSize,
     };
   },
 };

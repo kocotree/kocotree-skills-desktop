@@ -1,5 +1,9 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { ListSkillsQuery, SkillApi } from "./contracts";
+import type {
+  ListSkillsQuery,
+  ListVersionsQuery,
+  SkillApi,
+} from "./contracts";
 import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { AuthenticatedHttpClient } from "./httpClient";
@@ -26,6 +30,17 @@ class IncrementalSkillApi extends MockSkillApi {
 
   override listSkills(query: ListSkillsQuery = {}) {
     return this.catalog.listSkills(query);
+  }
+
+  override getSkill(skillId: string) {
+    return this.catalog.getSkill(skillId);
+  }
+
+  override listSkillVersions(
+    skillId: string,
+    query: ListVersionsQuery = {},
+  ) {
+    return this.catalog.listSkillVersions(skillId, query);
   }
 
   override async getCurrentUser() {

@@ -551,7 +551,7 @@ VITE_API_BASE_URL=https://skills-api.example.com
 1. 实现 desktop `HttpSkillApi` 公共请求、错误解析和 API Base URL。**已完成**
 2. 接入飞书直接授权登录和 Bearer Token 会话存储。**已完成**
 3. 对齐当前用户、Tag 和 Skill 列表 DTO。**已完成**
-4. 对齐 Skill 详情 DTO。
+4. 对齐 Skill 详情和版本历史 DTO。**已完成**
 5. 增加指定版本下载凭证。
 6. 让 Tauri 安装器使用真实签名 URL 和服务端包哈希。
 7. 增加幂等安装事件上报。
