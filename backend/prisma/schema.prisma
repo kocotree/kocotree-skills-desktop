@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("user_status")
+}
+
+model User {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  feishuOpenId  String      @unique @map("feishu_open_id")
+  feishuUnionId String?     @map("feishu_union_id")
+  isCompanyUser Boolean     @default(false) @map("is_company_user")
+  name          String
+  email         String?
+  avatarUrl     String?     @map("avatar_url")
+  status        UserStatus  @default(ACTIVE)
+  lastLoginAt   DateTime?   @map("last_login_at") @db.Timestamptz(6)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tokens        UserToken[]
+
+  @@map("users")
+}
+
+model UserToken {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tokenHash   String    @unique @map("token_hash")
+  name        String?
+  clientType  String    @default("desktop") @map("client_type")
+  deviceName  String?   @map("device_name")
+  platform    String?
+  scopes      String[]  @default(["user:read"])
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(6)
+  refreshedAt DateTime? @map("refreshed_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "user_tokens_user_id_idx")
+  @@index([clientType], map: "user_tokens_client_type_idx")
+  @@index([lastUsedAt(sort: Desc)], map: "user_tokens_last_used_at_idx")
+  @@map("user_tokens")
+}

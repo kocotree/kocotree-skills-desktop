@@ -100,6 +100,11 @@ export class MockSkillApi implements SkillApi {
     this.currentUser = options.initialUser ?? null;
   }
 
+  /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */
+  setCurrentUser(user: UserDto | null): void {
+    this.currentUser = user ? clone(user) : null;
+  }
+
   private async wait(): Promise<void> {
     await new Promise((resolve) => globalThis.setTimeout(resolve, this.delayMs));
   }

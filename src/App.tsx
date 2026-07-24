@@ -370,10 +370,7 @@ function App() {
     setLoginVisible(true);
   }
 
-  /**
-   * 功能说明：完成模拟飞书登录并继续此前被拦截的操作。
-   * @returns 无返回值。
-   */
+  /** 打开系统浏览器完成飞书授权，并继续此前被拦截的操作。 */
   async function handleSignIn(): Promise<void> {
     setLoginLoading(true);
     try {
@@ -385,7 +382,7 @@ function App() {
       protectedActionRef.current = null;
       nextAction?.();
     } catch (reason) {
-      console.error("[KocotreeSkills] 模拟登录失败", reason);
+      console.error("[KocotreeSkills] 飞书登录失败", reason);
       Toast.error("登录失败，请稍后重试");
     } finally {
       setLoginLoading(false);
@@ -720,9 +717,9 @@ function App() {
           <span className="login-mark">飞</span>
           <div><strong>使用飞书继续</strong><p>安装、上传和发布版本时需要记录操作者身份。</p></div>
           <Button theme="solid" type="primary" loading={loginLoading} block onClick={() => void handleSignIn()}>
-            模拟飞书登录
+            打开飞书授权
           </Button>
-          <small>当前为本地模拟流程，不会打开网页或提交真实账号信息。</small>
+          <small>将在系统浏览器中打开飞书，授权完成后自动返回应用。</small>
         </div>
       </Modal>
       <ToastViewport />
