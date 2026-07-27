@@ -46,4 +46,5 @@ export const config = {
         "SKILL_PREVIEW_TEXT_MAX_KB",
         1024,
     ),
+    skillUploadMaxMb: readNumber("SKILL_UPLOAD_MAX_MB", 50),
 };

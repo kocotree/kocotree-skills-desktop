@@ -1,14 +1,17 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type {
   InstallationEventDto,
+  CreateSkillDto,
   ListSkillsQuery,
   ListVersionsQuery,
+  PublishSkillVersionDto,
   SkillApi,
 } from "./contracts";
 import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { AuthenticatedHttpClient } from "./httpClient";
 import { HttpInstallationApi } from "./httpInstallationApi";
+import { HttpPublishingApi } from "./httpPublishingApi";
 import { MockSkillApi } from "./mockSkillApi";
 
 export const AUTH_INVALIDATED_EVENT = "kocotree-auth-invalidated";
@@ -27,6 +30,7 @@ class IncrementalSkillApi extends MockSkillApi {
   private readonly installation = new HttpInstallationApi(
     this.http,
   );
+  private readonly publishing = new HttpPublishingApi(this.http);
 
   override listTags(query?: string) {
     return this.catalog.listTags(query);
@@ -69,6 +73,17 @@ class IncrementalSkillApi extends MockSkillApi {
 
   override recordInstallation(event: InstallationEventDto) {
     return this.installation.recordInstallation(event);
+  }
+
+  override createSkill(input: CreateSkillDto) {
+    return this.publishing.createSkill(input);
+  }
+
+  override publishSkillVersion(
+    skillId: string,
+    input: PublishSkillVersionDto,
+  ) {
+    return this.publishing.publishSkillVersion(skillId, input);
   }
 
   override async getCurrentUser() {

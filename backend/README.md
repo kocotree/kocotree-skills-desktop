@@ -1,7 +1,8 @@
 # Kocotree Skills Desktop Backend
 
 这个目录承载从旧项目逐步迁移到 desktop 项目的后端能力。当前已经迁移飞书授权登录、
-Tag 查询、Skill 列表、Skill 详情、版本历史和文件预览；上传和下载等接口仍待后续迁移。
+Tag 查询、Skill 列表、Skill 详情、版本历史、文件预览、创建 Skill、发布新版本、
+指定版本下载凭证和安装成功上报。
 
 ## 当前接口
 
@@ -19,6 +20,10 @@ Tag 查询、Skill 列表、Skill 详情、版本历史和文件预览；上传�
 | `GET /api/skills/:skillId/versions` | 分页获取版本历史 |
 | `GET /api/skills/:skillId/versions/:versionId/files` | 获取版本文件树 |
 | `GET /api/skills/:skillId/versions/:versionId/files/content?path=...` | 获取文本文件内容 |
+| `POST /api/skills` | 上传 ZIP 并创建 Skill `1.0.0` |
+| `POST /api/skills/:skillId/versions` | 为已有 Skill 发布新版本 |
+| `POST /api/skills/:skillId/versions/:versionId/download-tickets` | 获取指定已发布版本的短期 OSS 下载地址 |
+| `POST /api/installations/events` | 幂等上报安装成功并增加安装次数 |
 
 除健康检查和登录流程接口外，以上业务接口都要求
 `Authorization: Bearer <token>`。
@@ -40,8 +45,19 @@ desktop
 
 ## 数据库
 
-`prisma/schema.prisma` 映射本阶段需要的用户、Token、Skill、版本、文件和 Tag 表，表名和
-字段与旧后端保持一致，因此可以连接现有 PostgreSQL 数据库，不需要为本次迁移新建表。
+`prisma/schema.prisma` 映射本阶段需要的用户、Token、Skill、版本、文件、Tag 和安装会话
+表，表名和字段与现有 PostgreSQL 数据库保持一致。
+
+安装成功上报复用数据库已有的 `install_sessions`，不需要新建数据表或执行 migration。
+更新 Prisma schema 后只需重新生成 Client：
+
+```bash
+cd backend
+pnpm prisma:generate
+```
+
+客户端的 `eventId` 作为 `install_sessions.id`，是全局幂等键。相同事件重复上报不会重复
+增加 `skills.install_count`；复用事件编号上报不同内容会被拒绝。
 
 一次性桌面授权码也保存在 `user_tokens`：
 
@@ -72,6 +88,10 @@ TOKEN_SECRET
 OSS_ACCESS_KEY_ID
 OSS_ACCESS_KEY_SECRET
 ```
+
+`OSS_SIGNED_URL_EXPIRES_SECONDS` 控制下载凭证有效期，默认 300 秒。
+`SKILL_UPLOAD_MAX_MB` 控制上传 ZIP 的压缩包大小上限，默认 50 MB。服务端会移除
+`__MACOSX`、`.DS_Store`、`._*` 等系统元数据并重新生成 ZIP，再计算哈希和上传 OSS。
 
 飞书开放平台中配置的重定向 URL 必须与下面的值完全一致：
 
@@ -121,8 +141,9 @@ macOS 的 `tauri dev` 使用 loopback 回调，不依赖系统注册自定义协
 
 ## 当前边界
 
-- 飞书登录、当前用户、Tag、Skill 列表、详情、版本历史、文件树和文本预览使用真实后端。
-- 上传、下载和管理类接口暂时继续使用前端 Mock。
+- 飞书登录、当前用户、Tag、Skill 列表、详情、版本历史、文件树、文本预览、创建
+  Skill、发布新版本、下载凭证和安装成功上报使用真实后端。
+- 修改展示信息、撤回、归档、所有权和通知等管理类接口暂时继续使用前端 Mock。
 - 真实飞书身份会同步给 Mock 业务接口，使登录后的现有演示页面仍可工作。
 - Bearer Token 当前保存在 webview 的 `sessionStorage`，关闭会话后需要重新登录。后续可单独
   迁移到系统凭据存储。

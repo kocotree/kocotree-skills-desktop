@@ -14,6 +14,7 @@ interface ApiErrorResponse {
   code?: number;
   data?: {
     errorCode?: string;
+    [key: string]: unknown;
   };
   msg?: string;
 }
@@ -39,6 +40,7 @@ export async function readApiData<T>(response: Response): Promise<T> {
     throw new SkillApiError(
       error?.data?.errorCode || `HTTP_${response.status}`,
       error?.msg || `请求失败：${response.status}`,
+      error?.data,
     );
   }
   if (

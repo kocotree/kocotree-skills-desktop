@@ -2,7 +2,15 @@ import OSS from "ali-oss";
 import { config } from "../config";
 
 type OssClient = {
+  put: (
+    name: string,
+    content: Buffer,
+    options?: { mime?: string },
+  ) => Promise<{
+    res?: { headers?: Record<string, string> };
+  }>;
   get: (name: string) => Promise<{ content: Buffer }>;
+  delete: (name: string) => Promise<unknown>;
   signatureUrl: (
     name: string,
     options: { expires: number; method: "GET" },
@@ -42,12 +50,37 @@ function getClient(bucket: string): OssClient {
 }
 
 export const storageService = {
+  bucket: config.ossBucket,
+
+  async putObject(
+    objectKey: string,
+    content: Buffer,
+    contentType = "application/zip",
+    bucket = config.ossBucket,
+  ): Promise<{ objectKey: string; etag: string | null }> {
+    const result = await getClient(bucket).put(objectKey, content, {
+      mime: contentType,
+    });
+    return {
+      objectKey,
+      etag:
+        result.res?.headers?.etag?.replace(/"/g, "") || null,
+    };
+  },
+
   async getObject(
     objectKey: string,
     bucket = config.ossBucket,
   ): Promise<Buffer> {
     const result = await getClient(bucket).get(objectKey);
     return result.content;
+  },
+
+  async deleteObject(
+    objectKey: string,
+    bucket = config.ossBucket,
+  ): Promise<void> {
+    await getClient(bucket).delete(objectKey);
   },
 
   createSignedDownloadUrl(

@@ -173,6 +173,7 @@ export const catalogRepository = {
       },
       select: {
         id: true,
+        ossBucket: true,
         ossObjectKey: true,
         files: {
           orderBy: [

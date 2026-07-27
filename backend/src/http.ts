@@ -14,10 +14,11 @@ export function failure(
   statusCode: number,
   errorCode: string,
   msg: string,
+  details?: Record<string, unknown>,
 ) {
   return reply.code(statusCode).send({
     code: statusCode,
-    data: { errorCode },
+    data: { errorCode, ...details },
     msg,
   });
 }

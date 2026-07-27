@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { SkillFile, User } from "@prisma/client";
+import type { User } from "@prisma/client";
 import { config } from "../config";
 import {
   catalogRepository,
@@ -10,16 +10,17 @@ import {
   normalizePackagePath,
   readFileFromPackage,
 } from "./skill-package.service";
+import {
+  computeVersionContentHash,
+  normalizeSha256,
+} from "./skill-version-hash";
+import { readStoredVersionMetadata } from "./skill-metadata";
 import { storageService } from "./storage.service";
 
 type SkillRecord = Awaited<
   ReturnType<typeof catalogRepository.listSkills>
 >["items"][number];
 type VersionRecord = NonNullable<SkillRecord["latestVersion"]>;
-
-function normalizeSha256(value: string): string {
-  return value.startsWith("sha256:") ? value : `sha256:${value}`;
-}
 
 function toUserDto(user: User | null) {
   if (!user) {
@@ -48,12 +49,8 @@ function extractSkillName(
   slug: string,
   version: Pick<VersionRecord, "readmeMd" | "files">,
 ): string {
-  const frontmatterName = version.readmeMd?.match(
-    /^name:\s*["']?([^"'\r\n]+)["']?\s*$/im,
-  )?.[1]?.trim();
-  if (frontmatterName) {
-    return frontmatterName;
-  }
+  const storedName = readStoredVersionMetadata(version).skillName;
+  if (storedName) return storedName;
 
   const skillMd = version.files.find(
     (file) => file.path.toLowerCase().endsWith("skill.md"),
@@ -62,17 +59,6 @@ function extractSkillName(
   return firstSegment && firstSegment.toLowerCase() !== "skill.md"
     ? firstSegment
     : slug;
-}
-
-function contentHash(files: SkillFile[]): string {
-  const canonical = files
-    .map(
-      (file) =>
-        `${file.type}:${file.path}:${file.checksumSha256 || ""}:${file.sizeBytes || 0}`,
-    )
-    .sort()
-    .join("\n");
-  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 }
 
 function toVersionDto(
@@ -85,7 +71,11 @@ function toVersionDto(
   version: VersionRecord,
 ) {
   const uploadedBy = toUserDto(version.creator || skill.creator || null);
-  const skillDescription = skill.description || "暂无描述";
+  const storedMetadata = readStoredVersionMetadata(version);
+  const skillDescription =
+    storedMetadata.skillDescription ||
+    skill.description ||
+    "暂无描述";
   const publishedAt = (
     version.publishedAt ||
     version.createdAt
@@ -102,10 +92,12 @@ function toVersionDto(
     skillName: extractSkillName(skill.slug, version),
     skillDescription,
     changelog: version.changelog || "首次发布",
-    baseVersionId: null,
+    baseVersionId: storedMetadata.baseVersionId,
     packageSize: Number(version.packageSize || 1),
     packageSha256: normalizeSha256(version.checksumSha256),
-    contentHash: contentHash(version.files),
+    contentHash:
+      storedMetadata.contentHash ||
+      computeVersionContentHash(version.files),
     uploadedBy,
     publishedAt,
     withdrawnBy: null,
@@ -122,14 +114,13 @@ function toSkillSummary(skill: SkillRecord) {
   const owner = toUserDto(skill.creator);
   const currentVersion = toVersionDto(skill, version);
   const uploadedBy = currentVersion.uploadedBy;
-  const skillDescription = skill.description || "暂无描述";
 
   return {
     id: skill.id,
     skillName: currentVersion.skillName,
     displayName: skill.name,
-    skillDescription,
-    displayDescription: skillDescription,
+    skillDescription: currentVersion.skillDescription,
+    displayDescription: skill.description || "暂无描述",
     status: "ACTIVE" as const,
     owner,
     tags: skill.tags.map(({ tag }) => ({
@@ -265,6 +256,7 @@ export const catalogService = {
 
     const packageBuffer = await storageService.getObject(
       version.ossObjectKey,
+      version.ossBucket,
     );
     const contentBuffer = await readFileFromPackage(
       packageBuffer,

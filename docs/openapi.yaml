@@ -1048,6 +1048,9 @@ components:
             type: string
             minLength: 1
             maxLength: 50
+        replaceTags:
+          type: boolean
+          description: 即使 Tag 数组为空，也完整替换现有 Tag 关联。
         confirmDuplicateDisplayName:
           type: boolean
           default: false
