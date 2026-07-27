@@ -509,7 +509,7 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "eventId": "01J...",
+  "eventId": "019fa329-b953-7c9d-a388-a3262594472f",
   "skillId": "skill_123",
   "versionId": "ver_143",
   "installedAt": "2026-07-17T10:02:00+08:00"

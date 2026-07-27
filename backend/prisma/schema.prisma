@@ -37,6 +37,23 @@ enum SkillFileType {
   @@map("skill_file_type")
 }
 
+enum InstallClientType {
+  WEB   @map("web")
+  CODEX @map("codex")
+
+  @@map("install_client_type")
+}
+
+enum InstallSessionStatus {
+  CREATED
+  AUTHORIZED
+  SUCCEEDED
+  FAILED
+  EXPIRED
+
+  @@map("install_session_status")
+}
+
 model User {
   id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   feishuOpenId  String      @unique @map("feishu_open_id")
@@ -49,9 +66,10 @@ model User {
   lastLoginAt   DateTime?   @map("last_login_at") @db.Timestamptz(6)
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  tokens        UserToken[]
-  createdSkills Skill[]     @relation("SkillCreatedBy")
-  createdSkillVersions SkillVersion[] @relation("SkillVersionCreatedBy")
+  tokens               UserToken[]
+  createdSkills        Skill[]             @relation("SkillCreatedBy")
+  createdSkillVersions SkillVersion[]      @relation("SkillVersionCreatedBy")
+  installSessions      InstallSession[]
 
   @@map("users")
 }
@@ -69,10 +87,11 @@ model Skill {
   createdBy       String?        @map("created_by") @db.Uuid
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  creator         User?          @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  versions        SkillVersion[] @relation("SkillVersions")
-  latestVersion   SkillVersion?  @relation("LatestSkillVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
-  tags            SkillTag[]
+  creator            User?               @relation("SkillCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  versions           SkillVersion[]      @relation("SkillVersions")
+  latestVersion      SkillVersion?       @relation("LatestSkillVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
+  tags               SkillTag[]
+  installSessions    InstallSession[]
 
   @@index([status], map: "skills_status_idx")
   @@index([installCount(sort: Desc)], map: "skills_install_count_idx")
@@ -97,10 +116,11 @@ model SkillVersion {
   createdBy      String?            @map("created_by") @db.Uuid
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  skill          Skill              @relation("SkillVersions", fields: [skillId], references: [id], onDelete: Cascade)
-  latestForSkill Skill[]            @relation("LatestSkillVersion")
-  creator        User?              @relation("SkillVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  files          SkillFile[]
+  skill              Skill               @relation("SkillVersions", fields: [skillId], references: [id], onDelete: Cascade)
+  latestForSkill     Skill[]             @relation("LatestSkillVersion")
+  creator            User?               @relation("SkillVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  files              SkillFile[]
+  installSessions    InstallSession[]
 
   @@unique([skillId, version], map: "skill_versions_unique_version")
   @@index([skillId], map: "skill_versions_skill_id_idx")
@@ -123,6 +143,32 @@ model SkillFile {
   @@unique([versionId, path], map: "skill_files_version_path_idx")
   @@index([versionId], map: "skill_files_version_id_idx")
   @@map("skill_files")
+}
+
+model InstallSession {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String               @map("user_id") @db.Uuid
+  skillId      String               @map("skill_id") @db.Uuid
+  versionId    String               @map("version_id") @db.Uuid
+  status       InstallSessionStatus @default(CREATED)
+  clientType   InstallClientType    @map("client_type")
+  codexVersion String?              @map("codex_version")
+  platform     String?
+  errorCode    String?              @map("error_code")
+  errorMessage String?              @map("error_message")
+  expiresAt    DateTime?            @map("expires_at") @db.Timestamptz(6)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt  DateTime?            @map("completed_at") @db.Timestamptz(6)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skill        Skill                @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  version      SkillVersion         @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "install_sessions_user_id_idx")
+  @@index([skillId], map: "install_sessions_skill_id_idx")
+  @@index([versionId], map: "install_sessions_version_id_idx")
+  @@index([status], map: "install_sessions_status_idx")
+  @@index([createdAt(sort: Desc)], map: "install_sessions_created_at_idx")
+  @@map("install_sessions")
 }
 
 model Tag {

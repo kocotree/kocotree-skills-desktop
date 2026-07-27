@@ -1205,6 +1205,7 @@ components:
       properties:
         eventId:
           type: string
+          format: uuid
         skillId:
           type: string
         versionId:

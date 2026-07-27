@@ -1,5 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import type {
+  InstallationEventDto,
   ListSkillsQuery,
   ListVersionsQuery,
   SkillApi,
@@ -7,21 +8,24 @@ import type {
 import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { AuthenticatedHttpClient } from "./httpClient";
+import { HttpInstallationApi } from "./httpInstallationApi";
 import { MockSkillApi } from "./mockSkillApi";
 
 export const AUTH_INVALIDATED_EVENT = "kocotree-auth-invalidated";
 
 class IncrementalSkillApi extends MockSkillApi {
   private readonly auth = new DesktopAuthApi();
-  private readonly catalog = new HttpCatalogApi(
-    new AuthenticatedHttpClient(
-      () => this.auth.getAccessToken(),
-      () => {
-        this.auth.invalidateSession();
-        this.setCurrentUser(null);
-        window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT));
-      },
-    ),
+  private readonly http = new AuthenticatedHttpClient(
+    () => this.auth.getAccessToken(),
+    () => {
+      this.auth.invalidateSession();
+      this.setCurrentUser(null);
+      window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT));
+    },
+  );
+  private readonly catalog = new HttpCatalogApi(this.http);
+  private readonly installation = new HttpInstallationApi(
+    this.http,
   );
 
   override listTags(query?: string) {
@@ -57,6 +61,14 @@ class IncrementalSkillApi extends MockSkillApi {
       versionId,
       path,
     );
+  }
+
+  override getDownloadTicket(skillId: string, versionId: string) {
+    return this.installation.getDownloadTicket(skillId, versionId);
+  }
+
+  override recordInstallation(event: InstallationEventDto) {
+    return this.installation.recordInstallation(event);
   }
 
   override async getCurrentUser() {

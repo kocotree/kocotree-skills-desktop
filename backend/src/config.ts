@@ -38,6 +38,10 @@ export const config = {
         process.env.OSS_ENDPOINT || "oss-cn-hangzhou.aliyuncs.com",
     ossAccessKeyId: process.env.OSS_ACCESS_KEY_ID || "",
     ossAccessKeySecret: process.env.OSS_ACCESS_KEY_SECRET || "",
+    ossSignedUrlExpiresSeconds: readNumber(
+        "OSS_SIGNED_URL_EXPIRES_SECONDS",
+        300,
+    ),
     skillPreviewTextMaxKb: readNumber(
         "SKILL_PREVIEW_TEXT_MAX_KB",
         1024,
