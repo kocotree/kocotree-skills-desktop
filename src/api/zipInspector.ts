@@ -7,6 +7,7 @@ const MAX_TREE_ENTRY_COUNT = 5_000;
 const MAX_UNCOMPRESSED_SIZE = 200 * 1024 * 1024;
 const MAX_PREVIEW_SIZE = 1024 * 1024;
 const SKILL_MD_NAME = "SKILL.md";
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const TEXT_MEDIA_TYPES: Record<string, string> = {
   ".css": "text/css",
@@ -48,6 +49,7 @@ export interface ZipInspectionResult extends SkillArchiveSource {
   skillDescription: string;
   skillMd: string;
   contentHash: string;
+  ignoredSystemPaths: string[];
 }
 
 function invalidPackage(message: string, details?: Record<string, unknown>): never {
@@ -123,11 +125,11 @@ function parseSkillFrontmatter(skillMd: string): { skillName: string; skillDescr
   const skillDescription = typeof frontmatter.description === "string"
     ? frontmatter.description.trim()
     : "";
-  if (!skillName || !skillDescription) {
-    return invalidPackage("SKILL.md 的 frontmatter 必须包含非空 name 和 description");
+  if (!skillName || skillName.length > 64 || !SKILL_NAME_PATTERN.test(skillName)) {
+    return invalidPackage("SKILL.md 的 name 必须使用小写字母、数字和单个连字符，且不能超过 64 个字符");
   }
-  if (skillName.length > 100 || skillDescription.length > 1_000) {
-    return invalidPackage("SKILL.md 的 name 或 description 超出长度限制");
+  if (!skillDescription || skillDescription.length > 1_000) {
+    return invalidPackage("SKILL.md 的 description 必须为 1 至 1000 个字符");
   }
   return { skillName, skillDescription };
 }
@@ -170,11 +172,15 @@ export async function inspectSkillZip(buffer: ArrayBuffer): Promise<ZipInspectio
     return invalidPackage("ZIP 已损坏或无法读取");
   }
 
-  const safeEntries = Object.values(archive.files)
+  const validatedEntries = Object.values(archive.files)
     .map((entry) => ({
       entry,
       originalPath: validateArchivePath(getOriginalPath(entry)),
-    }))
+    }));
+  const ignoredSystemPaths = validatedEntries
+    .filter(({ originalPath }) => isIgnoredSystemPath(originalPath))
+    .map(({ entry }) => entry.name);
+  const safeEntries = validatedEntries
     .filter(({ originalPath }) => !isIgnoredSystemPath(originalPath));
 
   if (safeEntries.some(({ entry }) => isSymbolicLink(entry))) {
@@ -302,6 +308,7 @@ export async function inspectSkillZip(buffer: ArrayBuffer): Promise<ZipInspectio
     skillDescription,
     skillMd,
     contentHash,
+    ignoredSystemPaths,
   };
 }
 

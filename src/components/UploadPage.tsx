@@ -99,8 +99,8 @@ export function UploadPage({
     setInspecting(true);
     console.info("[KocotreeSkills] 开始解析 Skill ZIP", { fileName: file.name, size: file.size });
     try {
-      const { inspection: result } = await parseSkillPackage(file);
-      setSelectedFile(file);
+      const { inspection: result, uploadFile } = await parseSkillPackage(file);
+      setSelectedFile(uploadFile);
       setInspection(result);
       if (!targetSkill) {
         setDisplayName(result.skillName);

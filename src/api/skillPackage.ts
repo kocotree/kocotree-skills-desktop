@@ -16,10 +16,11 @@ export interface SkillPackageInspection {
   warnings: string[];
 }
 
-/** ZIP 校验后的元数据及文件读取来源。 */
+/** ZIP 校验后的元数据、文件读取来源，以及清理系统元数据后的实际上传文件。 */
 export interface ParsedSkillPackage {
   inspection: SkillPackageInspection;
   source: SkillArchiveSource;
+  uploadFile: File;
 }
 
 async function sha256(buffer: ArrayBuffer): Promise<string> {
@@ -34,7 +35,7 @@ async function sha256(buffer: ArrayBuffer): Promise<string> {
 /**
  * 功能说明：在当前进程中读取并校验 Skill ZIP，生成页面预览或发布入库所需的数据。
  * @param file - 用户选择或提交的原始 ZIP 文件。
- * @returns ZIP 元数据以及后续读取版本文件所需的解析来源。
+ * @returns ZIP 元数据、后续读取版本文件所需的解析来源，以及可安全上传的 ZIP。
  */
 export async function parseSkillPackage(file: File): Promise<ParsedSkillPackage> {
   if (!file.name.toLocaleLowerCase().endsWith(".zip")) {
@@ -44,24 +45,55 @@ export async function parseSkillPackage(file: File): Promise<ParsedSkillPackage>
     throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 50 MB");
   }
 
-  const buffer = await file.arrayBuffer();
-  const parsed = await inspectSkillZip(buffer);
+  const originalBuffer = await file.arrayBuffer();
+  const originalParsed = await inspectSkillZip(originalBuffer);
+  let uploadBuffer = originalBuffer;
+  let parsed = originalParsed;
+
+  if (originalParsed.ignoredSystemPaths.length > 0) {
+    for (const ignoredPath of originalParsed.ignoredSystemPaths) {
+      originalParsed.archive.remove(ignoredPath);
+    }
+    uploadBuffer = await originalParsed.archive.generateAsync({
+      type: "arraybuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+    parsed = await inspectSkillZip(uploadBuffer);
+  }
+
+  const uploadFile = uploadBuffer === originalBuffer
+    ? file
+    : new File([uploadBuffer], file.name, {
+        type: file.type || "application/zip",
+        lastModified: file.lastModified,
+      });
+  if (uploadFile.size > MAX_PACKAGE_SIZE) {
+    throw new SkillApiError(
+      "PACKAGE_TOO_LARGE",
+      "清理 macOS 系统文件后的 ZIP 不能超过 50 MB",
+    );
+  }
+
   return {
     inspection: {
       originalFileName: file.name,
       skillName: parsed.skillName,
       skillDescription: parsed.skillDescription,
       skillMd: parsed.skillMd,
-      packageSize: file.size,
+      packageSize: uploadFile.size,
       fileCount: parsed.files.filter((entry) => entry.type === "FILE").length,
-      packageSha256: await sha256(buffer),
+      packageSha256: await sha256(uploadBuffer),
       contentHash: parsed.contentHash,
-      warnings: [],
+      warnings: originalParsed.ignoredSystemPaths.length > 0
+        ? [`已自动清理 ${originalParsed.ignoredSystemPaths.length} 条 macOS 系统元数据`]
+        : [],
     },
     source: {
       archive: parsed.archive,
       files: parsed.files,
       originalPathByNormalized: parsed.originalPathByNormalized,
     },
+    uploadFile,
   };
 }
