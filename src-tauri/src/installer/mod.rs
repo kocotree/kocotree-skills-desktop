@@ -88,6 +88,23 @@ struct LocalSkillManagerState {
     assignments: HashMap<String, Vec<String>>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ManagedDirectoryLinkKind {
+    SymbolicLink,
+    #[cfg(windows)]
+    Junction,
+}
+
+impl ManagedDirectoryLinkKind {
+    fn record_value(self) -> &'static str {
+        match self {
+            Self::SymbolicLink => "SYMLINK",
+            #[cfg(windows)]
+            Self::Junction => "JUNCTION",
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallError {
@@ -599,22 +616,28 @@ fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRec
             continue;
         }
         let skill_path = entry.path();
-        let is_directory = entry
-            .file_type()
-            .map(|file_type| file_type.is_dir() || file_type.is_symlink())
-            .unwrap_or(false);
+        let metadata = match fs::symlink_metadata(&skill_path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        let managed_link_kind = match managed_directory_link_kind(&skill_path, &metadata) {
+            Ok(kind) => kind,
+            Err(error) => {
+                warn!(
+                    "检查本地 Skill 连接类型失败：path={}, error={error}",
+                    skill_path.display()
+                );
+                continue;
+            }
+        };
+        let file_type = metadata.file_type();
+        let is_directory = file_type.is_dir() || managed_link_kind.is_some();
         if !is_directory || !skill_path.join("SKILL.md").is_file() {
             continue;
         }
-        let entry_kind = if entry
-            .file_type()
-            .map(|file_type| file_type.is_symlink())
-            .unwrap_or(false)
-        {
-            "SYMLINK"
-        } else {
-            "DIRECTORY"
-        };
+        let entry_kind = managed_link_kind
+            .map(ManagedDirectoryLinkKind::record_value)
+            .unwrap_or("DIRECTORY");
         let resolved_path = skill_path
             .canonicalize()
             .unwrap_or_else(|_| skill_path.clone())
@@ -764,7 +787,7 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
     for (location, root) in roots {
         scan_skills_root(&root, location, &mut records);
     }
-    let manager_state = load_local_skill_manager_state(&home).unwrap_or_else(|error| {
+    let manager_state = load_local_skill_manager_state(home).unwrap_or_else(|error| {
         warn!(
             "读取 Skill 管理状态失败，按空状态继续：code={}, message={}",
             error.code, error.message
@@ -824,23 +847,83 @@ fn preferred_agent_skills_root(home: &Path, agent: &str) -> Result<PathBuf, Inst
 }
 
 #[cfg(unix)]
-fn create_directory_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+fn managed_directory_link_kind(
+    _path: &Path,
+    metadata: &fs::Metadata,
+) -> std::io::Result<Option<ManagedDirectoryLinkKind>> {
+    Ok(metadata
+        .file_type()
+        .is_symlink()
+        .then_some(ManagedDirectoryLinkKind::SymbolicLink))
+}
+
+#[cfg(windows)]
+fn managed_directory_link_kind(
+    path: &Path,
+    metadata: &fs::Metadata,
+) -> std::io::Result<Option<ManagedDirectoryLinkKind>> {
+    use std::os::windows::fs::MetadataExt;
+
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+
+    if metadata.file_type().is_symlink() {
+        return Ok(Some(ManagedDirectoryLinkKind::SymbolicLink));
+    }
+    if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+        return Ok(None);
+    }
+    if junction::exists(path)? {
+        return Ok(Some(ManagedDirectoryLinkKind::Junction));
+    }
+    Ok(None)
+}
+
+#[cfg(unix)]
+fn create_managed_directory_link(source: &Path, target: &Path) -> std::io::Result<()> {
     std::os::unix::fs::symlink(source, target)
 }
 
 #[cfg(windows)]
-fn create_directory_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
-    std::os::windows::fs::symlink_dir(source, target)
+fn create_managed_directory_link(source: &Path, target: &Path) -> std::io::Result<()> {
+    match junction::create(source, target) {
+        Ok(()) => Ok(()),
+        Err(junction_error) if junction_error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(junction_error)
+        }
+        Err(junction_error) => {
+            let _ = fs::remove_dir(target);
+            std::os::windows::fs::symlink_dir(source, target).map_err(|symlink_error| {
+                std::io::Error::new(
+                    symlink_error.kind(),
+                    format!(
+                        "无法创建 Windows Junction（{junction_error}），目录软链接也失败（{symlink_error}）"
+                    ),
+                )
+            })
+        }
+    }
 }
 
 #[cfg(unix)]
-fn remove_directory_symlink(target: &Path) -> std::io::Result<()> {
+fn remove_managed_directory_link(
+    target: &Path,
+    _kind: ManagedDirectoryLinkKind,
+) -> std::io::Result<()> {
     fs::remove_file(target)
 }
 
 #[cfg(windows)]
-fn remove_directory_symlink(target: &Path) -> std::io::Result<()> {
-    fs::remove_dir(target)
+fn remove_managed_directory_link(
+    target: &Path,
+    kind: ManagedDirectoryLinkKind,
+) -> std::io::Result<()> {
+    match kind {
+        ManagedDirectoryLinkKind::SymbolicLink => fs::remove_dir(target),
+        ManagedDirectoryLinkKind::Junction => {
+            junction::delete(target)?;
+            fs::remove_dir(target)
+        }
+    }
 }
 
 fn set_local_skill_enabled_at_home(
@@ -867,7 +950,7 @@ fn set_local_skill_enabled_at_home(
     if !source_is_direct_child || !canonical_source.join("SKILL.md").is_file() {
         return Err(InstallError::new(
             "LOCAL_SKILL_SOURCE_UNMANAGED",
-            "只能控制 ~/.agents/skills 或兼容仓库中的实体 Skill",
+            "只能控制用户目录下 .agents/skills 或兼容仓库中的实体 Skill",
         ));
     }
     let skill_md = fs::read_to_string(canonical_source.join("SKILL.md"))
@@ -893,7 +976,10 @@ fn set_local_skill_enabled_at_home(
         for target_path in &target_paths {
             match fs::symlink_metadata(target_path) {
                 Ok(metadata) => {
-                    if !metadata.file_type().is_symlink() {
+                    if managed_directory_link_kind(target_path, &metadata)
+                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?
+                        .is_none()
+                    {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_TARGET_CONFLICT",
                             "Agent 可读取的目录中已有独立安装的同名 Skill，未进行覆盖",
@@ -902,13 +988,13 @@ fn set_local_skill_enabled_at_home(
                     let current_target = target_path.canonicalize().map_err(|_| {
                         InstallError::new(
                             "LOCAL_SKILL_TARGET_CONFLICT",
-                            "目标位置已有失效或指向其他位置的软链接",
+                            "目标位置已有失效或指向其他位置的连接",
                         )
                     })?;
                     if current_target != canonical_source {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_TARGET_CONFLICT",
-                            "目标位置已有指向其他 Skill 的软链接",
+                            "目标位置已有指向其他 Skill 的连接",
                         ));
                     }
                     already_enabled = true;
@@ -924,7 +1010,7 @@ fn set_local_skill_enabled_at_home(
             let target_path = preferred_root.join(directory_name);
             fs::create_dir_all(&preferred_root)
                 .map_err(|error| io_error("创建 Agent Skill 目录", error))?;
-            create_directory_symlink(&canonical_source, &target_path)
+            create_managed_directory_link(&canonical_source, &target_path)
                 .map_err(|error| io_error("开启 Skill", error))?;
         }
         record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
@@ -933,25 +1019,24 @@ fn set_local_skill_enabled_at_home(
         for target_path in &target_paths {
             match fs::symlink_metadata(target_path) {
                 Ok(metadata) => {
-                    if !metadata.file_type().is_symlink() {
+                    let Some(kind) = managed_directory_link_kind(target_path, &metadata)
+                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?
+                    else {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_NOT_MANAGED_LINK",
                             "Agent 可读取的目录中存在独立安装的同名 Skill，不能通过开关关闭",
                         ));
-                    }
+                    };
                     let current_target = target_path.canonicalize().map_err(|_| {
-                        InstallError::new(
-                            "LOCAL_SKILL_TARGET_CONFLICT",
-                            "该软链接已失效，未自动删除",
-                        )
+                        InstallError::new("LOCAL_SKILL_TARGET_CONFLICT", "该连接已失效，未自动删除")
                     })?;
                     if current_target != canonical_source {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_TARGET_CONFLICT",
-                            "该软链接指向其他位置，未自动删除",
+                            "该连接指向其他位置，未自动删除",
                         ));
                     }
-                    removable_paths.push(target_path.clone());
+                    removable_paths.push((target_path.clone(), kind));
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -960,8 +1045,8 @@ fn set_local_skill_enabled_at_home(
             }
         }
         record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
-        for target_path in removable_paths {
-            remove_directory_symlink(&target_path)
+        for (target_path, kind) in removable_paths {
+            remove_managed_directory_link(&target_path, kind)
                 .map_err(|error| io_error("关闭 Skill", error))?;
         }
     }
@@ -990,7 +1075,7 @@ pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> 
         })?
 }
 
-/** 通过创建或移除受管软链接，开启或关闭指定 Agent 的 Skill。 */
+/** 通过创建或移除受管目录连接，开启或关闭指定 Agent 的 Skill。 */
 #[tauri::command]
 pub async fn set_local_skill_enabled(
     input: SetLocalSkillEnabledInput,
@@ -1129,9 +1214,8 @@ mod tests {
         assert!(!root.path().parent().unwrap().join("escape.txt").exists());
     }
 
-    #[cfg(unix)]
     #[test]
-    fn codex_toggle_only_changes_the_codex_symlink() {
+    fn codex_toggle_only_changes_the_managed_connection() {
         let home = tempfile::tempdir().unwrap();
         let source = home
             .path()
@@ -1151,7 +1235,7 @@ mod tests {
             enabled,
         };
 
-        set_local_skill_enabled_at_home(home.path(), input(true)).unwrap();
+        let enabled_records = set_local_skill_enabled_at_home(home.path(), input(true)).unwrap();
 
         let codex_link = home.path().join(".codex").join("skills").join("test-skill");
         assert!(source.is_dir());
@@ -1159,10 +1243,24 @@ mod tests {
             .unwrap()
             .file_type()
             .is_symlink());
-        assert!(fs::symlink_metadata(&codex_link)
-            .unwrap()
-            .file_type()
-            .is_symlink());
+        let codex_link_metadata = fs::symlink_metadata(&codex_link).unwrap();
+        let codex_link_kind =
+            managed_directory_link_kind(&codex_link, &codex_link_metadata).unwrap();
+        #[cfg(unix)]
+        assert_eq!(
+            codex_link_kind,
+            Some(ManagedDirectoryLinkKind::SymbolicLink)
+        );
+        #[cfg(windows)]
+        assert_eq!(codex_link_kind, Some(ManagedDirectoryLinkKind::Junction));
+        let codex_record = enabled_records
+            .iter()
+            .find(|record| record.location == "CODEX" && record.skill_name == "test-skill")
+            .unwrap();
+        #[cfg(unix)]
+        assert_eq!(codex_record.entry_kind, "SYMLINK");
+        #[cfg(windows)]
+        assert_eq!(codex_record.entry_kind, "JUNCTION");
         assert_eq!(
             codex_link.canonicalize().unwrap(),
             source.canonicalize().unwrap()

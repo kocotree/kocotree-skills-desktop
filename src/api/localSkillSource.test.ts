@@ -66,7 +66,29 @@ describe("全部 Agents 工作区", () => {
     expect(filterWorkspaceSkillGroups(groups)).toHaveLength(1);
   });
 
-  it("通过 Mock 服务为 .agents 本体创建和移除 Codex 软链接", async () => {
+  it("将 Windows Junction 识别为受管 Agent 连接", () => {
+    const sourcePath = "C:\\Users\\test\\.agents\\skills\\research";
+    const groups = groupLocalSkills([
+      record({
+        id: "agents-source-windows",
+        installPath: sourcePath,
+        resolvedPath: sourcePath,
+      }),
+      record({
+        id: "codex-junction",
+        installPath: "C:\\Users\\test\\.codex\\skills\\research",
+        location: "CODEX",
+        entryKind: "JUNCTION",
+        resolvedPath: sourcePath,
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(getLocalSkillActivationState(groups[0], "codex")).toBe("enabled");
+    expect(filterLocalSkillGroups(groups, "codex")).toHaveLength(1);
+  });
+
+  it("通过 Mock 服务为 .agents 本体创建和移除 Codex 连接", async () => {
     const service = new MockLocalSkillService(0);
     const initial = await service.scanSkills();
     const source = initial.find(

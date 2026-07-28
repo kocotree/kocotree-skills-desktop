@@ -35,6 +35,9 @@ zip = { version = "4", default-features = false, features = ["deflate"] }
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
+[target."cfg(windows)".dependencies]
+junction = "2.0"
+
 # 优化配置说明：https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

@@ -94,7 +94,7 @@ export function groupLocalSkills(
 }
 
 /**
- * 返回可作为软链接本体的 Skill。优先使用全部 Agents 工作区，
+ * 返回可作为 Agent 连接本体的 Skill。优先使用全部 Agents 工作区，
  * 旧版统一仓库仅作为兼容来源保留。
  */
 export function getLocalSkillSourceRecord(
@@ -115,7 +115,7 @@ function isManagedLink(
   const sourceRecord = getLocalSkillSourceRecord(group);
   return Boolean(
     sourceRecord
-      && record.entryKind === "SYMLINK"
+      && (record.entryKind === "SYMLINK" || record.entryKind === "JUNCTION")
       && resolvedKey(record) === resolvedKey(sourceRecord),
   );
 }
