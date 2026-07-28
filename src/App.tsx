@@ -76,10 +76,13 @@ function getSkillShortCode(skill: SkillSummaryDto): string {
 }
 
 /**
- * 功能说明：渲染单个 Skill 卡片，并通过卡片操作进入详情确认安装。
+ * 功能说明：渲染单个 Skill 卡片，支持查看详情和一键安装最新版。
  * @param skill - 当前卡片展示的技能信息。
  * @param installed - 当前技能是否已安装。
+ * @param installing - 当前技能是否正在安装。
+ * @param installDisabled - 是否暂时禁止发起新的安装。
  * @param onOpen - 用户打开详情时调用的回调。
+ * @param onInstall - 用户一键安装最新版时调用的回调。
  * @param highlighted - 当前卡片是否作为派生来源被定位高亮。
  * @param cardRef - 高亮卡片的元素引用回调。
  * @returns Skill 卡片的 React 元素。
@@ -87,13 +90,19 @@ function getSkillShortCode(skill: SkillSummaryDto): string {
 function SkillCard({
   skill,
   installed,
+  installing,
+  installDisabled,
   onOpen,
+  onInstall,
   highlighted,
   cardRef,
 }: {
   skill: SkillSummaryDto;
   installed: boolean;
+  installing: boolean;
+  installDisabled: boolean;
   onOpen: (skill: SkillSummaryDto) => void;
+  onInstall: (skill: SkillSummaryDto) => void;
   highlighted: boolean;
   cardRef?: (node: HTMLElement | null) => void;
 }) {
@@ -144,14 +153,40 @@ function SkillCard({
           <AppIcon name="download" size={14} />
           {skill.installCount.toLocaleString("zh-CN")}
         </span>
-        <Tooltip className="skill-card-action-tooltip" content={installed ? "已安装，查看详情" : "查看并安装"}>
+        <Tooltip
+          className="skill-card-action-tooltip"
+          content={installed
+            ? "已安装，查看详情"
+            : installing
+              ? `正在安装最新版 v${skill.currentVersion.version}`
+              : `安装最新版 v${skill.currentVersion.version}`}
+        >
           <button
-            className={installed ? "install-button installed" : "install-button"}
+            className={installed
+              ? "install-button installed"
+              : installing
+                ? "install-button installing"
+                : "install-button"}
             type="button"
-            onClick={(event) => { event.stopPropagation(); onOpen(skill); }}
-            aria-label={installed ? `${skill.displayName} 已安装，查看详情` : `查看并安装 ${skill.displayName}`}
+            disabled={!installed && installDisabled}
+            aria-busy={installing}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (installed) {
+                onOpen(skill);
+              } else {
+                onInstall(skill);
+              }
+            }}
+            aria-label={installed
+              ? `${skill.displayName} 已安装，查看详情`
+              : `一键安装 ${skill.displayName} 最新版 v${skill.currentVersion.version}`}
           >
-            <AppIcon name={installed ? "check" : "plus"} size={17} />
+            {installed
+              ? <AppIcon name="check" size={17} />
+              : installing
+                ? "安装中…"
+                : "一键安装"}
           </button>
         </Tooltip>
       </div>
@@ -162,7 +197,9 @@ function SkillCard({
 /**
  * 功能说明：渲染 Skill 浏览页面，支持排序、搜索、来源筛选和安装状态演示。
  * @param installedSkillIds - 已安装 Skill 的编号集合。
+ * @param installingSkillId - 当前正在安装的 Skill 编号。
  * @param onOpen - 用户打开 Skill 详情时调用的回调。
+ * @param onInstall - 用户一键安装最新版时调用的回调。
  * @param refreshKey - 触发列表重新加载的刷新编号。
  * @param highlightedSkillId - 需要定位并高亮的来源 Skill 编号。
  * @param onHighlightComplete - 来源卡片高亮结束后的回调。
@@ -172,8 +209,10 @@ function BrowsePage({
   authenticated,
   authResolved,
   installedSkillIds,
+  installingSkillId,
   onLogin,
   onOpen,
+  onInstall,
   refreshKey,
   highlightedSkillId,
   onHighlightComplete,
@@ -181,8 +220,10 @@ function BrowsePage({
   authenticated: boolean;
   authResolved: boolean;
   installedSkillIds: Set<string>;
+  installingSkillId: string | null;
   onLogin: () => void;
   onOpen: (skill: SkillSummaryDto) => void;
+  onInstall: (skill: SkillSummaryDto) => void;
   refreshKey: number;
   highlightedSkillId: string | null;
   onHighlightComplete: () => void;
@@ -365,7 +406,10 @@ function BrowsePage({
               key={skill.id}
               skill={skill}
               installed={installedSkillIds.has(skill.id)}
+              installing={installingSkillId === skill.id}
+              installDisabled={installingSkillId !== null}
               onOpen={onOpen}
+              onInstall={onInstall}
               highlighted={skill.id === highlightedSkillId}
               cardRef={skill.id === highlightedSkillId ? (node) => { highlightedCardRef.current = node; } : undefined}
             />
@@ -410,6 +454,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
   const [installFeedback, setInstallFeedback] = useState<InstallFeedbackState | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
 
   const refreshLocalSkills = useCallback(async () => {
     setLocalSkillsLoading(true);
@@ -574,6 +619,7 @@ function App() {
    */
   async function installSkillVersion(skill: SkillSummaryDto, version: SkillVersionDto, force: boolean): Promise<void> {
     setInstalling(true);
+    setInstallingSkillId(skill.id);
     Toast.info(`正在准备 ${skill.displayName} v${version.version}`);
     try {
       const ticket = await skillApi.getDownloadTicket(skill.id, version.id);
@@ -664,7 +710,13 @@ function App() {
       }
     } finally {
       setInstalling(false);
+      setInstallingSkillId(null);
     }
+  }
+
+  /** 一键安装卡片所对应 Skill 的最新版本。 */
+  function handleInstallLatest(skill: SkillSummaryDto): void {
+    handleInstallVersion(skill, skill.currentVersion);
   }
 
   function handleInstallVersion(skill: SkillSummaryDto, version: SkillVersionDto): void {
@@ -853,8 +905,10 @@ function App() {
             authenticated={currentUser !== null}
             authResolved={authResolved}
             installedSkillIds={installedSkillIds}
+            installingSkillId={installingSkillId}
             onLogin={() => setLoginVisible(true)}
             onOpen={handleOpenSkill}
+            onInstall={handleInstallLatest}
             refreshKey={browseRefreshKey}
             highlightedSkillId={highlightedBrowseSkillId}
             onHighlightComplete={handleBrowseHighlightComplete}
