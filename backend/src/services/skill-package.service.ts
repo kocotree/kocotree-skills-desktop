@@ -138,6 +138,7 @@ function isIgnoredSystemPath(filePath: string): boolean {
   return (
     segments.includes("__MACOSX") ||
     fileName === ".ds_store" ||
+    fileName === ".kocotree-skill.json" ||
     fileName === "thumbs.db" ||
     fileName === "desktop.ini" ||
     fileName.startsWith("._")

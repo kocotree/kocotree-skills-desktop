@@ -3,7 +3,8 @@ import {
   SkillApiError,
   type LocalInstallRequest,
   type LocalInstallResult,
-  type SkillInstaller,
+  type LocalSkillRecord,
+  type LocalSkillService,
 } from "./contracts";
 
 interface InstallSkillCommandResult {
@@ -34,7 +35,7 @@ function parseCommandError(reason: unknown): InstallSkillCommandError | null {
 }
 
 /** Tauri 桌面环境使用的真实 Skill 安装器。 */
-export class TauriInstaller implements SkillInstaller {
+export class TauriInstaller implements LocalSkillService {
   /**
    * 功能说明：调用 Rust 命令下载、校验并写入指定平台版本。
    * @param input - 目标 Skill、版本和下载凭证。
@@ -50,17 +51,20 @@ export class TauriInstaller implements SkillInstaller {
       skillName: input.version.skillName,
     });
     try {
+      const installedAt = new Date().toISOString();
       const result = await invoke<InstallSkillCommandResult>("install_skill", {
         input: {
           skillId: input.skill.id,
           versionId: input.version.id,
           version: input.version.version,
           skillName: input.version.skillName,
+          displayName: input.skill.displayName,
+          contentHash: input.version.contentHash,
+          installedAt,
           downloadUrl: input.ticket.url,
           packageSha256: input.ticket.packageSha256,
         },
       });
-      const installedAt = new Date().toISOString();
       console.info("[TauriInstaller] 真实安装完成", {
         skillName: input.version.skillName,
         installedPath: result.installedPath,
@@ -95,5 +99,26 @@ export class TauriInstaller implements SkillInstaller {
         commandError?.details,
       );
     }
+  }
+
+  /** 读取本机通用 Agents 与 Codex Skill 目录。 */
+  async scanSkills(): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>("scan_local_skills");
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_SCAN_FAILED",
+        commandError?.message ?? "本地 Skill 扫描失败",
+        commandError?.details,
+      );
+    }
+  }
+
+  async remove(_skillName: string): Promise<void> {
+    throw new SkillApiError(
+      "LOCAL_REMOVE_UNSUPPORTED",
+      "当前版本暂不支持删除本地 Skill",
+    );
   }
 }

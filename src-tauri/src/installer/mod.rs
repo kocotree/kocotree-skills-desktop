@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -17,6 +17,7 @@ const MAX_PACKAGE_SIZE: usize = 50 * 1024 * 1024;
 const MAX_FILE_COUNT: usize = 2_000;
 const MAX_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
 const MAX_SKILL_MD_SIZE: u64 = 1024 * 1024;
+const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,14 +26,45 @@ pub struct InstallSkillInput {
     pub version_id: String,
     pub version: String,
     pub skill_name: String,
+    pub display_name: String,
+    pub content_hash: String,
+    pub installed_at: String,
     pub download_url: String,
     pub package_sha256: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledSkillMetadata {
+    schema_version: u8,
+    skill_id: String,
+    version_id: String,
+    version: String,
+    skill_name: String,
+    display_name: String,
+    content_hash: String,
+    installed_at: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallSkillResult {
     pub installed_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalSkillRecord {
+    pub id: String,
+    pub skill_id: Option<String>,
+    pub version_id: Option<String>,
+    pub version: Option<String>,
+    pub skill_name: String,
+    pub display_name: String,
+    pub install_path: String,
+    pub content_hash: String,
+    pub installed_at: Option<String>,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -461,6 +493,25 @@ fn install_package_bytes(
     let payload = temp_dir.path().join("payload");
     fs::create_dir(&payload).map_err(|error| io_error("创建解压临时目录", error))?;
     extract_package(package_bytes, &payload, &input.skill_name)?;
+    let install_metadata = InstalledSkillMetadata {
+        schema_version: 1,
+        skill_id: input.skill_id.clone(),
+        version_id: input.version_id.clone(),
+        version: input.version.clone(),
+        skill_name: input.skill_name.clone(),
+        display_name: input.display_name.clone(),
+        content_hash: input.content_hash.clone(),
+        installed_at: input.installed_at.clone(),
+    };
+    let metadata_bytes = serde_json::to_vec_pretty(&install_metadata)
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_INSTALL_METADATA_ERROR",
+                format!("生成安装元数据失败：{error}"),
+            )
+        })?;
+    fs::write(payload.join(INSTALL_METADATA_FILE), metadata_bytes)
+        .map_err(|error| io_error("写入安装元数据", error))?;
     fs::rename(&payload, &target).map_err(|error| io_error("写入 Skill 目录", error))?;
 
     Ok(InstallSkillResult {
@@ -509,6 +560,150 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
     result
 }
 
+fn scan_skills_root(
+    root: &Path,
+    seen_paths: &mut HashSet<PathBuf>,
+    records: &mut Vec<LocalSkillRecord>,
+) {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => {
+            warn!("读取本地 Skill 根目录失败：root={}, error={error}", root.display());
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let directory_name = entry.file_name().to_string_lossy().into_owned();
+        if directory_name.starts_with('.') {
+            continue;
+        }
+        let skill_path = entry.path();
+        let is_directory = entry
+            .file_type()
+            .map(|file_type| file_type.is_dir() || file_type.is_symlink())
+            .unwrap_or(false);
+        if !is_directory || !skill_path.join("SKILL.md").is_file() {
+            continue;
+        }
+        let canonical_path = skill_path
+            .canonicalize()
+            .unwrap_or_else(|_| skill_path.clone());
+        if !seen_paths.insert(canonical_path) {
+            continue;
+        }
+
+        let skill_md_path = skill_path.join("SKILL.md");
+        let skill_md_size = match fs::metadata(&skill_md_path) {
+            Ok(metadata) => metadata.len(),
+            Err(_) => continue,
+        };
+        if skill_md_size > MAX_SKILL_MD_SIZE {
+            warn!(
+                "跳过过大的本地 SKILL.md：path={}, bytes={skill_md_size}",
+                skill_md_path.display()
+            );
+            continue;
+        }
+        let skill_md = match fs::read_to_string(&skill_md_path) {
+            Ok(content) => content,
+            Err(_) => continue,
+        };
+        let skill_name = parse_skill_name(&skill_md)
+            .unwrap_or_else(|_| directory_name.clone());
+        let metadata = fs::read_to_string(
+            skill_path.join(INSTALL_METADATA_FILE),
+        )
+        .ok()
+        .and_then(|content| {
+            serde_json::from_str::<InstalledSkillMetadata>(&content).ok()
+        })
+        .filter(|metadata| {
+            metadata.schema_version == 1 &&
+                metadata.skill_name == skill_name
+        });
+        let path_text = skill_path.to_string_lossy().into_owned();
+        let local_id_hash = sha256_hex(path_text.as_bytes());
+        let skill_md_hash = sha256_hex(skill_md.as_bytes());
+        let (
+            skill_id,
+            version_id,
+            version,
+            display_name,
+            content_hash,
+            installed_at,
+            status,
+        ) = match metadata {
+            Some(metadata) => (
+                Some(metadata.skill_id),
+                Some(metadata.version_id),
+                Some(metadata.version),
+                metadata.display_name,
+                metadata.content_hash,
+                Some(metadata.installed_at),
+                "PLATFORM_INSTALLED".to_string(),
+            ),
+            None => (
+                None,
+                None,
+                None,
+                skill_name.clone(),
+                format!("sha256:{skill_md_hash}"),
+                None,
+                "LOCAL_UNKNOWN".to_string(),
+            ),
+        };
+        records.push(LocalSkillRecord {
+            id: format!("local-{}", &local_id_hash[..16]),
+            skill_id,
+            version_id,
+            version,
+            skill_name,
+            display_name,
+            install_path: path_text,
+            content_hash,
+            installed_at,
+            status,
+        });
+    }
+}
+
+fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir().ok_or_else(|| {
+        InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
+    })?;
+    let roots = [
+        home.join(".agents").join("skills"),
+        home.join(".codex").join("skills"),
+    ];
+    let mut records = Vec::new();
+    let mut seen_paths = HashSet::new();
+    for root in roots {
+        scan_skills_root(&root, &mut seen_paths, &mut records);
+    }
+    records.sort_by(|left, right| {
+        left.display_name
+            .to_lowercase()
+            .cmp(&right.display_name.to_lowercase())
+            .then_with(|| left.install_path.cmp(&right.install_path))
+    });
+    Ok(records)
+}
+
+/** 只读扫描通用 Agents 与 Codex Skill 目录。 */
+#[tauri::command]
+pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
+    tauri::async_runtime::spawn_blocking(scan_local_skills_from_disk)
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_SCAN_FAILED",
+                format!("扫描本地 Skill 失败：{error}"),
+            )
+        })?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,6 +739,9 @@ mod tests {
             version_id: "version-test".to_string(),
             version: "1.0.0".to_string(),
             skill_name: skill_name.to_string(),
+            display_name: skill_name.to_string(),
+            content_hash: format!("sha256:{}", "1".repeat(64)),
+            installed_at: "2026-01-01T00:00:00.000Z".to_string(),
             download_url: "data:application/zip;base64,".to_string(),
             package_sha256: format!("sha256:{}", sha256_hex(bytes)),
         }

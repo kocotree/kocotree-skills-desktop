@@ -399,7 +399,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (usesRealInstaller) return;
     localSkillService.scanSkills().then((items) => {
       setInstalledSkillIds(new Set(items.flatMap((item) => item.skillId ? [item.skillId] : [])));
     }).catch((reason: unknown) => {
