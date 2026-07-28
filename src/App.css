@@ -2104,6 +2104,11 @@ button.my-skill-card:hover {
   transform: translateY(-1px);
 }
 
+.my-skill-card.local:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  box-shadow: 0 5px 16px rgba(36, 43, 50, 0.06);
+}
+
 .my-skill-card-open {
   width: 100%;
   min-width: 0;
@@ -2203,6 +2208,11 @@ button.my-skill-card:hover {
 .skill-status-archived {
   background: #f1f2f3;
   color: #777c85;
+}
+
+.local-status-platform_modified {
+  background: #fff4d8;
+  color: #86651d;
 }
 
 .my-skill-version {
