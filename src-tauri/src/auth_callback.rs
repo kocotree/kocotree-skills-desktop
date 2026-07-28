@@ -4,7 +4,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 const CALLBACK_EVENT: &str = "desktop-auth-callback";
@@ -15,6 +15,23 @@ const SUCCESS_PAGE: &str = "<!doctype html><meta charset=\"utf-8\"><title>登录
 #[serde(rename_all = "camelCase")]
 pub struct DesktopAuthCallback {
     callback_url: String,
+}
+
+pub fn focus_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("无法激活主窗口：窗口不存在");
+        return;
+    };
+
+    if let Err(error) = window.show() {
+        log::warn!("显示主窗口失败: {error}");
+    }
+    if let Err(error) = window.unminimize() {
+        log::warn!("取消主窗口最小化失败: {error}");
+    }
+    if let Err(error) = window.set_focus() {
+        log::warn!("聚焦主窗口失败: {error}");
+    }
 }
 
 fn respond(stream: &mut TcpStream, status: &str, body: &str) {
@@ -71,6 +88,7 @@ fn handle_callback(mut stream: TcpStream, app: &AppHandle, callback_origin: &str
         return false;
     }
 
+    focus_main_window(app);
     respond(&mut stream, "200 OK", SUCCESS_PAGE);
     true
 }
