@@ -10,6 +10,7 @@ const CUSTOM_CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
 const TOKEN_STORAGE_KEY = "kocotree.desktop.session-token";
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+const AUTH_STATUS_TIMEOUT_MS = 15_000;
 
 interface ExchangeResult {
   user: UserDto;
@@ -32,6 +33,7 @@ interface PendingLogin {
 export class DesktopAuthApi {
   private token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
   private initializePromise: Promise<void> | null = null;
+  private currentUserPromise: Promise<UserDto | null> | null = null;
   private pendingLogin: PendingLogin | null = null;
   private readonly processedCodes = new Set<string>();
 
@@ -137,15 +139,57 @@ export class DesktopAuthApi {
     return pending;
   }
 
-  async getCurrentUser(): Promise<UserDto | null> {
-    await this.initialize();
-    if (!this.token) return null;
+  getCurrentUser(): Promise<UserDto | null> {
+    if (!this.currentUserPromise) {
+      const request = this.loadCurrentUser();
+      this.currentUserPromise = request;
+      const clearPendingRequest = () => {
+        if (this.currentUserPromise === request) {
+          this.currentUserPromise = null;
+        }
+      };
+      void request.then(clearPendingRequest, clearPendingRequest);
+    }
+    return this.currentUserPromise;
+  }
 
-    const response = await fetch(apiUrl("/api/users/me"), {
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-      },
-    });
+  private async loadCurrentUser(): Promise<UserDto | null> {
+    const initialization = this.initialize();
+    if (!this.token) {
+      await initialization;
+      if (!this.token) return null;
+    }
+    const token = this.token;
+    if (!token) return null;
+
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(
+      () => controller.abort(),
+      AUTH_STATUS_TIMEOUT_MS,
+    );
+    let response: Response;
+    try {
+      const responsePromise = fetch(apiUrl("/api/users/me"), {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        signal: controller.signal,
+      });
+      [, response] = await Promise.all([
+        initialization,
+        responsePromise,
+      ]);
+    } catch (reason) {
+      if (controller.signal.aborted) {
+        throw new SkillApiError(
+          "REQUEST_TIMEOUT",
+          "登录状态加载超时，请稍后重试",
+        );
+      }
+      throw reason;
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+    }
     if (response.status === 401) {
       this.clearToken();
       return null;

@@ -154,6 +154,7 @@ function BrowsePage({
   onHighlightComplete: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [tagId, setTagId] = useState("all");
   const [sort, setSort] = useState<SortKey>("updated");
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
@@ -167,6 +168,14 @@ function BrowsePage({
     setQuery("");
     setTagId("all");
   }, [highlightedSkillId]);
+
+  useEffect(() => {
+    if (query === debouncedQuery) return;
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [debouncedQuery, query]);
 
   useEffect(() => {
     if (!highlightedSkillId || loading || !skills.some((skill) => skill.id === highlightedSkillId)) return;
@@ -197,23 +206,21 @@ function BrowsePage({
       return;
     }
     let active = true;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      setError("");
-      const apiSort = sort === "popular" ? "INSTALLS_DESC" : sort === "created" ? "CREATED_DESC" : "UPDATED_DESC";
-      skillApi.listSkills({ query: query || undefined, tagId: tagId === "all" ? undefined : tagId, sort: apiSort })
-        .then((result) => {
-          if (active) setSkills(result.items);
-        })
-        .catch((reason: unknown) => {
-          if (!active) return;
-          console.error("[KocotreeSkills] Skill 列表加载失败", reason);
-          setError(reason instanceof SkillApiError ? reason.message : "列表加载失败，请稍后重试");
-        })
-        .finally(() => { if (active) setLoading(false); });
-    }, 180);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [authenticated, query, refreshKey, sort, tagId]);
+    setLoading(true);
+    setError("");
+    const apiSort = sort === "popular" ? "INSTALLS_DESC" : sort === "created" ? "CREATED_DESC" : "UPDATED_DESC";
+    skillApi.listSkills({ query: debouncedQuery || undefined, tagId: tagId === "all" ? undefined : tagId, sort: apiSort })
+      .then((result) => {
+        if (active) setSkills(result.items);
+      })
+      .catch((reason: unknown) => {
+        if (!active) return;
+        console.error("[KocotreeSkills] Skill 列表加载失败", reason);
+        setError(reason instanceof SkillApiError ? reason.message : "列表加载失败，请稍后重试");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [authenticated, debouncedQuery, refreshKey, sort, tagId]);
 
   if (!authResolved) {
     return (

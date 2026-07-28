@@ -147,7 +147,7 @@ export function SkillDetailModal({
   }, [skill]);
 
   useEffect(() => {
-    if (!detail || !fileVersionId) return;
+    if (!detail || !fileVersionId || activeTabKey !== "files") return;
     let active = true;
     setFileTreeLoading(true);
     setFileError("");
@@ -173,10 +173,10 @@ export function SkillDetailModal({
     return () => {
       active = false;
     };
-  }, [detail, fileVersionId]);
+  }, [activeTabKey, detail, fileVersionId]);
 
   useEffect(() => {
-    if (!detail || !fileVersionId || !selectedFilePath) return;
+    if (!detail || !fileVersionId || !selectedFilePath || activeTabKey !== "files") return;
     const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath);
     setFileError("");
     if (!selectedFile?.previewable) {
@@ -203,7 +203,7 @@ export function SkillDetailModal({
     return () => {
       active = false;
     };
-  }, [detail, fileEntries, fileVersionId, selectedFilePath]);
+  }, [activeTabKey, detail, fileEntries, fileVersionId, selectedFilePath]);
 
   const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath) ?? null;
   const orderedFileEntries = orderFileEntries(fileEntries);

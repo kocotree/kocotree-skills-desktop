@@ -35,6 +35,11 @@ class IncrementalSkillApi extends MockSkillApi {
   private readonly mySkills = new HttpMySkillsApi(this.http);
   private readonly publishing = new HttpPublishingApi(this.http);
 
+  constructor() {
+    // 桌面端尚未迁移的能力不应继续叠加演示用网络延迟。
+    super({ delayMs: 0 });
+  }
+
   override listTags(query?: string) {
     return this.catalog.listTags(query);
   }
