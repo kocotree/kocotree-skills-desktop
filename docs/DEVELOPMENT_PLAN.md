@@ -18,7 +18,7 @@
 | P0 | 同名目录保护 | 已完成 | 目标目录存在时返回冲突，已有文件保持不变 |
 | P0 | 前端安装反馈 | 已完成 | 展示安装成功路径、包校验错误和不支持覆盖的冲突提示 |
 | P0 | 基础自动化测试 | 已完成 | 覆盖正常安装、单层目录、路径穿越、目标冲突、包哈希失败和名称不一致 |
-| P0 | 跨平台 Agent 连接 | 已完成 | macOS 使用目录软连接；Windows 优先使用无需管理员权限的 NTFS Junction，并兼容已有目录软连接 |
+| P0 | 跨平台 Agent 连接 | 已完成 | macOS 使用目录软连接；Windows 按目录软连接、NTFS Junction、受管目录副本依次降级 |
 | P1 | 真实后端下载联调 | 待开始 | 使用后端签发的短期下载 URL 完成安装 |
 | P1 | Windows 与 macOS 实机验证 | 进行中 | 双平台 CI 完成前端构建和 Rust 测试，并在两个系统实测安装、连接和关闭 |
 | P1 | 解压内容哈希校验 | 待开始 | 解压结果的 `contentHash` 与平台版本完全一致 |
@@ -31,11 +31,15 @@
 
 - Skill 本体统一保存在当前用户目录下的 `.agents/skills/<skillName>`。
 - macOS 和 Linux 使用目录软连接接入 Claude Code 与 Codex。
-- Windows 默认使用 NTFS Junction，因此普通用户无需开启开发者模式或以管理员身份运行应用。
-- Windows 扫描同时识别 Junction 和已有目录软连接；关闭时只移除已验证目标的连接，不删除 Skill 本体。
-- Junction 创建失败时可以尝试 Windows 目录软连接；两种方式都失败时返回包含具体原因的错误，不复制目录或静默降级。
+- Windows 先尝试目录软连接；权限不足或开发者模式未开启时降级为无需管理员权限的 NTFS Junction。
+- 软连接与 Junction 都不可用（例如部分 UNC、WSL 或非 NTFS 路径）时，创建带管理标记的目录副本。
+- 受管副本保存源目录摘要；扫描发现本体变化时自动刷新。关闭时必须同时验证状态记录、管理标记和源路径，只删除 Agent 目标，不删除 Skill 本体。
 - 前端统一使用“连接”术语，不向用户暴露不同操作系统的底层实现。
 - CI 必须在 macOS 与 Windows 上分别运行前端测试、前端生产构建和 Rust 测试。
+- `Windows Installer` 工作流在 `nangua` 分支相关代码更新时自动运行，也支持从 GitHub Actions 手动触发。
+- 工作流生成 NSIS `.exe` 和 WiX `.msi`，并上传到 `kocotree-skills-windows-x64` Artifact，保留 14 天。
+- Windows 测试电脑无需 Node.js、Rust 或 pnpm；下载并解压 Artifact 后，直接运行安装程序即可。
+- 未配置代码签名的测试安装包可能触发 SmartScreen，正式发布前需要补充 Windows 代码签名。
 
 ## 4. 本地 Skill 直接上传
 
