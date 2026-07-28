@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -560,11 +560,7 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
     result
 }
 
-fn scan_skills_root(
-    root: &Path,
-    seen_paths: &mut HashSet<PathBuf>,
-    records: &mut Vec<LocalSkillRecord>,
-) {
+fn scan_skills_root(root: &Path, records: &mut Vec<LocalSkillRecord>) {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -587,13 +583,6 @@ fn scan_skills_root(
         if !is_directory || !skill_path.join("SKILL.md").is_file() {
             continue;
         }
-        let canonical_path = skill_path
-            .canonicalize()
-            .unwrap_or_else(|_| skill_path.clone());
-        if !seen_paths.insert(canonical_path) {
-            continue;
-        }
-
         let skill_md_path = skill_path.join("SKILL.md");
         let skill_md_size = match fs::metadata(&skill_md_path) {
             Ok(metadata) => metadata.len(),
@@ -675,12 +664,12 @@ fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> 
     })?;
     let roots = [
         home.join(".agents").join("skills"),
+        home.join(".claude").join("skills"),
         home.join(".codex").join("skills"),
     ];
     let mut records = Vec::new();
-    let mut seen_paths = HashSet::new();
     for root in roots {
-        scan_skills_root(&root, &mut seen_paths, &mut records);
+        scan_skills_root(&root, &mut records);
     }
     records.sort_by(|left, right| {
         left.display_name
@@ -691,7 +680,7 @@ fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> 
     Ok(records)
 }
 
-/** 只读扫描通用 Agents 与 Codex Skill 目录。 */
+/** 只读扫描通用 Agents、Claude Code 与 Codex Skill 目录。 */
 #[tauri::command]
 pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
     tauri::async_runtime::spawn_blocking(scan_local_skills_from_disk)

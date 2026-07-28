@@ -101,7 +101,7 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  /** 读取本机通用 Agents 与 Codex Skill 目录。 */
+  /** 读取本机通用 Agents、Claude Code 与 Codex Skill 目录。 */
   async scanSkills(): Promise<LocalSkillRecord[]> {
     try {
       return await invoke<LocalSkillRecord[]>("scan_local_skills");
