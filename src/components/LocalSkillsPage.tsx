@@ -29,13 +29,13 @@ const SOURCE_DETAILS: Record<
 > = {
   claude: {
     title: "Claude Code Skills",
-    description: "读取 ~/.claude/skills；关闭后会移除软链接和对应卡片",
+    description: "读取用户目录/.claude/skills；关闭后会移除受管连接和对应卡片",
     emptyTitle: "Claude Code 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
   codex: {
     title: "Codex Skills",
-    description: "读取 ~/.codex/skills；关闭后会移除软链接和对应卡片",
+    description: "读取用户目录/.codex/skills；关闭后会移除受管连接和对应卡片",
     emptyTitle: "Codex 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
@@ -78,8 +78,8 @@ function activationDescription(
     return "该 Skill 不在可控制的全部 Agents 工作区或兼容仓库中";
   }
   return state === "enabled"
-    ? `关闭后只移除 ${AGENT_DETAILS[agent].label} 的软链接，Skill 本体仍会保留`
-    : `开启后将为 ${AGENT_DETAILS[agent].label} 创建软链接`;
+    ? `关闭后只移除 ${AGENT_DETAILS[agent].label} 的连接，Skill 本体仍会保留`
+    : `开启后将为 ${AGENT_DETAILS[agent].label} 创建受管连接`;
 }
 
 function sourceLabels(
@@ -88,11 +88,11 @@ function sourceLabels(
 ): string[] {
   if (agent === "claude") {
     return group.agentRecords.claude
-      ? ["~/.claude/skills"]
+      ? ["用户目录/.claude/skills"]
       : ["当前已关闭"];
   }
   return group.agentRecords.codex
-    ? ["~/.codex/skills"]
+    ? ["用户目录/.codex/skills"]
     : ["当前已关闭"];
 }
 
@@ -110,7 +110,7 @@ async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 /**
- * 功能说明：展示指定 Agent 的本地 Skill，并从全部 Agents 工作区添加受管软链接。
+ * 功能说明：展示指定 Agent 的本地 Skill，并从全部 Agents 工作区添加受管连接。
  */
 export function LocalSkillsPage({
   filter,
@@ -374,8 +374,8 @@ export function LocalSkillsPage({
       >
         <div className="local-skill-add-content">
           <p>
-            开启后只会创建软链接，Skill 本体仍保留在
-            {" "}~/.agents/skills；旧版统一仓库中的 Skill 也可继续添加。
+            开启后只会创建受管连接，Skill 本体仍保留在
+            {" "}用户目录/.agents/skills；旧版统一仓库中的 Skill 也可继续添加。
           </p>
           <input
             className="local-skill-add-search"

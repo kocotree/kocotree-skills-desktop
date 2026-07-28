@@ -202,7 +202,7 @@ export class MockLocalSkillService implements LocalSkillService {
     if (input.agent === "agents") {
       throw new SkillApiError(
         "LOCAL_SKILL_AGENT_UNSUPPORTED",
-        "全部 Agents 是 Skill 本体工作区，不通过软链接开关控制",
+        "全部 Agents 是 Skill 本体工作区，不通过 Agent 连接开关控制",
       );
     }
     const sourceRecord = this.records.find(

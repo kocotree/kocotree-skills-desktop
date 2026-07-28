@@ -48,14 +48,14 @@ function activationDescription(
 ): string {
   const label = agent === "claude" ? "Claude Code" : "Codex";
   if (state === "unmanaged") {
-    return `${label} 中存在独立安装目录或其他链接，软件不会覆盖它`;
+    return `${label} 中存在独立安装目录或其他连接，软件不会覆盖它`;
   }
   if (!canControlLocalSkill(group)) {
-    return "该工作区条目不是实体目录，不能作为软链接本体";
+    return "该工作区条目不是实体目录，不能作为 Agent 连接的本体";
   }
   return state === "enabled"
-    ? `关闭后只移除 ${label} 的软链接，不会删除 ~/.agents/skills 中的本体`
-    : `开启后在 ${agent === "claude" ? "~/.claude/skills" : "~/.codex/skills"} 创建软链接`;
+    ? `关闭后只移除 ${label} 的连接，不会删除用户目录/.agents/skills 中的本体`
+    : `开启后在 ${agent === "claude" ? "用户目录/.claude/skills" : "用户目录/.codex/skills"} 创建受管连接`;
 }
 
 async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
@@ -72,7 +72,7 @@ async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 /**
- * 功能说明：以 ~/.agents/skills 为本体工作区，并集中控制 Claude/Codex 软链接。
+ * 功能说明：以用户目录/.agents/skills 为本体工作区，并集中控制 Claude/Codex 连接。
  */
 export function AllAgentsSkillsPage({
   skills,
@@ -134,11 +134,11 @@ export function AllAgentsSkillsPage({
         `${sourceRecord.displayName} 已${enabled ? "连接到" : "断开"} ${agentLabel}`,
       );
     } catch (reason) {
-      console.error("[KocotreeSkills] 更新工作区软链接失败", reason);
+      console.error("[KocotreeSkills] 更新工作区连接失败", reason);
       Toast.error(
         reason instanceof SkillApiError
           ? reason.message
-          : "更新软链接失败",
+          : "更新连接失败",
       );
     } finally {
       setPendingControl("");
@@ -151,8 +151,8 @@ export function AllAgentsSkillsPage({
         <div>
           <h1>全部 Agents</h1>
           <p>
-            ~/.agents/skills 是 Skill 本体工作区；在这里控制 Claude Code 与
-            Codex 的软链接
+            用户目录/.agents/skills 是 Skill 本体工作区；在这里控制 Claude
+            Code 与 Codex 的连接
           </p>
         </div>
       </header>
@@ -260,13 +260,13 @@ export function AllAgentsSkillsPage({
                 <div className="my-skill-card-footer">
                   <div className="my-skill-statuses">
                     <span className="agent-source agent-source-agents">
-                      ~/.agents/skills
+                      用户目录/.agents/skills
                     </span>
                     <span
                       className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
                     >
-                      {record.entryKind === "SYMLINK"
-                        ? "工作区软链接"
+                      {record.entryKind !== "DIRECTORY"
+                        ? "工作区连接"
                         : STATUS_LABELS[record.status]}
                     </span>
                     {record.version && (
@@ -293,7 +293,7 @@ export function AllAgentsSkillsPage({
               <span>
                 {normalizedQuery
                   ? "换一个名称继续搜索"
-                  : "将 Skill 放入 ~/.agents/skills 后重新扫描"}
+                  : "将 Skill 放入用户目录/.agents/skills 后重新扫描"}
               </span>
             </div>
           )}
