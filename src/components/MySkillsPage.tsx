@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   skillApi,
   SkillApiError,
@@ -53,6 +53,7 @@ export function MySkillsPage({
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const deleteInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!currentUser) {
@@ -100,6 +101,14 @@ export function MySkillsPage({
     setDeleteTarget(null);
     setDeleteConfirmation("");
     setDeleteError("");
+  }
+
+  function fillDeleteConfirmation(): void {
+    if (!deleteTarget) return;
+    setDeleteConfirmation(deleteTarget.skillName);
+    window.requestAnimationFrame(() =>
+      deleteInputRef.current?.focus(),
+    );
   }
 
   async function confirmDelete(): Promise<void> {
@@ -292,12 +301,16 @@ export function MySkillsPage({
             <p>
               删除后，Skill、全部版本、文件记录和安装包都无法恢复。
             </p>
-            <label>
+            <label htmlFor="delete-skill-confirmation">
               <span>
                 输入 <code>{deleteTarget.skillName}</code>{" "}
                 确认删除
               </span>
+            </label>
+            <div className="delete-skill-input-row">
               <input
+                id="delete-skill-confirmation"
+                ref={deleteInputRef}
                 autoFocus
                 value={deleteConfirmation}
                 disabled={deleting}
@@ -305,7 +318,14 @@ export function MySkillsPage({
                   setDeleteConfirmation(event.currentTarget.value)
                 }
               />
-            </label>
+              <Button
+                size="small"
+                disabled={deleting}
+                onClick={fillDeleteConfirmation}
+              >
+                填入名称
+              </Button>
+            </div>
             {deleteError && (
               <div className="form-error" role="alert">
                 {deleteError}

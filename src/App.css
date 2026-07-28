@@ -2239,14 +2239,27 @@ button.my-skill-card:hover {
   font-size: 12px;
 }
 
+.delete-skill-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .delete-skill-content input {
+  min-width: 0;
   height: 40px;
+  flex: 1;
   padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
   color: #2e3036;
   outline: none;
+}
+
+.delete-skill-input-row .ui-button {
+  height: 40px;
+  flex: none;
 }
 
 .delete-skill-content input:focus {
