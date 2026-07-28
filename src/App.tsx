@@ -7,6 +7,9 @@ import {
   localSkillService,
   usesRealInstaller,
   SkillApiError,
+  filterLocalSkills,
+  type LocalSkillFilter,
+  type LocalSkillRecord,
   type SkillSummaryDto,
   type SkillVersionDto,
   type TagDto,
@@ -16,12 +19,19 @@ import { AppIcon } from "./components/AppIcon";
 import { SkillDetailModal } from "./components/SkillDetailModal";
 import { UploadPage } from "./components/UploadPage";
 import { MySkillsPage } from "./components/MySkillsPage";
+import { LocalSkillsPage } from "./components/LocalSkillsPage";
 import { NotificationPanel } from "./components/NotificationPanel";
 import { InstallConfirmModal } from "./components/InstallConfirmModal";
 import { InstallFeedbackModal, type InstallFeedbackState } from "./components/InstallFeedbackModal";
 import "./App.css";
 
-type PageKey = "browse" | "my-skills" | "upload";
+type PageKey =
+  | "browse"
+  | "published"
+  | "upload"
+  | "local-all"
+  | "local-claude"
+  | "local-codex";
 type SortKey = "created" | "updated" | "popular";
 
 interface InstallPromptState {
@@ -33,6 +43,13 @@ interface InstallPromptState {
 }
 
 const logoTones = ["dark", "blue", "orange", "violet", "green"] as const;
+
+function localFilterForPage(page: PageKey): LocalSkillFilter | null {
+  if (page === "local-all") return "all";
+  if (page === "local-claude") return "claude";
+  if (page === "local-codex") return "codex";
+  return null;
+}
 
 function getSkillShortCode(skill: SkillSummaryDto): string {
   const words = skill.skillName.split("-").filter(Boolean);
@@ -363,6 +380,9 @@ function App() {
   const [loginVisible, setLoginVisible] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [localSkills, setLocalSkills] = useState<LocalSkillRecord[]>([]);
+  const [localSkillsLoading, setLocalSkillsLoading] = useState(true);
+  const [localSkillsError, setLocalSkillsError] = useState("");
   const sidebarUserAreaRef = useRef<HTMLDivElement>(null);
   const protectedActionRef = useRef<(() => void) | null>(null);
   const [installedSkillIds, setInstalledSkillIds] = useState(
@@ -373,6 +393,31 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
   const [installFeedback, setInstallFeedback] = useState<InstallFeedbackState | null>(null);
   const [installing, setInstalling] = useState(false);
+
+  const refreshLocalSkills = useCallback(async () => {
+    setLocalSkillsLoading(true);
+    setLocalSkillsError("");
+    try {
+      const items = await localSkillService.scanSkills();
+      setLocalSkills(items);
+      setInstalledSkillIds(
+        new Set(
+          items.flatMap((item) =>
+            item.skillId ? [item.skillId] : [],
+          ),
+        ),
+      );
+    } catch (reason) {
+      console.error("[KocotreeSkills] 本地 Skill 扫描失败", reason);
+      setLocalSkillsError(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "暂时无法读取本地 Skill",
+      );
+    } finally {
+      setLocalSkillsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     skillApi.getCurrentUser().then(setCurrentUser).catch((reason: unknown) => {
@@ -399,12 +444,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localSkillService.scanSkills().then((items) => {
-      setInstalledSkillIds(new Set(items.flatMap((item) => item.skillId ? [item.skillId] : [])));
-    }).catch((reason: unknown) => {
-      console.error("[KocotreeSkills] 本地安装状态加载失败", reason);
-    });
-  }, []);
+    void refreshLocalSkills();
+  }, [refreshLocalSkills]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -531,6 +572,13 @@ function App() {
         installedAt: new Date().toISOString(),
       });
       setInstalledSkillIds((currentIds) => new Set(currentIds).add(skill.id));
+      setLocalSkills((current) => [
+        ...current.filter(
+          (record) =>
+            record.installPath !== localResult.record.installPath,
+        ),
+        localResult.record,
+      ]);
       setBrowseRefreshKey((current) => current + 1);
       setInstallPrompt(null);
       if (localResult.notices.length > 0) {
@@ -640,6 +688,13 @@ function App() {
     });
   }, []);
 
+  const localFilter = localFilterForPage(activePage);
+  const localSkillCounts = {
+    all: localSkills.length,
+    claude: filterLocalSkills(localSkills, "claude").length,
+    codex: filterLocalSkills(localSkills, "codex").length,
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -676,16 +731,64 @@ function App() {
             <span>上传 Skill</span>
           </button>
           <button
-            className={activePage === "my-skills" ? "active" : ""}
+            className={activePage === "published" ? "active" : ""}
             type="button"
-            aria-label="我的 Skill"
-            title="我的 Skill"
-            onClick={() => setActivePage("my-skills")}
+            aria-label="我发布的 Skill"
+            title="我发布的 Skill"
+            onClick={() => setActivePage("published")}
           >
             <AppIcon name="library" size={20} />
-            <span>我的 Skill</span>
+            <span>我发布的 Skill</span>
           </button>
         </nav>
+
+        <section className="sidebar-local-section" aria-labelledby="local-skill-navigation">
+          <div className="sidebar-section-heading">
+            <span id="local-skill-navigation">本地 Skill 管理</span>
+            {localSkillsLoading && <span className="sidebar-scan-dot" aria-label="正在扫描" />}
+          </div>
+          <nav className="sidebar-nav sidebar-local-nav" aria-label="本地 Skill 管理">
+            <button
+              className={activePage === "local-all" ? "active" : ""}
+              type="button"
+              aria-label={`全部 Agents，${localSkillCounts.all} 个 Skill`}
+              title="全部 Agents"
+              onClick={() => setActivePage("local-all")}
+            >
+              <i className="local-nav-icon local-nav-icon-agents">
+                <AppIcon name="agents" size={16} />
+              </i>
+              <span className="sidebar-nav-label">全部 Agents</span>
+              <span className="local-nav-count">{localSkillCounts.all}</span>
+            </button>
+            <button
+              className={activePage === "local-claude" ? "active" : ""}
+              type="button"
+              aria-label={`Claude Code，${localSkillCounts.claude} 个 Skill`}
+              title="Claude Code"
+              onClick={() => setActivePage("local-claude")}
+            >
+              <i className="local-nav-icon local-nav-icon-claude">
+                <AppIcon name="claude" size={15} />
+              </i>
+              <span className="sidebar-nav-label">Claude Code</span>
+              <span className="local-nav-count">{localSkillCounts.claude}</span>
+            </button>
+            <button
+              className={activePage === "local-codex" ? "active" : ""}
+              type="button"
+              aria-label={`Codex，${localSkillCounts.codex} 个 Skill`}
+              title="Codex"
+              onClick={() => setActivePage("local-codex")}
+            >
+              <i className="local-nav-icon local-nav-icon-codex">
+                <AppIcon name="codex" size={15} />
+              </i>
+              <span className="sidebar-nav-label">Codex</span>
+              <span className="local-nav-count">{localSkillCounts.codex}</span>
+            </button>
+          </nav>
+        </section>
 
         <div className="sidebar-user-area" ref={sidebarUserAreaRef}>
           {currentUser ? (
@@ -735,11 +838,19 @@ function App() {
             highlightedSkillId={highlightedBrowseSkillId}
             onHighlightComplete={handleBrowseHighlightComplete}
           />
-        ) : activePage === "my-skills" ? (
+        ) : activePage === "published" ? (
           <MySkillsPage
             currentUser={currentUser}
             onLogin={() => setLoginVisible(true)}
             onOpenSkill={handleOpenSkill}
+          />
+        ) : localFilter ? (
+          <LocalSkillsPage
+            filter={localFilter}
+            skills={localSkills}
+            loading={localSkillsLoading}
+            error={localSkillsError}
+            onRefresh={() => void refreshLocalSkills()}
           />
         ) : (
           currentUser ? <UploadPage

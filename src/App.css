@@ -169,6 +169,100 @@ textarea:focus-visible,
   color: var(--accent);
 }
 
+.sidebar-local-section {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+}
+
+.sidebar-section-heading {
+  display: flex;
+  height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: #92968f;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sidebar-scan-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-local-nav {
+  gap: 3px;
+  margin-top: 5px;
+}
+
+.sidebar-local-nav button {
+  height: 38px;
+  gap: 9px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.local-nav-icon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #d8dbd7;
+  border-radius: 6px;
+  background: #fff;
+  color: #60665f;
+  font-style: normal;
+}
+
+.local-nav-icon-claude {
+  border-color: #d87958;
+  background: #df815f;
+  color: #fff;
+}
+
+.local-nav-icon-codex {
+  border-color: #25282c;
+  background: #25282c;
+  color: #fff;
+}
+
+.sidebar-local-nav button.active .local-nav-icon .app-icon {
+  color: inherit;
+}
+
+.sidebar-nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.local-nav-count {
+  min-width: 22px;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #e9ebe8;
+  color: #747a73;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 17px;
+  text-align: center;
+}
+
+.sidebar-local-nav button.active .local-nav-count {
+  background: #fff;
+  color: var(--accent-deep);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
 .sidebar-footer {
   display: flex;
   align-items: center;
@@ -2109,6 +2203,30 @@ button.my-skill-card:hover {
   box-shadow: 0 5px 16px rgba(36, 43, 50, 0.06);
 }
 
+.agent-skill-logo {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #d8dbd7;
+  border-radius: 10px;
+  background: #f7f8f6;
+  color: #596059;
+}
+
+.agent-skill-logo-claude {
+  border-color: #d87958;
+  background: #df815f;
+  color: #fff;
+}
+
+.agent-skill-logo-codex {
+  border-color: #25282c;
+  background: #25282c;
+  color: #fff;
+}
+
 .my-skill-card-open {
   width: 100%;
   min-width: 0;
@@ -2188,6 +2306,25 @@ button.my-skill-card:hover {
   color: var(--accent);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.agent-source {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #f0f1ef;
+  color: #666c65;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.agent-source-claude {
+  background: #fff0ea;
+  color: #a65335;
+}
+
+.agent-source-codex {
+  background: #eceeef;
+  color: #35393d;
 }
 
 .online-status-archived,
@@ -2330,8 +2467,14 @@ button.my-skill-card:hover {
 
   .brand strong,
   .sidebar-nav button > span,
+  .sidebar-section-heading,
   .sidebar-user > span:nth-child(2) {
     display: none;
+  }
+
+  .sidebar-local-section {
+    margin-top: 16px;
+    padding-top: 14px;
   }
 
   .sidebar-nav button,
