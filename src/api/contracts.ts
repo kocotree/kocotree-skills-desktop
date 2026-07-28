@@ -92,7 +92,11 @@ export type LocalSkillLocation =
   | "CLAUDE"
   | "CODEX";
 
-export type LocalSkillEntryKind = "DIRECTORY" | "SYMLINK" | "JUNCTION";
+export type LocalSkillEntryKind =
+  | "DIRECTORY"
+  | "SYMLINK"
+  | "JUNCTION"
+  | "COPY";
 
 export type LocalSkillAgent = "agents" | "claude" | "codex";
 

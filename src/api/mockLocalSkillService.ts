@@ -228,7 +228,9 @@ export class MockLocalSkillService implements LocalSkillService {
       );
     const conflictingRecord = existingRecords.find(
       ({ record }) =>
-        record.entryKind !== "SYMLINK"
+        (record.entryKind !== "SYMLINK"
+          && record.entryKind !== "JUNCTION"
+          && record.entryKind !== "COPY")
         || record.resolvedPath !== sourceRecord.resolvedPath,
     );
     if (conflictingRecord) {

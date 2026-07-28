@@ -115,7 +115,11 @@ function isManagedLink(
   const sourceRecord = getLocalSkillSourceRecord(group);
   return Boolean(
     sourceRecord
-      && (record.entryKind === "SYMLINK" || record.entryKind === "JUNCTION")
+      && (
+        record.entryKind === "SYMLINK"
+        || record.entryKind === "JUNCTION"
+        || record.entryKind === "COPY"
+      )
       && resolvedKey(record) === resolvedKey(sourceRecord),
   );
 }

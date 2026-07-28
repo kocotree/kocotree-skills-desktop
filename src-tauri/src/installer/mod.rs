@@ -19,6 +19,7 @@ const MAX_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
 const MAX_SKILL_MD_SIZE: u64 = 1024 * 1024;
 const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
 const MANAGER_STATE_FILE: &str = ".kocotree-skills-desktop.json";
+const MANAGED_COPY_METADATA_FILE: &str = ".kocotree-managed-copy.json";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,6 +87,46 @@ pub struct SetLocalSkillEnabledInput {
 struct LocalSkillManagerState {
     schema_version: u32,
     assignments: HashMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    connections: HashMap<String, ManagedConnectionState>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ManagedConnectionState {
+    source_path: String,
+    #[serde(default)]
+    target_path: String,
+    mode: ManagedConnectionMode,
+    source_hash: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ManagedCopyMetadata {
+    schema_version: u8,
+    source_path: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum ManagedConnectionMode {
+    SymbolicLink,
+    #[cfg(windows)]
+    Junction,
+    Copy,
+}
+
+impl ManagedConnectionMode {
+    #[cfg(any(windows, test))]
+    fn record_value(self) -> &'static str {
+        match self {
+            Self::SymbolicLink => "SYMLINK",
+            #[cfg(windows)]
+            Self::Junction => "JUNCTION",
+            Self::Copy => "COPY",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -146,6 +187,112 @@ fn normalize_sha256(value: &str) -> &str {
 fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn managed_connection_key(agent: &str, skill_name: &str) -> String {
+    format!("{agent}:{skill_name}")
+}
+
+fn hash_skill_directory(root: &Path) -> std::io::Result<String> {
+    fn visit(root: &Path, directory: &Path, digest: &mut Sha256) -> std::io::Result<()> {
+        let mut entries = fs::read_dir(directory)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            if entry.file_name() == ".git"
+                || (directory == root && entry.file_name() == MANAGED_COPY_METADATA_FILE)
+            {
+                continue;
+            }
+            let path = entry.path();
+            let relative_path = path.strip_prefix(root).unwrap_or(&path);
+            digest.update(relative_path.to_string_lossy().as_bytes());
+            let file_type = entry.file_type()?;
+            if file_type.is_dir() {
+                digest.update(b"D");
+                visit(root, &path, digest)?;
+            } else if file_type.is_file() {
+                digest.update(b"F");
+                let mut file = File::open(&path)?;
+                let mut buffer = [0_u8; 16 * 1024];
+                loop {
+                    let bytes_read = file.read(&mut buffer)?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    digest.update(&buffer[..bytes_read]);
+                }
+            } else if file_type.is_symlink() {
+                digest.update(b"L");
+                digest.update(fs::read_link(&path)?.to_string_lossy().as_bytes());
+            }
+        }
+        Ok(())
+    }
+
+    let mut digest = Sha256::new();
+    visit(root, root, &mut digest)?;
+    Ok(format!(
+        "sha256:{}",
+        digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    ))
+}
+
+fn copy_skill_directory(source: &Path, target: &Path) -> std::io::Result<()> {
+    fn copy_directory(source: &Path, target: &Path, source_root: &Path) -> std::io::Result<()> {
+        fs::create_dir_all(target)?;
+        for entry in fs::read_dir(source)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            let target_entry = target.join(entry.file_name());
+            if file_type.is_dir() {
+                if entry.file_name() == ".git" {
+                    continue;
+                }
+                copy_directory(&entry.path(), &target_entry, source_root)?;
+            } else if source == source_root && entry.file_name() == MANAGED_COPY_METADATA_FILE {
+                continue;
+            } else {
+                fs::copy(entry.path(), target_entry)?;
+            }
+        }
+        Ok(())
+    }
+
+    let parent = target.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "目标目录缺少父目录")
+    })?;
+    fs::create_dir_all(parent)?;
+    let temp_dir = TempDirBuilder::new()
+        .prefix(".kocotree-agent-copy-")
+        .tempdir_in(parent)?;
+    let payload = temp_dir.path().join("payload");
+    copy_directory(source, &payload, source)?;
+    let metadata = serde_json::to_vec_pretty(&ManagedCopyMetadata {
+        schema_version: 1,
+        source_path: source.to_string_lossy().into_owned(),
+    })
+    .map_err(std::io::Error::other)?;
+    fs::write(payload.join(MANAGED_COPY_METADATA_FILE), metadata)?;
+    if fs::symlink_metadata(target).is_ok() {
+        fs::remove_dir_all(target)?;
+    }
+    fs::rename(payload, target)
+}
+
+fn managed_copy_points_to(target: &Path, source: &Path) -> bool {
+    let metadata = fs::read_to_string(target.join(MANAGED_COPY_METADATA_FILE))
+        .ok()
+        .and_then(|content| serde_json::from_str::<ManagedCopyMetadata>(&content).ok());
+    metadata.is_some_and(|metadata| {
+        metadata.schema_version == 1
+            && PathBuf::from(metadata.source_path)
+                .canonicalize()
+                .is_ok_and(|path| path == source)
+    })
 }
 
 fn is_valid_skill_name(skill_name: &str) -> bool {
@@ -711,6 +858,7 @@ fn empty_local_skill_manager_state() -> LocalSkillManagerState {
     LocalSkillManagerState {
         schema_version: 1,
         assignments: HashMap::new(),
+        connections: HashMap::new(),
     }
 }
 
@@ -761,22 +909,97 @@ fn save_local_skill_manager_state(
     fs::write(state_path, content).map_err(|error| io_error("保存 Skill 管理状态", error))
 }
 
-fn record_local_skill_assignment(
-    home: &Path,
-    agent: &str,
-    skill_name: &str,
-) -> Result<(), InstallError> {
+#[cfg(any(windows, test))]
+fn refresh_managed_copies(home: &Path) -> Result<(), InstallError> {
     let mut state = load_local_skill_manager_state(home)?;
-    let assigned_skills = state.assignments.entry(agent.to_string()).or_default();
-    if !assigned_skills.iter().any(|name| name == skill_name) {
-        assigned_skills.push(skill_name.to_string());
-        assigned_skills.sort();
+    let allowed_source_roots = [
+        home.join(".agents").join("skills"),
+        home.join(".skills-manager").join("skills"),
+    ]
+    .into_iter()
+    .filter_map(|root| root.canonicalize().ok())
+    .collect::<Vec<_>>();
+    let mut state_changed = false;
+
+    for (key, connection) in &mut state.connections {
+        if connection.mode != ManagedConnectionMode::Copy {
+            continue;
+        }
+        let Some((agent, _skill_name)) = key.split_once(':') else {
+            continue;
+        };
+        let Ok(source) = PathBuf::from(&connection.source_path).canonicalize() else {
+            continue;
+        };
+        if !allowed_source_roots
+            .iter()
+            .any(|root| source.parent() == Some(root.as_path()))
+            || !source.join("SKILL.md").is_file()
+        {
+            continue;
+        }
+        let expected_root = preferred_agent_skills_root(home, agent)?;
+        let target = if connection.target_path.is_empty() {
+            let Some(directory_name) = source.file_name() else {
+                continue;
+            };
+            expected_root.join(directory_name)
+        } else {
+            PathBuf::from(&connection.target_path)
+        };
+        if target.parent() != Some(expected_root.as_path()) {
+            continue;
+        }
+        match fs::symlink_metadata(&target) {
+            Ok(metadata) => {
+                let link_kind = managed_directory_link_kind(&target, &metadata)
+                    .map_err(|error| io_error("检查 Agent Skill 副本", error))?;
+                if link_kind.is_some()
+                    || !metadata.is_dir()
+                    || !managed_copy_points_to(&target, &source)
+                {
+                    continue;
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error("检查 Agent Skill 副本", error)),
+        }
+
+        let source_hash =
+            hash_skill_directory(&source).map_err(|error| io_error("计算 Skill 摘要", error))?;
+        let target_is_current =
+            hash_skill_directory(&target).is_ok_and(|target_hash| target_hash == source_hash);
+        if !target_is_current {
+            copy_skill_directory(&source, &target)
+                .map_err(|error| io_error("同步 Agent Skill 副本", error))?;
+        }
+        let canonical_source = source.to_string_lossy().into_owned();
+        let target_text = target.to_string_lossy().into_owned();
+        if connection.source_path != canonical_source
+            || connection.target_path != target_text
+            || connection.source_hash != source_hash
+        {
+            connection.source_path = canonical_source;
+            connection.target_path = target_text;
+            connection.source_hash = source_hash;
+            state_changed = true;
+        }
+    }
+
+    if state_changed {
         save_local_skill_manager_state(home, &state)?;
     }
     Ok(())
 }
 
 fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    #[cfg(any(windows, test))]
+    if let Err(error) = refresh_managed_copies(home) {
+        warn!(
+            "刷新 Windows Skill 副本失败，继续扫描：code={}, message={}",
+            error.code, error.message
+        );
+    }
     let roots = [
         ("MANAGER", home.join(".skills-manager").join("skills")),
         ("AGENTS", home.join(".agents").join("skills")),
@@ -794,6 +1017,43 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
         );
         empty_local_skill_manager_state()
     });
+    #[cfg(any(windows, test))]
+    {
+        for record in records
+            .iter_mut()
+            .filter(|record| record.location == "CLAUDE" || record.location == "CODEX")
+        {
+            let agent = if record.location == "CLAUDE" {
+                "claude"
+            } else {
+                "codex"
+            };
+            let key = managed_connection_key(agent, &record.skill_name);
+            let Some(connection) = manager_state.connections.get(&key) else {
+                continue;
+            };
+            if connection.mode != ManagedConnectionMode::Copy {
+                continue;
+            }
+            let Ok(expected_root) = preferred_agent_skills_root(home, agent) else {
+                continue;
+            };
+            if Path::new(&record.install_path).parent() != Some(expected_root.as_path()) {
+                continue;
+            }
+            let Ok(source_path) = PathBuf::from(&connection.source_path).canonicalize() else {
+                continue;
+            };
+            if !source_path.join("SKILL.md").is_file() {
+                continue;
+            }
+            if !managed_copy_points_to(Path::new(&record.install_path), &source_path) {
+                continue;
+            }
+            record.entry_kind = connection.mode.record_value().to_string();
+            record.resolved_path = source_path.to_string_lossy().into_owned();
+        }
+    }
     for record in records
         .iter_mut()
         .filter(|record| record.location == "MANAGER" || record.location == "AGENTS")
@@ -879,29 +1139,58 @@ fn managed_directory_link_kind(
 }
 
 #[cfg(unix)]
-fn create_managed_directory_link(source: &Path, target: &Path) -> std::io::Result<()> {
-    std::os::unix::fs::symlink(source, target)
+fn create_managed_directory_link(
+    source: &Path,
+    target: &Path,
+) -> std::io::Result<ManagedConnectionMode> {
+    std::os::unix::fs::symlink(source, target)?;
+    Ok(ManagedConnectionMode::SymbolicLink)
 }
 
 #[cfg(windows)]
-fn create_managed_directory_link(source: &Path, target: &Path) -> std::io::Result<()> {
-    match junction::create(source, target) {
-        Ok(()) => Ok(()),
-        Err(junction_error) if junction_error.kind() == std::io::ErrorKind::AlreadyExists => {
-            Err(junction_error)
-        }
-        Err(junction_error) => {
-            let _ = fs::remove_dir(target);
-            std::os::windows::fs::symlink_dir(source, target).map_err(|symlink_error| {
-                std::io::Error::new(
-                    symlink_error.kind(),
-                    format!(
-                        "无法创建 Windows Junction（{junction_error}），目录软链接也失败（{symlink_error}）"
-                    ),
-                )
-            })
-        }
+fn create_windows_managed_connection_with<S, J, C>(
+    mut create_symlink: S,
+    mut create_junction: J,
+    mut copy_directory: C,
+) -> std::io::Result<ManagedConnectionMode>
+where
+    S: FnMut() -> std::io::Result<()>,
+    J: FnMut() -> std::io::Result<()>,
+    C: FnMut() -> std::io::Result<()>,
+{
+    match create_symlink() {
+        Ok(()) => Ok(ManagedConnectionMode::SymbolicLink),
+        Err(symlink_error) => match create_junction() {
+            Ok(()) => Ok(ManagedConnectionMode::Junction),
+            Err(junction_error) => {
+                copy_directory().map_err(|copy_error| {
+                    std::io::Error::new(
+                        copy_error.kind(),
+                        format!(
+                            "无法创建 Windows 目录软链接（{symlink_error}）或 Junction（{junction_error}），复制目录也失败（{copy_error}）"
+                        ),
+                    )
+                })?;
+                Ok(ManagedConnectionMode::Copy)
+            }
+        },
     }
+}
+
+#[cfg(windows)]
+fn create_managed_directory_link(
+    source: &Path,
+    target: &Path,
+) -> std::io::Result<ManagedConnectionMode> {
+    create_windows_managed_connection_with(
+        || std::os::windows::fs::symlink_dir(source, target),
+        || junction::create(source, target),
+        || {
+            // Junction 创建失败时可能留下空目录；只删除空目录，不覆盖用户数据。
+            let _ = fs::remove_dir(target);
+            copy_skill_directory(source, target)
+        },
+    )
 }
 
 #[cfg(unix)]
@@ -923,6 +1212,30 @@ fn remove_managed_directory_link(
             junction::delete(target)?;
             fs::remove_dir(target)
         }
+    }
+}
+
+fn connection_mode_from_link_kind(kind: ManagedDirectoryLinkKind) -> ManagedConnectionMode {
+    match kind {
+        ManagedDirectoryLinkKind::SymbolicLink => ManagedConnectionMode::SymbolicLink,
+        #[cfg(windows)]
+        ManagedDirectoryLinkKind::Junction => ManagedConnectionMode::Junction,
+    }
+}
+
+fn remove_managed_connection_target(
+    target: &Path,
+    mode: ManagedConnectionMode,
+) -> std::io::Result<()> {
+    match mode {
+        ManagedConnectionMode::SymbolicLink => {
+            remove_managed_directory_link(target, ManagedDirectoryLinkKind::SymbolicLink)
+        }
+        #[cfg(windows)]
+        ManagedConnectionMode::Junction => {
+            remove_managed_directory_link(target, ManagedDirectoryLinkKind::Junction)
+        }
+        ManagedConnectionMode::Copy => fs::remove_dir_all(target),
     }
 }
 
@@ -970,34 +1283,61 @@ fn set_local_skill_enabled_at_home(
         .iter()
         .map(|root| root.join(directory_name))
         .collect::<Vec<_>>();
+    let connection_key = managed_connection_key(&input.agent, &input.skill_name);
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    let mut manager_state_changed = false;
+    #[cfg(any(windows, test))]
+    let stored_connection = manager_state.connections.get(&connection_key).cloned();
+    #[cfg(any(windows, test))]
+    let stored_copy_matches_source = stored_connection.as_ref().is_some_and(|connection| {
+        connection.mode == ManagedConnectionMode::Copy
+            && PathBuf::from(&connection.source_path)
+                .canonicalize()
+                .is_ok_and(|path| path == canonical_source)
+    });
+    #[cfg(not(any(windows, test)))]
+    let stored_copy_matches_source = false;
 
     if input.enabled {
-        let mut already_enabled = false;
+        let mut active_mode = None;
         for target_path in &target_paths {
             match fs::symlink_metadata(target_path) {
                 Ok(metadata) => {
-                    if managed_directory_link_kind(target_path, &metadata)
-                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?
-                        .is_none()
+                    let link_kind = managed_directory_link_kind(target_path, &metadata)
+                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?;
+                    if let Some(link_kind) = link_kind {
+                        let current_target = target_path.canonicalize().map_err(|_| {
+                            InstallError::new(
+                                "LOCAL_SKILL_TARGET_CONFLICT",
+                                "目标位置已有失效或指向其他位置的连接",
+                            )
+                        })?;
+                        if current_target != canonical_source {
+                            return Err(InstallError::new(
+                                "LOCAL_SKILL_TARGET_CONFLICT",
+                                "目标位置已有指向其他 Skill 的连接",
+                            ));
+                        }
+                        active_mode = Some(connection_mode_from_link_kind(link_kind));
+                    } else if metadata.is_dir()
+                        && stored_copy_matches_source
+                        && managed_copy_points_to(target_path, &canonical_source)
                     {
+                        let source_hash = hash_skill_directory(&canonical_source)
+                            .map_err(|error| io_error("计算 Skill 摘要", error))?;
+                        let target_hash = hash_skill_directory(target_path)
+                            .map_err(|error| io_error("计算 Agent Skill 副本摘要", error))?;
+                        if target_hash != source_hash {
+                            copy_skill_directory(&canonical_source, target_path)
+                                .map_err(|error| io_error("更新 Agent Skill 副本", error))?;
+                        }
+                        active_mode = Some(ManagedConnectionMode::Copy);
+                    } else {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_TARGET_CONFLICT",
                             "Agent 可读取的目录中已有独立安装的同名 Skill，未进行覆盖",
                         ));
                     }
-                    let current_target = target_path.canonicalize().map_err(|_| {
-                        InstallError::new(
-                            "LOCAL_SKILL_TARGET_CONFLICT",
-                            "目标位置已有失效或指向其他位置的连接",
-                        )
-                    })?;
-                    if current_target != canonical_source {
-                        return Err(InstallError::new(
-                            "LOCAL_SKILL_TARGET_CONFLICT",
-                            "目标位置已有指向其他 Skill 的连接",
-                        ));
-                    }
-                    already_enabled = true;
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -1005,38 +1345,70 @@ fn set_local_skill_enabled_at_home(
                 }
             }
         }
-        if !already_enabled {
+        if active_mode.is_none() {
             let preferred_root = preferred_agent_skills_root(home, &input.agent)?;
             let target_path = preferred_root.join(directory_name);
             fs::create_dir_all(&preferred_root)
                 .map_err(|error| io_error("创建 Agent Skill 目录", error))?;
-            create_managed_directory_link(&canonical_source, &target_path)
-                .map_err(|error| io_error("开启 Skill", error))?;
+            active_mode = Some(
+                create_managed_directory_link(&canonical_source, &target_path)
+                    .map_err(|error| io_error("开启 Skill", error))?,
+            );
         }
-        record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
+        let active_mode = active_mode.expect("启用成功后必须存在连接模式");
+        if active_mode == ManagedConnectionMode::Copy {
+            let source_hash = hash_skill_directory(&canonical_source)
+                .map_err(|error| io_error("计算 Skill 摘要", error))?;
+            let connection = ManagedConnectionState {
+                source_path: canonical_source.to_string_lossy().into_owned(),
+                target_path: preferred_agent_skills_root(home, &input.agent)?
+                    .join(directory_name)
+                    .to_string_lossy()
+                    .into_owned(),
+                mode: active_mode,
+                source_hash,
+            };
+            manager_state_changed |=
+                manager_state.connections.get(&connection_key) != Some(&connection);
+            manager_state.connections.insert(connection_key, connection);
+        } else {
+            manager_state_changed |= manager_state.connections.remove(&connection_key).is_some();
+        }
     } else {
         let mut removable_paths = Vec::new();
         for target_path in &target_paths {
             match fs::symlink_metadata(target_path) {
                 Ok(metadata) => {
-                    let Some(kind) = managed_directory_link_kind(target_path, &metadata)
-                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?
-                    else {
+                    let link_kind = managed_directory_link_kind(target_path, &metadata)
+                        .map_err(|error| io_error("检查 Agent Skill 连接", error))?;
+                    if let Some(link_kind) = link_kind {
+                        let current_target = target_path.canonicalize().map_err(|_| {
+                            InstallError::new(
+                                "LOCAL_SKILL_TARGET_CONFLICT",
+                                "该连接已失效，未自动删除",
+                            )
+                        })?;
+                        if current_target != canonical_source {
+                            return Err(InstallError::new(
+                                "LOCAL_SKILL_TARGET_CONFLICT",
+                                "该连接指向其他位置，未自动删除",
+                            ));
+                        }
+                        removable_paths.push((
+                            target_path.clone(),
+                            connection_mode_from_link_kind(link_kind),
+                        ));
+                    } else if metadata.is_dir()
+                        && stored_copy_matches_source
+                        && managed_copy_points_to(target_path, &canonical_source)
+                    {
+                        removable_paths.push((target_path.clone(), ManagedConnectionMode::Copy));
+                    } else {
                         return Err(InstallError::new(
                             "LOCAL_SKILL_NOT_MANAGED_LINK",
                             "Agent 可读取的目录中存在独立安装的同名 Skill，不能通过开关关闭",
                         ));
-                    };
-                    let current_target = target_path.canonicalize().map_err(|_| {
-                        InstallError::new("LOCAL_SKILL_TARGET_CONFLICT", "该连接已失效，未自动删除")
-                    })?;
-                    if current_target != canonical_source {
-                        return Err(InstallError::new(
-                            "LOCAL_SKILL_TARGET_CONFLICT",
-                            "该连接指向其他位置，未自动删除",
-                        ));
                     }
-                    removable_paths.push((target_path.clone(), kind));
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => {
@@ -1044,11 +1416,24 @@ fn set_local_skill_enabled_at_home(
                 }
             }
         }
-        record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
-        for (target_path, kind) in removable_paths {
-            remove_managed_directory_link(&target_path, kind)
+        for (target_path, mode) in removable_paths {
+            remove_managed_connection_target(&target_path, mode)
                 .map_err(|error| io_error("关闭 Skill", error))?;
         }
+        manager_state_changed |= manager_state.connections.remove(&connection_key).is_some();
+    }
+
+    let assigned_skills = manager_state
+        .assignments
+        .entry(input.agent.clone())
+        .or_default();
+    if !assigned_skills.iter().any(|name| name == &input.skill_name) {
+        assigned_skills.push(input.skill_name);
+        assigned_skills.sort();
+        manager_state_changed = true;
+    }
+    if manager_state_changed {
+        save_local_skill_manager_state(home, &manager_state)?;
     }
 
     scan_local_skills_from_home(home)
@@ -1252,15 +1637,29 @@ mod tests {
             Some(ManagedDirectoryLinkKind::SymbolicLink)
         );
         #[cfg(windows)]
-        assert_eq!(codex_link_kind, Some(ManagedDirectoryLinkKind::Junction));
+        assert!(matches!(
+            codex_link_kind,
+            Some(ManagedDirectoryLinkKind::SymbolicLink | ManagedDirectoryLinkKind::Junction)
+        ));
         let codex_record = enabled_records
             .iter()
             .find(|record| record.location == "CODEX" && record.skill_name == "test-skill")
             .unwrap();
         #[cfg(unix)]
         assert_eq!(codex_record.entry_kind, "SYMLINK");
+        #[cfg(unix)]
+        assert!(
+            load_local_skill_manager_state(home.path())
+                .unwrap()
+                .connections
+                .is_empty(),
+            "macOS/Linux 软连接不应写入 Windows 副本状态"
+        );
         #[cfg(windows)]
-        assert_eq!(codex_record.entry_kind, "JUNCTION");
+        assert!(matches!(
+            codex_record.entry_kind.as_str(),
+            "SYMLINK" | "JUNCTION"
+        ));
         assert_eq!(
             codex_link.canonicalize().unwrap(),
             source.canonicalize().unwrap()
@@ -1273,5 +1672,218 @@ mod tests {
             fs::symlink_metadata(&codex_link),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound
         ));
+    }
+
+    #[test]
+    fn managed_copy_is_grouped_with_its_source_and_removed_safely() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let target = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: source\n---\n",
+        )
+        .unwrap();
+        copy_skill_directory(&source, &target).unwrap();
+        let state_path = local_skill_manager_state_path(home.path());
+        fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        fs::write(
+            &state_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaVersion": 1,
+                "assignments": {
+                    "codex": ["test-skill"]
+                },
+                "connections": {
+                    "codex:test-skill": {
+                        "sourcePath": source,
+                        "mode": "copy",
+                        "sourceHash": "sha256:test"
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let records = scan_local_skills_from_home(home.path()).unwrap();
+        let copied_record = records
+            .iter()
+            .find(|record| record.location == "CODEX" && record.skill_name == "test-skill")
+            .unwrap();
+        assert_eq!(copied_record.entry_kind, "COPY");
+        assert_eq!(
+            PathBuf::from(&copied_record.resolved_path),
+            source.canonicalize().unwrap()
+        );
+
+        set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: false,
+            },
+        )
+        .unwrap();
+
+        assert!(source.join("SKILL.md").is_file());
+        assert!(!target.exists());
+        let state = fs::read_to_string(state_path).unwrap();
+        assert!(!state.contains("codex:test-skill"));
+    }
+
+    #[test]
+    fn scanning_refreshes_a_managed_copy_when_the_source_changes() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let target = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: stale\n---\n",
+        )
+        .unwrap();
+        copy_skill_directory(&source, &target).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: updated\n---\n",
+        )
+        .unwrap();
+        let state_path = local_skill_manager_state_path(home.path());
+        fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        fs::write(
+            &state_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaVersion": 1,
+                "assignments": {
+                    "codex": ["test-skill"]
+                },
+                "connections": {
+                    "codex:test-skill": {
+                        "sourcePath": source,
+                        "mode": "copy",
+                        "sourceHash": "sha256:stale"
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        scan_local_skills_from_home(home.path()).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(target.join("SKILL.md")).unwrap(),
+            "---\nname: test-skill\ndescription: updated\n---\n"
+        );
+        let saved_state = load_local_skill_manager_state(home.path()).unwrap();
+        let saved_connection = saved_state.connections.get("codex:test-skill").unwrap();
+        assert_eq!(
+            saved_connection.source_hash,
+            hash_skill_directory(&source).unwrap()
+        );
+    }
+
+    #[test]
+    fn disabling_never_removes_an_unmarked_directory_claimed_by_stale_state() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let target = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: source\n---\n",
+        )
+        .unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(
+            target.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: independent\n---\n",
+        )
+        .unwrap();
+        fs::write(target.join("keep.txt"), "keep").unwrap();
+        let state_path = local_skill_manager_state_path(home.path());
+        fs::create_dir_all(state_path.parent().unwrap()).unwrap();
+        fs::write(
+            state_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaVersion": 1,
+                "assignments": {
+                    "codex": ["test-skill"]
+                },
+                "connections": {
+                    "codex:test-skill": {
+                        "sourcePath": source,
+                        "targetPath": target,
+                        "mode": "copy",
+                        "sourceHash": "sha256:stale"
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let error = set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: false,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "LOCAL_SKILL_NOT_MANAGED_LINK");
+        assert_eq!(fs::read_to_string(target.join("keep.txt")).unwrap(), "keep");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_connection_falls_back_from_symlink_to_junction_to_copy() {
+        use std::{cell::RefCell, rc::Rc};
+
+        let attempts = Rc::new(RefCell::new(Vec::new()));
+        let symlink_attempts = Rc::clone(&attempts);
+        let junction_attempts = Rc::clone(&attempts);
+        let copy_attempts = Rc::clone(&attempts);
+
+        let mode = create_windows_managed_connection_with(
+            || {
+                symlink_attempts.borrow_mut().push("symlink");
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "developer mode disabled",
+                ))
+            },
+            || {
+                junction_attempts.borrow_mut().push("junction");
+                Err(std::io::Error::other("remote path"))
+            },
+            || {
+                copy_attempts.borrow_mut().push("copy");
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(mode, ManagedConnectionMode::Copy);
+        assert_eq!(&*attempts.borrow(), &["symlink", "junction", "copy"]);
     }
 }
