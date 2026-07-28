@@ -1,4 +1,13 @@
-import { SkillApiError, type LocalInstallRequest, type LocalInstallResult, type LocalSkillRecord, type LocalSkillService } from "./contracts";
+import {
+  SkillApiError,
+  type LocalInstallRequest,
+  type LocalInstallResult,
+  type LocalSkillAgent,
+  type LocalSkillLocation,
+  type LocalSkillRecord,
+  type LocalSkillService,
+  type SetLocalSkillEnabledInput,
+} from "./contracts";
 import { mockInstallScenarios, skillIds } from "./mockData";
 
 const initialRecords: LocalSkillRecord[] = [
@@ -112,9 +121,65 @@ const initialRecords: LocalSkillRecord[] = [
   },
 ];
 
+const managedSkillNames = new Set([
+  "code-review",
+  "personal-helper",
+  "legacy-helper",
+  "reserved-name-demo",
+  "withdrawn-version-demo",
+]);
+
+const AGENT_LOCATIONS: Record<LocalSkillAgent, LocalSkillLocation> = {
+  agents: "AGENTS",
+  claude: "CLAUDE",
+  codex: "CODEX",
+};
+
+function inferMockLocation(path: string): LocalSkillLocation {
+  if (path.includes("/.claude/skills/")) return "CLAUDE";
+  if (path.includes("/.codex/skills/")) return "CODEX";
+  return "AGENTS";
+}
+
+function inferMockAgent(path: string): LocalSkillAgent {
+  const location = inferMockLocation(path);
+  if (location === "CLAUDE") return "claude";
+  if (location === "CODEX") return "codex";
+  return "agents";
+}
+
+function managerPath(skillName: string): string {
+  return `~/.skills-manager/skills/${skillName}`;
+}
+
+const initialMockRecords: LocalSkillRecord[] = [
+  ...initialRecords
+    .filter((record) => managedSkillNames.has(record.skillName))
+    .map((record) => ({
+      ...record,
+      id: `manager-${record.skillName}`,
+      installPath: managerPath(record.skillName),
+      location: "MANAGER" as const,
+      entryKind: "DIRECTORY" as const,
+      resolvedPath: managerPath(record.skillName),
+      assignedAgents: [inferMockAgent(record.installPath)],
+    })),
+  ...initialRecords.map((record) => {
+    const managed = managedSkillNames.has(record.skillName);
+    return {
+      ...record,
+      location: inferMockLocation(record.installPath),
+      entryKind: managed ? "SYMLINK" as const : "DIRECTORY" as const,
+      resolvedPath: managed
+        ? managerPath(record.skillName)
+        : record.installPath,
+    };
+  }),
+];
+
 /** 浏览器开发阶段使用的本地 Skill 内存模拟服务。 */
 export class MockLocalSkillService implements LocalSkillService {
-  private readonly records = structuredClone(initialRecords);
+  private readonly records = structuredClone(initialMockRecords);
   private readonly delayMs: number;
 
   constructor(delayMs = 160) {
@@ -130,6 +195,79 @@ export class MockLocalSkillService implements LocalSkillService {
     return structuredClone(this.records);
   }
 
+  async setSkillEnabled(
+    input: SetLocalSkillEnabledInput,
+  ): Promise<LocalSkillRecord[]> {
+    await this.wait();
+    if (input.agent === "agents") {
+      throw new SkillApiError(
+        "LOCAL_SKILL_AGENT_UNSUPPORTED",
+        "全部 Agents 是 Skill 本体工作区，不通过软链接开关控制",
+      );
+    }
+    const sourceRecord = this.records.find(
+      (record) =>
+        (record.location === "AGENTS" || record.location === "MANAGER")
+        && record.entryKind === "DIRECTORY"
+        && record.installPath === input.sourcePath,
+    );
+    if (!sourceRecord) {
+      throw new SkillApiError(
+        "LOCAL_SKILL_SOURCE_UNMANAGED",
+        "只能控制全部 Agents 工作区或兼容仓库中的实体 Skill",
+      );
+    }
+    const locations: LocalSkillLocation[] = [AGENT_LOCATIONS[input.agent]];
+    const existingRecords = this.records
+      .map((record, index) => ({ record, index }))
+      .filter(
+        ({ record }) =>
+          record.location
+          && locations.includes(record.location)
+          && record.skillName === input.skillName,
+      );
+    const conflictingRecord = existingRecords.find(
+      ({ record }) =>
+        record.entryKind !== "SYMLINK"
+        || record.resolvedPath !== sourceRecord.resolvedPath,
+    );
+    if (conflictingRecord) {
+      throw new SkillApiError(
+        input.enabled
+          ? "LOCAL_SKILL_TARGET_CONFLICT"
+          : "LOCAL_SKILL_NOT_MANAGED_LINK",
+        "Agent 可读取的目录中存在独立安装的同名 Skill，不能通过开关修改",
+      );
+    }
+
+    if (input.enabled) {
+      if (existingRecords.length === 0) {
+        const location = AGENT_LOCATIONS[input.agent];
+        this.records.push({
+          ...structuredClone(sourceRecord),
+          id: `${input.agent}-${input.skillName}`,
+          installPath: `~/.${input.agent}/skills/${input.skillName}`,
+          location,
+          entryKind: "SYMLINK",
+          resolvedPath: sourceRecord.resolvedPath,
+        });
+      }
+    } else {
+      for (const { index } of [...existingRecords].sort(
+        (left, right) => right.index - left.index,
+      )) {
+        this.records.splice(index, 1);
+      }
+    }
+
+    const assignedAgents = sourceRecord.assignedAgents ?? [];
+    if (!assignedAgents.includes(input.agent)) {
+      sourceRecord.assignedAgents = [...assignedAgents, input.agent];
+    }
+
+    return structuredClone(this.records);
+  }
+
   /**
    * 功能说明：模拟安装、覆盖和备份结果，不读写真实文件系统。
    * @param input - 待安装的 Skill、版本和强制替换标记。
@@ -138,7 +276,11 @@ export class MockLocalSkillService implements LocalSkillService {
   async install(input: LocalInstallRequest): Promise<LocalInstallResult> {
     await this.wait();
     const scenario = mockInstallScenarios[input.skill.id];
-    const conflict = this.records.find((item) => item.skillName === input.version.skillName);
+    const conflict = this.records.find(
+      (item) =>
+        item.location !== "MANAGER"
+        && item.skillName === input.version.skillName,
+    );
     if (conflict && !input.force && (conflict.skillId !== input.skill.id || conflict.status !== "PLATFORM_INSTALLED")) {
       throw new SkillApiError("LOCAL_SKILL_CONFLICT", "本地已存在同名 Skill，请确认后强制替换", { localSkill: structuredClone(conflict) });
     }

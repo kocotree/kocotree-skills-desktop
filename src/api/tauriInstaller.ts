@@ -5,6 +5,7 @@ import {
   type LocalInstallResult,
   type LocalSkillRecord,
   type LocalSkillService,
+  type SetLocalSkillEnabledInput,
 } from "./contracts";
 
 interface InstallSkillCommandResult {
@@ -81,6 +82,9 @@ export class TauriInstaller implements LocalSkillService {
           contentHash: input.version.contentHash,
           installedAt,
           status: "PLATFORM_INSTALLED",
+          location: "AGENTS",
+          entryKind: "DIRECTORY",
+          resolvedPath: result.installedPath,
         },
         replacedSkillName: null,
         backupPath: null,
@@ -101,7 +105,7 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  /** 读取本机通用 Agents、Claude Code 与 Codex Skill 目录。 */
+  /** 读取全部 Agents 工作区、兼容仓库以及 Claude Code/Codex 目录。 */
   async scanSkills(): Promise<LocalSkillRecord[]> {
     try {
       return await invoke<LocalSkillRecord[]>("scan_local_skills");
@@ -110,6 +114,24 @@ export class TauriInstaller implements LocalSkillService {
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_SCAN_FAILED",
         commandError?.message ?? "本地 Skill 扫描失败",
+        commandError?.details,
+      );
+    }
+  }
+
+  async setSkillEnabled(
+    input: SetLocalSkillEnabledInput,
+  ): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "set_local_skill_enabled",
+        { input },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_CONTROL_FAILED",
+        commandError?.message ?? "更新本地 Skill 状态失败",
         commandError?.details,
       );
     }

@@ -23,7 +23,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             auth_callback::begin_desktop_auth_callback,
             installer::install_skill,
-            installer::scan_local_skills
+            installer::scan_local_skills,
+            installer::set_local_skill_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

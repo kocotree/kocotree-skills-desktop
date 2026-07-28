@@ -86,6 +86,16 @@ export type LocalSkillStatus =
   | "LOCAL_UNKNOWN"
   | "MISSING";
 
+export type LocalSkillLocation =
+  | "MANAGER"
+  | "AGENTS"
+  | "CLAUDE"
+  | "CODEX";
+
+export type LocalSkillEntryKind = "DIRECTORY" | "SYMLINK";
+
+export type LocalSkillAgent = "agents" | "claude" | "codex";
+
 /** 客户端扫描和合并展示用的本地 Skill 记录。 */
 export interface LocalSkillRecord {
   id: string;
@@ -98,6 +108,17 @@ export interface LocalSkillRecord {
   contentHash: string;
   installedAt: string | null;
   status: LocalSkillStatus;
+  location?: LocalSkillLocation;
+  entryKind?: LocalSkillEntryKind;
+  resolvedPath?: string;
+  assignedAgents?: LocalSkillAgent[];
+}
+
+export interface SetLocalSkillEnabledInput {
+  skillName: string;
+  sourcePath: string;
+  agent: LocalSkillAgent;
+  enabled: boolean;
 }
 
 export interface LocalInstallRequest {
@@ -128,6 +149,7 @@ export interface SkillInstaller {
  */
 export interface LocalSkillService extends SkillInstaller {
   scanSkills(): Promise<LocalSkillRecord[]>;
+  setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(skillName: string): Promise<void>;
 }
 

@@ -18,6 +18,7 @@ const MAX_FILE_COUNT: usize = 2_000;
 const MAX_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
 const MAX_SKILL_MD_SIZE: u64 = 1024 * 1024;
 const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
+const MANAGER_STATE_FILE: &str = ".kocotree-skills-desktop.json";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,6 +66,26 @@ pub struct LocalSkillRecord {
     pub content_hash: String,
     pub installed_at: Option<String>,
     pub status: String,
+    pub location: String,
+    pub entry_kind: String,
+    pub resolved_path: String,
+    pub assigned_agents: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetLocalSkillEnabledInput {
+    pub skill_name: String,
+    pub source_path: String,
+    pub agent: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalSkillManagerState {
+    schema_version: u32,
+    assignments: HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -503,13 +524,12 @@ fn install_package_bytes(
         content_hash: input.content_hash.clone(),
         installed_at: input.installed_at.clone(),
     };
-    let metadata_bytes = serde_json::to_vec_pretty(&install_metadata)
-        .map_err(|error| {
-            InstallError::new(
-                "LOCAL_INSTALL_METADATA_ERROR",
-                format!("生成安装元数据失败：{error}"),
-            )
-        })?;
+    let metadata_bytes = serde_json::to_vec_pretty(&install_metadata).map_err(|error| {
+        InstallError::new(
+            "LOCAL_INSTALL_METADATA_ERROR",
+            format!("生成安装元数据失败：{error}"),
+        )
+    })?;
     fs::write(payload.join(INSTALL_METADATA_FILE), metadata_bytes)
         .map_err(|error| io_error("写入安装元数据", error))?;
     fs::rename(&payload, &target).map_err(|error| io_error("写入 Skill 目录", error))?;
@@ -560,12 +580,15 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
     result
 }
 
-fn scan_skills_root(root: &Path, records: &mut Vec<LocalSkillRecord>) {
+fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRecord>) {
     let entries = match fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
         Err(error) => {
-            warn!("读取本地 Skill 根目录失败：root={}, error={error}", root.display());
+            warn!(
+                "读取本地 Skill 根目录失败：root={}, error={error}",
+                root.display()
+            );
             return;
         }
     };
@@ -583,6 +606,20 @@ fn scan_skills_root(root: &Path, records: &mut Vec<LocalSkillRecord>) {
         if !is_directory || !skill_path.join("SKILL.md").is_file() {
             continue;
         }
+        let entry_kind = if entry
+            .file_type()
+            .map(|file_type| file_type.is_symlink())
+            .unwrap_or(false)
+        {
+            "SYMLINK"
+        } else {
+            "DIRECTORY"
+        };
+        let resolved_path = skill_path
+            .canonicalize()
+            .unwrap_or_else(|_| skill_path.clone())
+            .to_string_lossy()
+            .into_owned();
         let skill_md_path = skill_path.join("SKILL.md");
         let skill_md_size = match fs::metadata(&skill_md_path) {
             Ok(metadata) => metadata.len(),
@@ -599,50 +636,35 @@ fn scan_skills_root(root: &Path, records: &mut Vec<LocalSkillRecord>) {
             Ok(content) => content,
             Err(_) => continue,
         };
-        let skill_name = parse_skill_name(&skill_md)
-            .unwrap_or_else(|_| directory_name.clone());
-        let metadata = fs::read_to_string(
-            skill_path.join(INSTALL_METADATA_FILE),
-        )
-        .ok()
-        .and_then(|content| {
-            serde_json::from_str::<InstalledSkillMetadata>(&content).ok()
-        })
-        .filter(|metadata| {
-            metadata.schema_version == 1 &&
-                metadata.skill_name == skill_name
-        });
+        let skill_name = parse_skill_name(&skill_md).unwrap_or_else(|_| directory_name.clone());
+        let metadata = fs::read_to_string(skill_path.join(INSTALL_METADATA_FILE))
+            .ok()
+            .and_then(|content| serde_json::from_str::<InstalledSkillMetadata>(&content).ok())
+            .filter(|metadata| metadata.schema_version == 1 && metadata.skill_name == skill_name);
         let path_text = skill_path.to_string_lossy().into_owned();
         let local_id_hash = sha256_hex(path_text.as_bytes());
         let skill_md_hash = sha256_hex(skill_md.as_bytes());
-        let (
-            skill_id,
-            version_id,
-            version,
-            display_name,
-            content_hash,
-            installed_at,
-            status,
-        ) = match metadata {
-            Some(metadata) => (
-                Some(metadata.skill_id),
-                Some(metadata.version_id),
-                Some(metadata.version),
-                metadata.display_name,
-                metadata.content_hash,
-                Some(metadata.installed_at),
-                "PLATFORM_INSTALLED".to_string(),
-            ),
-            None => (
-                None,
-                None,
-                None,
-                skill_name.clone(),
-                format!("sha256:{skill_md_hash}"),
-                None,
-                "LOCAL_UNKNOWN".to_string(),
-            ),
-        };
+        let (skill_id, version_id, version, display_name, content_hash, installed_at, status) =
+            match metadata {
+                Some(metadata) => (
+                    Some(metadata.skill_id),
+                    Some(metadata.version_id),
+                    Some(metadata.version),
+                    metadata.display_name,
+                    metadata.content_hash,
+                    Some(metadata.installed_at),
+                    "PLATFORM_INSTALLED".to_string(),
+                ),
+                None => (
+                    None,
+                    None,
+                    None,
+                    skill_name.clone(),
+                    format!("sha256:{skill_md_hash}"),
+                    None,
+                    "LOCAL_UNKNOWN".to_string(),
+                ),
+            };
         records.push(LocalSkillRecord {
             id: format!("local-{}", &local_id_hash[..16]),
             skill_id,
@@ -654,22 +676,115 @@ fn scan_skills_root(root: &Path, records: &mut Vec<LocalSkillRecord>) {
             content_hash,
             installed_at,
             status,
+            location: location.to_string(),
+            entry_kind: entry_kind.to_string(),
+            resolved_path,
+            assigned_agents: Vec::new(),
         });
     }
 }
 
-fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
+fn empty_local_skill_manager_state() -> LocalSkillManagerState {
+    LocalSkillManagerState {
+        schema_version: 1,
+        assignments: HashMap::new(),
+    }
+}
+
+fn local_skill_manager_state_path(home: &Path) -> PathBuf {
+    home.join(".skills-manager").join(MANAGER_STATE_FILE)
+}
+
+fn load_local_skill_manager_state(home: &Path) -> Result<LocalSkillManagerState, InstallError> {
+    let state_path = local_skill_manager_state_path(home);
+    let content = match fs::read_to_string(&state_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(empty_local_skill_manager_state());
+        }
+        Err(error) => return Err(io_error("读取 Skill 管理状态", error)),
+    };
+    let state = serde_json::from_str::<LocalSkillManagerState>(&content).map_err(|_| {
+        InstallError::new("LOCAL_SKILL_STATE_INVALID", "Skill 管理状态文件格式无效")
     })?;
+    if state.schema_version != 1 {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_STATE_UNSUPPORTED",
+            "Skill 管理状态文件版本不受支持",
+        ));
+    }
+    Ok(state)
+}
+
+fn save_local_skill_manager_state(
+    home: &Path,
+    state: &LocalSkillManagerState,
+) -> Result<(), InstallError> {
+    let state_path = local_skill_manager_state_path(home);
+    let manager_directory = state_path.parent().ok_or_else(|| {
+        InstallError::new(
+            "LOCAL_SKILL_STATE_PATH_INVALID",
+            "Skill 管理状态文件路径无效",
+        )
+    })?;
+    fs::create_dir_all(manager_directory)
+        .map_err(|error| io_error("创建 Skill 管理目录", error))?;
+    let content = serde_json::to_vec_pretty(state).map_err(|_| {
+        InstallError::new(
+            "LOCAL_SKILL_STATE_SERIALIZE_FAILED",
+            "无法生成 Skill 管理状态",
+        )
+    })?;
+    fs::write(state_path, content).map_err(|error| io_error("保存 Skill 管理状态", error))
+}
+
+fn record_local_skill_assignment(
+    home: &Path,
+    agent: &str,
+    skill_name: &str,
+) -> Result<(), InstallError> {
+    let mut state = load_local_skill_manager_state(home)?;
+    let assigned_skills = state.assignments.entry(agent.to_string()).or_default();
+    if !assigned_skills.iter().any(|name| name == skill_name) {
+        assigned_skills.push(skill_name.to_string());
+        assigned_skills.sort();
+        save_local_skill_manager_state(home, &state)?;
+    }
+    Ok(())
+}
+
+fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, InstallError> {
     let roots = [
-        home.join(".agents").join("skills"),
-        home.join(".claude").join("skills"),
-        home.join(".codex").join("skills"),
+        ("MANAGER", home.join(".skills-manager").join("skills")),
+        ("AGENTS", home.join(".agents").join("skills")),
+        ("CLAUDE", home.join(".claude").join("skills")),
+        ("CODEX", home.join(".codex").join("skills")),
     ];
     let mut records = Vec::new();
-    for root in roots {
-        scan_skills_root(&root, &mut records);
+    for (location, root) in roots {
+        scan_skills_root(&root, location, &mut records);
+    }
+    let manager_state = load_local_skill_manager_state(&home).unwrap_or_else(|error| {
+        warn!(
+            "读取 Skill 管理状态失败，按空状态继续：code={}, message={}",
+            error.code, error.message
+        );
+        empty_local_skill_manager_state()
+    });
+    for record in records
+        .iter_mut()
+        .filter(|record| record.location == "MANAGER" || record.location == "AGENTS")
+    {
+        record.assigned_agents = ["claude", "codex"]
+            .iter()
+            .filter(|agent| {
+                manager_state
+                    .assignments
+                    .get(**agent)
+                    .is_some_and(|skills| skills.iter().any(|name| name == &record.skill_name))
+            })
+            .map(|agent| (*agent).to_string())
+            .collect();
     }
     records.sort_by(|left, right| {
         left.display_name
@@ -680,7 +795,189 @@ fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> 
     Ok(records)
 }
 
-/** 只读扫描通用 Agents、Claude Code 与 Codex Skill 目录。 */
+fn scan_local_skills_from_disk() -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    scan_local_skills_from_home(&home)
+}
+
+fn agent_skills_roots(home: &Path, agent: &str) -> Result<Vec<PathBuf>, InstallError> {
+    match agent {
+        "claude" => Ok(vec![home.join(".claude").join("skills")]),
+        "codex" => Ok(vec![home.join(".codex").join("skills")]),
+        _ => Err(InstallError::new(
+            "LOCAL_SKILL_AGENT_UNSUPPORTED",
+            "不支持的 Agent 类型",
+        )),
+    }
+}
+
+fn preferred_agent_skills_root(home: &Path, agent: &str) -> Result<PathBuf, InstallError> {
+    match agent {
+        "claude" => Ok(home.join(".claude").join("skills")),
+        "codex" => Ok(home.join(".codex").join("skills")),
+        _ => Err(InstallError::new(
+            "LOCAL_SKILL_AGENT_UNSUPPORTED",
+            "不支持的 Agent 类型",
+        )),
+    }
+}
+
+#[cfg(unix)]
+fn create_directory_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+    std::os::unix::fs::symlink(source, target)
+}
+
+#[cfg(windows)]
+fn create_directory_symlink(source: &Path, target: &Path) -> std::io::Result<()> {
+    std::os::windows::fs::symlink_dir(source, target)
+}
+
+#[cfg(unix)]
+fn remove_directory_symlink(target: &Path) -> std::io::Result<()> {
+    fs::remove_file(target)
+}
+
+#[cfg(windows)]
+fn remove_directory_symlink(target: &Path) -> std::io::Result<()> {
+    fs::remove_dir(target)
+}
+
+fn set_local_skill_enabled_at_home(
+    home: &Path,
+    input: SetLocalSkillEnabledInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let source_path = PathBuf::from(&input.source_path);
+    let canonical_source = source_path.canonicalize().map_err(|error| {
+        InstallError::new(
+            "LOCAL_SKILL_SOURCE_MISSING",
+            format!("Skill 本体不存在：{error}"),
+        )
+    })?;
+    let allowed_source_roots = [
+        home.join(".agents").join("skills"),
+        home.join(".skills-manager").join("skills"),
+    ]
+    .into_iter()
+    .filter_map(|root| root.canonicalize().ok())
+    .collect::<Vec<_>>();
+    let source_is_direct_child = allowed_source_roots
+        .iter()
+        .any(|root| canonical_source.parent() == Some(root.as_path()));
+    if !source_is_direct_child || !canonical_source.join("SKILL.md").is_file() {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_SOURCE_UNMANAGED",
+            "只能控制 ~/.agents/skills 或兼容仓库中的实体 Skill",
+        ));
+    }
+    let skill_md = fs::read_to_string(canonical_source.join("SKILL.md"))
+        .map_err(|error| io_error("读取 Skill 定义", error))?;
+    let parsed_skill_name = parse_skill_name(&skill_md)?;
+    if parsed_skill_name != input.skill_name {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_NAME_MISMATCH",
+            "Skill 名称与本体中的定义不一致",
+        ));
+    }
+    let directory_name = source_path
+        .file_name()
+        .ok_or_else(|| InstallError::new("LOCAL_SKILL_PATH_INVALID", "Skill 本体路径无效"))?;
+    let agent_roots = agent_skills_roots(home, &input.agent)?;
+    let target_paths = agent_roots
+        .iter()
+        .map(|root| root.join(directory_name))
+        .collect::<Vec<_>>();
+
+    if input.enabled {
+        let mut already_enabled = false;
+        for target_path in &target_paths {
+            match fs::symlink_metadata(target_path) {
+                Ok(metadata) => {
+                    if !metadata.file_type().is_symlink() {
+                        return Err(InstallError::new(
+                            "LOCAL_SKILL_TARGET_CONFLICT",
+                            "Agent 可读取的目录中已有独立安装的同名 Skill，未进行覆盖",
+                        ));
+                    }
+                    let current_target = target_path.canonicalize().map_err(|_| {
+                        InstallError::new(
+                            "LOCAL_SKILL_TARGET_CONFLICT",
+                            "目标位置已有失效或指向其他位置的软链接",
+                        )
+                    })?;
+                    if current_target != canonical_source {
+                        return Err(InstallError::new(
+                            "LOCAL_SKILL_TARGET_CONFLICT",
+                            "目标位置已有指向其他 Skill 的软链接",
+                        ));
+                    }
+                    already_enabled = true;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(io_error("检查 Agent Skill 入口", error));
+                }
+            }
+        }
+        if !already_enabled {
+            let preferred_root = preferred_agent_skills_root(home, &input.agent)?;
+            let target_path = preferred_root.join(directory_name);
+            fs::create_dir_all(&preferred_root)
+                .map_err(|error| io_error("创建 Agent Skill 目录", error))?;
+            create_directory_symlink(&canonical_source, &target_path)
+                .map_err(|error| io_error("开启 Skill", error))?;
+        }
+        record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
+    } else {
+        let mut removable_paths = Vec::new();
+        for target_path in &target_paths {
+            match fs::symlink_metadata(target_path) {
+                Ok(metadata) => {
+                    if !metadata.file_type().is_symlink() {
+                        return Err(InstallError::new(
+                            "LOCAL_SKILL_NOT_MANAGED_LINK",
+                            "Agent 可读取的目录中存在独立安装的同名 Skill，不能通过开关关闭",
+                        ));
+                    }
+                    let current_target = target_path.canonicalize().map_err(|_| {
+                        InstallError::new(
+                            "LOCAL_SKILL_TARGET_CONFLICT",
+                            "该软链接已失效，未自动删除",
+                        )
+                    })?;
+                    if current_target != canonical_source {
+                        return Err(InstallError::new(
+                            "LOCAL_SKILL_TARGET_CONFLICT",
+                            "该软链接指向其他位置，未自动删除",
+                        ));
+                    }
+                    removable_paths.push(target_path.clone());
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(io_error("检查 Agent Skill 入口", error));
+                }
+            }
+        }
+        record_local_skill_assignment(home, &input.agent, &input.skill_name)?;
+        for target_path in removable_paths {
+            remove_directory_symlink(&target_path)
+                .map_err(|error| io_error("关闭 Skill", error))?;
+        }
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn set_local_skill_enabled_on_disk(
+    input: SetLocalSkillEnabledInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    set_local_skill_enabled_at_home(&home, input)
+}
+
+/** 只读扫描全部 Agents 工作区、兼容仓库以及 Claude Code/Codex 目录。 */
 #[tauri::command]
 pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
     tauri::async_runtime::spawn_blocking(scan_local_skills_from_disk)
@@ -689,6 +986,21 @@ pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> 
             InstallError::new(
                 "LOCAL_SKILL_SCAN_FAILED",
                 format!("扫描本地 Skill 失败：{error}"),
+            )
+        })?
+}
+
+/** 通过创建或移除受管软链接，开启或关闭指定 Agent 的 Skill。 */
+#[tauri::command]
+pub async fn set_local_skill_enabled(
+    input: SetLocalSkillEnabledInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    tauri::async_runtime::spawn_blocking(move || set_local_skill_enabled_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_CONTROL_FAILED",
+                format!("更新本地 Skill 状态失败：{error}"),
             )
         })?
 }
@@ -815,5 +1127,53 @@ mod tests {
         assert_eq!(error.code, "INVALID_SKILL_PACKAGE");
         assert!(!root.path().join("test-skill").exists());
         assert!(!root.path().parent().unwrap().join("escape.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_toggle_only_changes_the_codex_symlink() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: test\n---\n",
+        )
+        .unwrap();
+        let input = |enabled| SetLocalSkillEnabledInput {
+            skill_name: "test-skill".to_string(),
+            source_path: source.to_string_lossy().into_owned(),
+            agent: "codex".to_string(),
+            enabled,
+        };
+
+        set_local_skill_enabled_at_home(home.path(), input(true)).unwrap();
+
+        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
+        assert!(source.is_dir());
+        assert!(!fs::symlink_metadata(&source)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(fs::symlink_metadata(&codex_link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            codex_link.canonicalize().unwrap(),
+            source.canonicalize().unwrap()
+        );
+
+        set_local_skill_enabled_at_home(home.path(), input(false)).unwrap();
+
+        assert!(source.is_dir());
+        assert!(matches!(
+            fs::symlink_metadata(&codex_link),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        ));
     }
 }
