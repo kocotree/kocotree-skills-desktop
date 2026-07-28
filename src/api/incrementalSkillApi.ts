@@ -2,6 +2,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import type {
   InstallationEventDto,
   CreateSkillDto,
+  ListMySkillsQuery,
   ListSkillsQuery,
   ListVersionsQuery,
   PublishSkillVersionDto,
@@ -11,6 +12,7 @@ import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { AuthenticatedHttpClient } from "./httpClient";
 import { HttpInstallationApi } from "./httpInstallationApi";
+import { HttpMySkillsApi } from "./httpMySkillsApi";
 import { HttpPublishingApi } from "./httpPublishingApi";
 import { MockSkillApi } from "./mockSkillApi";
 
@@ -30,6 +32,7 @@ class IncrementalSkillApi extends MockSkillApi {
   private readonly installation = new HttpInstallationApi(
     this.http,
   );
+  private readonly mySkills = new HttpMySkillsApi(this.http);
   private readonly publishing = new HttpPublishingApi(this.http);
 
   override listTags(query?: string) {
@@ -38,6 +41,10 @@ class IncrementalSkillApi extends MockSkillApi {
 
   override listSkills(query: ListSkillsQuery = {}) {
     return this.catalog.listSkills(query);
+  }
+
+  override listMySkills(query: ListMySkillsQuery) {
+    return this.mySkills.listMySkills(query);
   }
 
   override getSkill(skillId: string) {
@@ -84,6 +91,10 @@ class IncrementalSkillApi extends MockSkillApi {
     input: PublishSkillVersionDto,
   ) {
     return this.publishing.publishSkillVersion(skillId, input);
+  }
+
+  override deleteSkill(skillId: string) {
+    return this.mySkills.deleteSkill(skillId);
   }
 
   override async getCurrentUser() {

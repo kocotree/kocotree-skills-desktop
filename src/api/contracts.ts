@@ -64,6 +64,12 @@ export interface UpdateSkillMetadataDto {
   newTagNames?: string[];
   confirmDuplicateDisplayName?: boolean;
 }
+export interface DeleteSkillResultDto {
+  id: string;
+  deletedObjectCount: number;
+  objectCount: number;
+  ossCleaned: boolean;
+}
 export type ResolveInstallationDto = components["schemas"]["ResolveInstallationRequest"];
 export type InstallationEventDto = components["schemas"]["InstallationEventRequest"];
 
@@ -139,6 +145,7 @@ export interface SkillApi {
   listVersionFiles(skillId: string, versionId: string): Promise<FileEntryDto[]>;
   getVersionFileContent(skillId: string, versionId: string, path: string): Promise<SkillFileContentDto>;
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto>;
+  deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
   updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto>;
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto): Promise<SkillDetailDto>;
   withdrawSkillVersion(skillId: string, versionId: string, input: ReasonDto): Promise<SkillVersionDto>;

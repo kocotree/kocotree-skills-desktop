@@ -2011,6 +2011,15 @@ textarea:focus-visible,
   border-radius: 12px;
 }
 
+.my-skills-toolbar > span {
+  color: #696d77;
+  font-size: 13px;
+}
+
+.my-skills-toolbar > span strong {
+  color: #2e3036;
+}
+
 .domain-tabs,
 .relation-tabs {
   display: flex;
@@ -2087,6 +2096,29 @@ button.my-skill-card:hover {
   background: #fff;
   box-shadow: 0 5px 16px rgba(36, 43, 50, 0.06);
   transform: translateY(-1px);
+}
+
+.my-skill-card.online:hover {
+  border-color: #cbd0d4;
+  box-shadow: 0 5px 16px rgba(36, 43, 50, 0.06);
+  transform: translateY(-1px);
+}
+
+.my-skill-card-open {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.my-skill-card-open:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 4px;
 }
 
 .my-skill-card-heading {
@@ -2178,6 +2210,54 @@ button.my-skill-card:hover {
   color: #555b65;
   font-size: 12px;
   text-align: right;
+}
+
+.my-skill-install-count {
+  color: #8b9099;
+  font-size: 11px;
+}
+
+.delete-skill-content {
+  display: grid;
+  gap: 16px;
+}
+
+.delete-skill-content p {
+  margin: 0;
+  color: #8a3232;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.delete-skill-content label {
+  display: grid;
+  gap: 8px;
+}
+
+.delete-skill-content label > span {
+  color: #555b65;
+  font-size: 12px;
+}
+
+.delete-skill-content input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #2e3036;
+  outline: none;
+}
+
+.delete-skill-content input:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.delete-skill-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .my-skills-empty {

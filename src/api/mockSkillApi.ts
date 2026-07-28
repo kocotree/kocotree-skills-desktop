@@ -3,6 +3,7 @@ import {
   SkillApiError,
   type CreateOwnershipTransferDto,
   type CreateSkillDto,
+  type DeleteSkillResultDto,
   type DownloadTicketDto,
   type FileEntryDto,
   type InstallationEventDto,
@@ -269,6 +270,36 @@ export class MockSkillApi implements SkillApi {
     this.versionSkillMd.set(versionId, parsed.inspection.skillMd);
     console.info("[MockSkillApi] Skill 创建完成", { skillId });
     return clone(skill);
+  }
+
+  async deleteSkill(skillId: string): Promise<DeleteSkillResultDto> {
+    await this.wait();
+    const user = this.requireUser();
+    const skillIndex = this.skills.findIndex(
+      (skill) => skill.id === skillId,
+    );
+    if (skillIndex < 0) {
+      throw new SkillApiError(
+        "SKILL_NOT_FOUND",
+        "没有找到该 Skill",
+      );
+    }
+    const skill = this.skills[skillIndex];
+    if (skill.owner.id !== user.id) {
+      throw new SkillApiError(
+        "OWNER_REQUIRED",
+        "只有 Skill Owner 可以永久删除",
+      );
+    }
+    const objectCount = (this.versions.get(skillId) || []).length;
+    this.skills.splice(skillIndex, 1);
+    this.versions.delete(skillId);
+    return {
+      id: skillId,
+      deletedObjectCount: objectCount,
+      objectCount,
+      ossCleaned: true,
+    };
   }
 
   async updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto> {
