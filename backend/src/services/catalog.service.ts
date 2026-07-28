@@ -21,6 +21,9 @@ type SkillRecord = Awaited<
   ReturnType<typeof catalogRepository.listSkills>
 >["items"][number];
 type VersionRecord = NonNullable<SkillRecord["latestVersion"]>;
+type VersionHashFile = Awaited<
+  ReturnType<typeof catalogRepository.listVersionHashFiles>
+>[number];
 
 function toUserDto(user: User | null) {
   if (!user) {
@@ -47,18 +50,10 @@ function toUserDto(user: User | null) {
 
 function extractSkillName(
   slug: string,
-  version: Pick<VersionRecord, "readmeMd" | "files">,
+  version: Pick<VersionRecord, "manifestJson" | "readmeMd">,
 ): string {
   const storedName = readStoredVersionMetadata(version).skillName;
-  if (storedName) return storedName;
-
-  const skillMd = version.files.find(
-    (file) => file.path.toLowerCase().endsWith("skill.md"),
-  );
-  const firstSegment = skillMd?.path.split("/").filter(Boolean)[0];
-  return firstSegment && firstSegment.toLowerCase() !== "skill.md"
-    ? firstSegment
-    : slug;
+  return storedName || slug;
 }
 
 function toVersionDto(
@@ -69,6 +64,7 @@ function toVersionDto(
     creator?: User | null;
   },
   version: VersionRecord,
+  fallbackFiles: VersionHashFile[] = [],
 ) {
   const uploadedBy = toUserDto(version.creator || skill.creator || null);
   const storedMetadata = readStoredVersionMetadata(version);
@@ -97,7 +93,7 @@ function toVersionDto(
     packageSha256: normalizeSha256(version.checksumSha256),
     contentHash:
       storedMetadata.contentHash ||
-      computeVersionContentHash(version.files),
+      computeVersionContentHash(fallbackFiles),
     uploadedBy,
     publishedAt,
     withdrawnBy: null,
@@ -106,13 +102,16 @@ function toVersionDto(
   };
 }
 
-function toSkillSummary(skill: SkillRecord) {
+function toSkillSummary(
+  skill: SkillRecord,
+  fallbackFiles: VersionHashFile[] = [],
+) {
   const version = skill.latestVersion;
   if (!version) {
     throw new Error(`Skill ${skill.id} is missing latest version`);
   }
   const owner = toUserDto(skill.creator);
-  const currentVersion = toVersionDto(skill, version);
+  const currentVersion = toVersionDto(skill, version, fallbackFiles);
   const uploadedBy = currentVersion.uploadedBy;
 
   return {
@@ -139,6 +138,33 @@ function toSkillSummary(skill: SkillRecord) {
   };
 }
 
+async function loadFallbackFiles(
+  versions: Array<VersionRecord | null>,
+): Promise<Map<string, VersionHashFile[]>> {
+  const versionIds = versions
+    .filter(
+      (version): version is VersionRecord =>
+        Boolean(
+          version &&
+          !readStoredVersionMetadata(version).contentHash,
+        ),
+    )
+    .map((version) => version.id);
+  if (versionIds.length === 0) return new Map();
+
+  const files = await catalogRepository.listVersionHashFiles(
+    versionIds,
+  );
+  const filesByVersionId = new Map<string, VersionHashFile[]>();
+  for (const file of files) {
+    const versionFiles =
+      filesByVersionId.get(file.versionId) || [];
+    versionFiles.push(file);
+    filesByVersionId.set(file.versionId, versionFiles);
+  }
+  return filesByVersionId;
+}
+
 export const catalogService = {
   async listTags(query?: string) {
     const items = await catalogRepository.listTags(query);
@@ -150,8 +176,18 @@ export const catalogService = {
 
   async listSkills(input: ListSkillsInput) {
     const result = await catalogRepository.listSkills(input);
+    const fallbackFiles = await loadFallbackFiles(
+      result.items.map((skill) => skill.latestVersion),
+    );
     return {
-      items: result.items.map(toSkillSummary),
+      items: result.items.map((skill) =>
+        toSkillSummary(
+          skill,
+          skill.latestVersion
+            ? fallbackFiles.get(skill.latestVersion.id)
+            : undefined,
+        ),
+      ),
       total: result.total,
       page: input.page,
       pageSize: input.pageSize,
@@ -168,8 +204,18 @@ export const catalogService = {
       page,
       pageSize,
     );
+    const fallbackFiles = await loadFallbackFiles(
+      result.items.map((skill) => skill.latestVersion),
+    );
     return {
-      items: result.items.map(toSkillSummary),
+      items: result.items.map((skill) =>
+        toSkillSummary(
+          skill,
+          skill.latestVersion
+            ? fallbackFiles.get(skill.latestVersion.id)
+            : undefined,
+        ),
+      ),
       total: result.total,
       page,
       pageSize,
@@ -179,8 +225,16 @@ export const catalogService = {
   async getSkill(skillId: string) {
     const skill = await catalogRepository.getSkill(skillId);
     if (!skill) return null;
+    const fallbackFiles = await loadFallbackFiles([
+      skill.latestVersion,
+    ]);
     return {
-      ...toSkillSummary(skill),
+      ...toSkillSummary(
+        skill,
+        skill.latestVersion
+          ? fallbackFiles.get(skill.latestVersion.id)
+          : undefined,
+      ),
       collaborators: [],
       derivedChain: [],
     };
@@ -198,9 +252,14 @@ export const catalogService = {
     );
     const skill = result.skill;
     if (!skill) return null;
+    const fallbackFiles = await loadFallbackFiles(result.items);
     return {
       items: result.items.map((version) =>
-        toVersionDto(skill, version),
+        toVersionDto(
+          skill,
+          version,
+          fallbackFiles.get(version.id),
+        ),
       ),
       total: result.total,
       page,

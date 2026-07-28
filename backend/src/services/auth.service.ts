@@ -171,7 +171,12 @@ export const authService = {
       return null;
     }
 
-    await authRepository.touchUserToken(record.id);
+    const shouldTouchToken =
+      !record.lastUsedAt ||
+      record.lastUsedAt.getTime() <= Date.now() - 5 * 60 * 1000;
+    if (shouldTouchToken) {
+      await authRepository.touchUserToken(record.id);
+    }
     return {
       user: toUserDto(record.user),
       scopes: record.scopes,

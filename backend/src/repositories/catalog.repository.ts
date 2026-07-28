@@ -19,9 +19,6 @@ const skillInclude = {
   latestVersion: {
     include: {
       creator: true,
-      files: {
-        orderBy: [{ type: "asc" }, { path: "asc" }],
-      },
     },
   },
 } satisfies Prisma.SkillInclude;
@@ -175,15 +172,29 @@ export const catalogRepository = {
         take: pageSize,
         include: {
           creator: true,
-          files: {
-            orderBy: [{ type: "asc" }, { path: "asc" }],
-          },
         },
       }),
       prisma.skillVersion.count({ where }),
     ]);
 
     return { skill, items, total };
+  },
+
+  listVersionHashFiles(versionIds: string[]) {
+    return prisma.skillFile.findMany({
+      where: {
+        versionId: {
+          in: versionIds,
+        },
+      },
+      select: {
+        versionId: true,
+        type: true,
+        path: true,
+        checksumSha256: true,
+        sizeBytes: true,
+      },
+    });
   },
 
   getSkillVersionFiles(skillId: string, versionId: string) {
