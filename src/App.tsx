@@ -7,9 +7,13 @@ import {
   localSkillService,
   usesRealInstaller,
   SkillApiError,
-  filterLocalSkills,
+  countActiveLocalSkills,
+  filterWorkspaceSkillGroups,
+  getLocalSkillLocation,
+  groupLocalSkills,
   type LocalSkillFilter,
   type LocalSkillRecord,
+  type SetLocalSkillEnabledInput,
   type SkillSummaryDto,
   type SkillVersionDto,
   type TagDto,
@@ -20,6 +24,7 @@ import { SkillDetailModal } from "./components/SkillDetailModal";
 import { UploadPage } from "./components/UploadPage";
 import { MySkillsPage } from "./components/MySkillsPage";
 import { LocalSkillsPage } from "./components/LocalSkillsPage";
+import { AllAgentsSkillsPage } from "./components/AllAgentsSkillsPage";
 import { NotificationPanel } from "./components/NotificationPanel";
 import { InstallConfirmModal } from "./components/InstallConfirmModal";
 import { InstallFeedbackModal, type InstallFeedbackState } from "./components/InstallFeedbackModal";
@@ -45,10 +50,22 @@ interface InstallPromptState {
 const logoTones = ["dark", "blue", "orange", "violet", "green"] as const;
 
 function localFilterForPage(page: PageKey): LocalSkillFilter | null {
-  if (page === "local-all") return "all";
   if (page === "local-claude") return "claude";
   if (page === "local-codex") return "codex";
   return null;
+}
+
+function installedSkillIdsFromRecords(
+  records: LocalSkillRecord[],
+): Set<string> {
+  return new Set(
+    records.flatMap((record) =>
+      getLocalSkillLocation(record) !== "MANAGER"
+      && record.skillId
+        ? [record.skillId]
+        : [],
+    ),
+  );
 }
 
 function getSkillShortCode(skill: SkillSummaryDto): string {
@@ -400,13 +417,7 @@ function App() {
     try {
       const items = await localSkillService.scanSkills();
       setLocalSkills(items);
-      setInstalledSkillIds(
-        new Set(
-          items.flatMap((item) =>
-            item.skillId ? [item.skillId] : [],
-          ),
-        ),
-      );
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
     } catch (reason) {
       console.error("[KocotreeSkills] 本地 Skill 扫描失败", reason);
       setLocalSkillsError(
@@ -418,6 +429,15 @@ function App() {
       setLocalSkillsLoading(false);
     }
   }, []);
+
+  const setLocalSkillEnabled = useCallback(
+    async (input: SetLocalSkillEnabledInput) => {
+      const items = await localSkillService.setSkillEnabled(input);
+      setLocalSkills(items);
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
+    },
+    [],
+  );
 
   useEffect(() => {
     skillApi.getCurrentUser().then(setCurrentUser).catch((reason: unknown) => {
@@ -689,10 +709,11 @@ function App() {
   }, []);
 
   const localFilter = localFilterForPage(activePage);
+  const localSkillGroups = groupLocalSkills(localSkills);
   const localSkillCounts = {
-    all: localSkills.length,
-    claude: filterLocalSkills(localSkills, "claude").length,
-    codex: filterLocalSkills(localSkills, "codex").length,
+    all: filterWorkspaceSkillGroups(localSkillGroups).length,
+    claude: countActiveLocalSkills(localSkillGroups, "claude"),
+    codex: countActiveLocalSkills(localSkillGroups, "codex"),
   };
 
   return (
@@ -749,7 +770,7 @@ function App() {
           </div>
           <nav className="sidebar-nav sidebar-local-nav" aria-label="本地 Skill 管理">
             <button
-              className={activePage === "local-all" ? "active" : ""}
+              className={`local-nav-parent ${activePage === "local-all" ? "active" : ""}`}
               type="button"
               aria-label={`全部 Agents，${localSkillCounts.all} 个 Skill`}
               title="全部 Agents"
@@ -762,7 +783,7 @@ function App() {
               <span className="local-nav-count">{localSkillCounts.all}</span>
             </button>
             <button
-              className={activePage === "local-claude" ? "active" : ""}
+              className={`local-nav-child ${activePage === "local-claude" ? "active" : ""}`}
               type="button"
               aria-label={`Claude Code，${localSkillCounts.claude} 个 Skill`}
               title="Claude Code"
@@ -775,7 +796,7 @@ function App() {
               <span className="local-nav-count">{localSkillCounts.claude}</span>
             </button>
             <button
-              className={activePage === "local-codex" ? "active" : ""}
+              className={`local-nav-child ${activePage === "local-codex" ? "active" : ""}`}
               type="button"
               aria-label={`Codex，${localSkillCounts.codex} 个 Skill`}
               title="Codex"
@@ -844,6 +865,14 @@ function App() {
             onLogin={() => setLoginVisible(true)}
             onOpenSkill={handleOpenSkill}
           />
+        ) : activePage === "local-all" ? (
+          <AllAgentsSkillsPage
+            skills={localSkills}
+            loading={localSkillsLoading}
+            error={localSkillsError}
+            onRefresh={() => void refreshLocalSkills()}
+            onSetEnabled={setLocalSkillEnabled}
+          />
         ) : localFilter ? (
           <LocalSkillsPage
             filter={localFilter}
@@ -851,6 +880,7 @@ function App() {
             loading={localSkillsLoading}
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
+            onSetEnabled={setLocalSkillEnabled}
           />
         ) : (
           currentUser ? <UploadPage

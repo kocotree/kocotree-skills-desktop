@@ -1,15 +1,22 @@
+import { useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
-  filterLocalSkills,
-  getLocalSkillSource,
+  canControlLocalSkill,
+  filterLocalSkillGroups,
+  getLocalSkillActivationState,
+  getLocalSkillSourceRecord,
+  groupLocalSkills,
+  SkillApiError,
   usesRealInstaller,
+  type LocalSkillActivationState,
   type LocalSkillFilter,
+  type LocalSkillGroup,
   type LocalSkillRecord,
-  type LocalSkillSource,
   type LocalSkillStatus,
+  type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import { Button, Spin, Toast } from "./ui";
+import { Button, Modal, Spin, Toast } from "./ui";
 
 const SOURCE_DETAILS: Record<
   LocalSkillFilter,
@@ -20,36 +27,29 @@ const SOURCE_DETAILS: Record<
     emptyHint: string;
   }
 > = {
-  all: {
-    title: "本地 Skill 管理",
-    description: "集中查看本机 Agents、Claude Code 与 Codex 的 Skill",
-    emptyTitle: "没有发现本地 Skill",
-    emptyHint: "将 Skill 放入 Agents、Claude Code 或 Codex 的 skills 目录后重新扫描",
-  },
   claude: {
     title: "Claude Code Skills",
-    description: "来自 ~/.claude/skills 的本地 Skill",
-    emptyTitle: "没有发现 Claude Code Skill",
-    emptyHint: "将 Skill 放入 ~/.claude/skills 后重新扫描",
+    description: "读取 ~/.claude/skills；关闭后会移除软链接和对应卡片",
+    emptyTitle: "Claude Code 还没有管理 Skill",
+    emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
   codex: {
     title: "Codex Skills",
-    description: "来自 ~/.codex/skills 的本地 Skill",
-    emptyTitle: "没有发现 Codex Skill",
-    emptyHint: "将 Skill 放入 ~/.codex/skills 后重新扫描",
+    description: "读取 ~/.codex/skills；关闭后会移除软链接和对应卡片",
+    emptyTitle: "Codex 还没有管理 Skill",
+    emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
 };
 
-const SOURCE_LABELS: Record<LocalSkillSource, string> = {
-  agents: "通用 Agents",
-  claude: "Claude Code",
-  codex: "Codex",
-};
-
-const SOURCE_ICONS: Record<LocalSkillSource, "agents" | "claude" | "codex"> = {
-  agents: "agents",
-  claude: "claude",
-  codex: "codex",
+const AGENT_DETAILS: Record<
+  LocalSkillFilter,
+  {
+    label: string;
+    icon: "claude" | "codex";
+  }
+> = {
+  claude: { label: "Claude Code", icon: "claude" },
+  codex: { label: "Codex", icon: "codex" },
 };
 
 const STATUS_LABELS: Record<LocalSkillStatus, string> = {
@@ -60,9 +60,45 @@ const STATUS_LABELS: Record<LocalSkillStatus, string> = {
   MISSING: "目录缺失",
 };
 
+const ACTIVATION_LABELS: Record<LocalSkillActivationState, string> = {
+  enabled: "已开启",
+  disabled: "已关闭",
+  unmanaged: "独立安装",
+};
+
+function activationDescription(
+  group: LocalSkillGroup,
+  agent: LocalSkillFilter,
+  state: LocalSkillActivationState,
+): string {
+  if (state === "unmanaged") {
+    return "Skill 是独立安装目录或指向其他位置的链接，为避免数据丢失不能通过开关关闭";
+  }
+  if (!canControlLocalSkill(group)) {
+    return "该 Skill 不在可控制的全部 Agents 工作区或兼容仓库中";
+  }
+  return state === "enabled"
+    ? `关闭后只移除 ${AGENT_DETAILS[agent].label} 的软链接，Skill 本体仍会保留`
+    : `开启后将为 ${AGENT_DETAILS[agent].label} 创建软链接`;
+}
+
+function sourceLabels(
+  group: LocalSkillGroup,
+  agent: LocalSkillFilter,
+): string[] {
+  if (agent === "claude") {
+    return group.agentRecords.claude
+      ? ["~/.claude/skills"]
+      : ["当前已关闭"];
+  }
+  return group.agentRecords.codex
+    ? ["~/.codex/skills"]
+    : ["当前已关闭"];
+}
+
 async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
   if (!usesRealInstaller) {
-    Toast.info(`本地目录：${record.installPath}`);
+    Toast.info(`Skill 本体：${record.installPath}`);
     return;
   }
   try {
@@ -74,7 +110,7 @@ async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 /**
- * 功能说明：按 Agent 来源浏览本机 Skill，并提供目录定位入口。
+ * 功能说明：展示指定 Agent 的本地 Skill，并从全部 Agents 工作区添加受管软链接。
  */
 export function LocalSkillsPage({
   filter,
@@ -82,15 +118,88 @@ export function LocalSkillsPage({
   loading,
   error,
   onRefresh,
+  onSetEnabled,
 }: {
   filter: LocalSkillFilter;
   skills: LocalSkillRecord[];
   loading: boolean;
   error: string;
   onRefresh: () => void;
+  onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
 }) {
-  const visibleSkills = filterLocalSkills(skills, filter);
+  const [pendingControl, setPendingControl] = useState("");
+  const [addVisible, setAddVisible] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
+  const groups = groupLocalSkills(skills);
+  const visibleGroups = filterLocalSkillGroups(groups, filter);
   const details = SOURCE_DETAILS[filter];
+  const enabledCount = visibleGroups.filter(
+    (group) =>
+      getLocalSkillActivationState(group, filter) !== "disabled",
+  ).length;
+  const occupiedSkillNames = new Set(
+    groups.flatMap((group) =>
+      getLocalSkillActivationState(group, filter) !== "disabled"
+        ? [group.primaryRecord.skillName]
+        : [],
+    ),
+  );
+  const normalizedQuery = addQuery.trim().toLocaleLowerCase();
+  const availableGroups = groups.filter((group) => {
+    const record = getLocalSkillSourceRecord(group);
+    if (
+      !record
+      || !canControlLocalSkill(group)
+      || occupiedSkillNames.has(record.skillName)
+      || getLocalSkillActivationState(group, filter) !== "disabled"
+    ) {
+      return false;
+    }
+    return !normalizedQuery
+      || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
+      || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
+  });
+
+  async function toggleSkill(group: LocalSkillGroup): Promise<void> {
+    const sourceRecord = getLocalSkillSourceRecord(group);
+    const state = getLocalSkillActivationState(group, filter);
+    if (
+      !sourceRecord
+      || !canControlLocalSkill(group)
+      || (state !== "enabled" && state !== "disabled")
+    ) {
+      return;
+    }
+    const enabled = state === "disabled";
+    const controlKey = `${group.id}:${filter}`;
+    setPendingControl(controlKey);
+    try {
+      await onSetEnabled({
+        skillName: sourceRecord.skillName,
+        sourcePath: sourceRecord.installPath,
+        agent: filter,
+        enabled,
+      });
+      Toast.success(
+        `${AGENT_DETAILS[filter].label} 已${enabled ? "开启" : "关闭"} ${sourceRecord.displayName}`,
+      );
+    } catch (reason) {
+      console.error("[KocotreeSkills] 更新本地 Skill 状态失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "更新本地 Skill 状态失败",
+      );
+    } finally {
+      setPendingControl("");
+    }
+  }
+
+  function closeAddModal(): void {
+    if (pendingControl) return;
+    setAddVisible(false);
+    setAddQuery("");
+  }
 
   return (
     <main className="page-content local-skills-page">
@@ -103,11 +212,21 @@ export function LocalSkillsPage({
 
       <section className="my-skills-toolbar local-skills-toolbar">
         <span>
-          共 <strong>{visibleSkills.length}</strong> 个 Skill
+          共 <strong>{enabledCount}</strong> 个 Skill
         </span>
-        <Button size="small" loading={loading} onClick={onRefresh}>
-          重新扫描
-        </Button>
+        <div className="local-skills-toolbar-actions">
+          <Button
+            size="small"
+            theme="solid"
+            type="primary"
+            onClick={() => setAddVisible(true)}
+          >
+            添加 Skill
+          </Button>
+          <Button size="small" loading={loading} onClick={onRefresh}>
+            重新扫描
+          </Button>
+        </div>
       </section>
 
       {loading ? (
@@ -124,19 +243,29 @@ export function LocalSkillsPage({
           </Button>
         </section>
       ) : (
-        <section className="my-skills-list">
-          {visibleSkills.map((record) => {
-            const source = getLocalSkillSource(record);
+        <section className="my-skills-list local-skills-list">
+          {visibleGroups.map((group) => {
+            const record = group.primaryRecord;
+            const state = getLocalSkillActivationState(group, filter);
+            const controlKey = `${group.id}:${filter}`;
+            const pending = pendingControl === controlKey;
+            const interactive = canControlLocalSkill(group)
+              && (state === "enabled" || state === "disabled");
             return (
-              <article className="my-skill-card local" key={record.id}>
+              <article className="my-skill-card local" key={group.id}>
                 <button
                   className="my-skill-card-open"
                   type="button"
                   onClick={() => void revealLocalSkill(record)}
                 >
                   <span className="my-skill-card-heading">
-                    <span className={`agent-skill-logo agent-skill-logo-${source}`}>
-                      <AppIcon name={SOURCE_ICONS[source]} size={18} />
+                    <span
+                      className={`agent-skill-logo agent-skill-logo-${filter}`}
+                    >
+                      <AppIcon
+                        name={AGENT_DETAILS[filter].icon}
+                        size={18}
+                      />
                     </span>
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
@@ -147,11 +276,45 @@ export function LocalSkillsPage({
                     </span>
                   </span>
                 </button>
+
+                <div className="skill-agent-controls">
+                  <div
+                    className={`skill-agent-control skill-agent-control-${filter}`}
+                    title={activationDescription(group, filter, state)}
+                  >
+                    <span className="skill-agent-name">
+                      <AppIcon
+                        name={AGENT_DETAILS[filter].icon}
+                        size={14}
+                      />
+                      {AGENT_DETAILS[filter].label}
+                    </span>
+                    <button
+                      className={`skill-agent-toggle state-${state}`}
+                      type="button"
+                      role="switch"
+                      aria-checked={state !== "disabled"}
+                      aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
+                      disabled={!interactive || Boolean(pendingControl)}
+                      onClick={() => void toggleSkill(group)}
+                    >
+                      <span className="skill-agent-toggle-track">
+                        <span className="skill-agent-toggle-knob" />
+                      </span>
+                      <span className="skill-agent-state">
+                        {pending ? "处理中" : ACTIVATION_LABELS[state]}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="my-skill-card-footer">
                   <div className="my-skill-statuses">
-                    <span className={`agent-source agent-source-${source}`}>
-                      {SOURCE_LABELS[source]}
-                    </span>
+                    {sourceLabels(group, filter).map((label) => (
+                      <span className="agent-source" key={label}>
+                        {label}
+                      </span>
+                    ))}
                     <span
                       className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
                     >
@@ -167,20 +330,99 @@ export function LocalSkillsPage({
                     size="small"
                     onClick={() => void revealLocalSkill(record)}
                   >
-                    在目录中显示
+                    {getLocalSkillSourceRecord(group)
+                      ? "打开 Skill 本体"
+                      : "在目录中显示"}
                   </Button>
                 </div>
               </article>
             );
           })}
-          {visibleSkills.length === 0 && (
+          {visibleGroups.length === 0 && (
             <div className="empty-state my-skills-empty">
               <strong>{details.emptyTitle}</strong>
               <span>{details.emptyHint}</span>
+              <Button
+                size="small"
+                theme="solid"
+                type="primary"
+                onClick={() => setAddVisible(true)}
+              >
+                添加 Skill
+              </Button>
             </div>
           )}
         </section>
       )}
+
+      <Modal
+        className="local-skill-add-modal"
+        title={`为 ${AGENT_DETAILS[filter].label} 添加 Skill`}
+        visible={addVisible}
+        width={620}
+        onCancel={closeAddModal}
+        maskClosable={!pendingControl}
+        closeOnEsc={!pendingControl}
+        footer={
+          <div className="local-skill-add-footer">
+            <span>还有 {availableGroups.length} 个工作区 Skill 可添加</span>
+            <Button onClick={closeAddModal} disabled={Boolean(pendingControl)}>
+              完成
+            </Button>
+          </div>
+        }
+      >
+        <div className="local-skill-add-content">
+          <p>
+            开启后只会创建软链接，Skill 本体仍保留在
+            {" "}~/.agents/skills；旧版统一仓库中的 Skill 也可继续添加。
+          </p>
+          <input
+            className="local-skill-add-search"
+            type="search"
+            value={addQuery}
+            placeholder="搜索 Skill 名称"
+            aria-label="搜索全部 Agents 工作区 Skill"
+            onChange={(event) => setAddQuery(event.target.value)}
+          />
+          <div className="local-skill-add-list">
+            {availableGroups.map((group) => {
+              const record = getLocalSkillSourceRecord(group)!;
+              const controlKey = `${group.id}:${filter}`;
+              return (
+                <article className="local-skill-add-item" key={group.id}>
+                  <span>
+                    <strong>{record.displayName}</strong>
+                    <code>{record.skillName}</code>
+                  </span>
+                  <Button
+                    size="small"
+                    theme="solid"
+                    type="primary"
+                    loading={pendingControl === controlKey}
+                    disabled={Boolean(pendingControl)}
+                    onClick={() => void toggleSkill(group)}
+                  >
+                    开启
+                  </Button>
+                </article>
+              );
+            })}
+            {availableGroups.length === 0 && (
+              <div className="local-skill-add-empty">
+                <strong>
+                  {normalizedQuery ? "没有匹配的 Skill" : "没有可添加的 Skill"}
+                </strong>
+                <span>
+                  {normalizedQuery
+                    ? "换一个名称继续搜索"
+                    : "工作区中的 Skill 已全部加入管理"}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
     </main>
   );
 }
