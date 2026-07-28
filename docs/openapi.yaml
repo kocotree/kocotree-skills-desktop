@@ -194,6 +194,43 @@ paths:
                 $ref: '#/components/schemas/SkillDetailResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Skills]
+      summary: 永久删除当前用户拥有的 Skill
+      operationId: deleteSkill
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      responses:
+        '200':
+          description: Skill 已永久删除
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, data, msg]
+                properties:
+                  code:
+                    type: integer
+                    const: 200
+                  data:
+                    type: object
+                    required: [id, deletedObjectCount, objectCount, ossCleaned]
+                    properties:
+                      id:
+                        type: string
+                      deletedObjectCount:
+                        type: integer
+                      objectCount:
+                        type: integer
+                      ossCleaned:
+                        type: boolean
+                  msg:
+                    type: string
+                    const: success
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /api/skills/{skillId}/versions:
     get:
       tags: [Versions]

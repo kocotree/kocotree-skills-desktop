@@ -5,6 +5,7 @@ import { config } from "./config";
 import { authRoutes } from "./routes/auth.route";
 import { catalogRoutes } from "./routes/catalog.route";
 import { installationRoutes } from "./routes/installation.route";
+import { mySkillsRoutes } from "./routes/my-skills.route";
 import { publishingRoutes } from "./routes/publishing.route";
 
 export function buildApp() {
@@ -14,7 +15,7 @@ export function buildApp() {
 
   void app.register(cors, {
     origin: config.frontendOrigins,
-    methods: ["GET", "POST", "OPTIONS"],
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
   });
   void app.register(multipart, {
     throwFileSizeLimit: true,
@@ -32,6 +33,9 @@ export function buildApp() {
     prefix: "/api",
   });
   void app.register(installationRoutes, {
+    prefix: "/api",
+  });
+  void app.register(mySkillsRoutes, {
     prefix: "/api",
   });
   void app.register(publishingRoutes, {

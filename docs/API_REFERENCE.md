@@ -352,6 +352,17 @@ Authorization: Bearer <token>
 
 请求至少包含一个可修改字段。`displayName` 仅 Owner 可改；展示简介和 Tags 允许 Owner 与协作者修改。修改不创建版本，采用后提交覆盖前提交。修改为重名展示名称时，客户端确认后携带 `confirmDuplicateDisplayName=true` 重试。
 
+### 8.4 永久删除 Skill
+
+```http
+DELETE /api/skills/{skillId}
+Authorization: Bearer <token>
+```
+
+仅 Owner 可以永久删除。数据库中的 Skill、版本、文件和关联记录会在同一事务中删除；
+事务成功后服务端尽力清理所有版本的 OSS 包。OSS 清理失败不会恢复已经删除的数据库记录，
+响应中的 `ossCleaned=false` 用于后续清理孤立对象。
+
 ## 9. 撤回、归档与恢复
 
 ### 9.1 撤回版本

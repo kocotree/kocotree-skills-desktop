@@ -98,6 +98,33 @@ export const catalogRepository = {
     return { items, total };
   },
 
+  async listOwnedSkills(
+    userId: string,
+    page: number,
+    pageSize: number,
+  ) {
+    const where: Prisma.SkillWhereInput = {
+      createdBy: userId,
+      status: "PUBLISHED",
+      latestVersionId: {
+        not: null,
+      },
+    };
+    const [items, total] = await prisma.$transaction([
+      prisma.skill.findMany({
+        where,
+        orderBy: {
+          updatedAt: "desc",
+        },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: skillInclude,
+      }),
+      prisma.skill.count({ where }),
+    ]);
+    return { items, total };
+  },
+
   getSkill(skillId: string) {
     return prisma.skill.findFirst({
       where: {

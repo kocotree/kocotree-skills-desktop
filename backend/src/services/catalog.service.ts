@@ -158,6 +158,24 @@ export const catalogService = {
     };
   },
 
+  async listOwnedSkills(
+    userId: string,
+    page: number,
+    pageSize: number,
+  ) {
+    const result = await catalogRepository.listOwnedSkills(
+      userId,
+      page,
+      pageSize,
+    );
+    return {
+      items: result.items.map(toSkillSummary),
+      total: result.total,
+      page,
+      pageSize,
+    };
+  },
+
   async getSkill(skillId: string) {
     const skill = await catalogRepository.getSkill(skillId);
     if (!skill) return null;
