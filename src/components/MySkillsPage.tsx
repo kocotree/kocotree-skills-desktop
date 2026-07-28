@@ -323,7 +323,7 @@ export function MySkillsPage({
                 disabled={deleting}
                 onClick={fillDeleteConfirmation}
               >
-                填入名称
+                一键填入
               </Button>
             </div>
             {deleteError && (
