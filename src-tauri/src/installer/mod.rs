@@ -82,6 +82,13 @@ pub struct SetLocalSkillEnabledInput {
     pub enabled: bool,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveLocalSkillInput {
+    pub skill_id: String,
+    pub skill_name: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalSkillManagerState {
@@ -1447,6 +1454,212 @@ fn set_local_skill_enabled_on_disk(
     set_local_skill_enabled_at_home(&home, input)
 }
 
+#[derive(Clone, Copy, Debug)]
+enum LocalRemovalKind {
+    ManagedLink(ManagedDirectoryLinkKind),
+    Directory,
+}
+
+fn uninstall_io_error(action: &str, error: std::io::Error) -> InstallError {
+    InstallError::new("LOCAL_UNINSTALL_IO_ERROR", format!("{action}失败：{error}"))
+}
+
+fn owned_install_metadata_matches(
+    path: &Path,
+    input: &RemoveLocalSkillInput,
+) -> Result<bool, InstallError> {
+    let metadata_path = path.join(INSTALL_METADATA_FILE);
+    let content = match fs::read_to_string(&metadata_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(uninstall_io_error("读取 Skill 安装信息", error)),
+    };
+    let metadata = serde_json::from_str::<InstalledSkillMetadata>(&content).map_err(|_| {
+        InstallError::with_details(
+            "LOCAL_UNINSTALL_OWNERSHIP_UNCLEAR",
+            "本地 Skill 的安装信息无效，未执行删除",
+            serde_json::json!({ "path": path }),
+        )
+    })?;
+    if metadata.schema_version != 1
+        || metadata.skill_id != input.skill_id
+        || metadata.skill_name != input.skill_name
+    {
+        return Err(InstallError::with_details(
+            "LOCAL_UNINSTALL_OWNERSHIP_MISMATCH",
+            "本地目录不属于当前平台 Skill，未执行删除",
+            serde_json::json!({ "path": path }),
+        ));
+    }
+    Ok(true)
+}
+
+fn remove_local_skill_at_home(
+    home: &Path,
+    input: RemoveLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    if !is_valid_skill_name(&input.skill_name) {
+        return Err(InstallError::new(
+            "INVALID_SKILL_NAME",
+            "Skill 名称只能包含小写字母、数字和单个连字符",
+        ));
+    }
+
+    let source = home.join(".agents").join("skills").join(&input.skill_name);
+    let mut source_owned = false;
+    let mut canonical_source = None;
+    match fs::symlink_metadata(&source) {
+        Ok(metadata) => {
+            let link_kind = managed_directory_link_kind(&source, &metadata)
+                .map_err(|error| uninstall_io_error("检查 Skill 本体", error))?;
+            if link_kind.is_some() || !metadata.is_dir() {
+                return Err(InstallError::with_details(
+                    "LOCAL_UNINSTALL_SOURCE_UNSAFE",
+                    "全部 Agents 工作区中的同名项不是可安全删除的实体目录",
+                    serde_json::json!({ "path": source }),
+                ));
+            }
+            if !owned_install_metadata_matches(&source, &input)? {
+                return Err(InstallError::with_details(
+                    "LOCAL_UNINSTALL_NOT_MANAGED",
+                    "全部 Agents 工作区中的 Skill 不是由平台安装，未执行删除",
+                    serde_json::json!({ "path": source }),
+                ));
+            }
+            canonical_source = Some(
+                source
+                    .canonicalize()
+                    .map_err(|error| uninstall_io_error("定位 Skill 本体", error))?,
+            );
+            source_owned = true;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(uninstall_io_error("检查 Skill 本体", error)),
+    }
+
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    let mut removal_targets = Vec::<(PathBuf, LocalRemovalKind)>::new();
+    for agent in ["claude", "codex"] {
+        let target = preferred_agent_skills_root(home, agent)?.join(&input.skill_name);
+        let metadata = match fs::symlink_metadata(&target) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(uninstall_io_error("检查 Agent Skill", error)),
+        };
+        let link_kind = managed_directory_link_kind(&target, &metadata)
+            .map_err(|error| uninstall_io_error("检查 Agent Skill 连接", error))?;
+        if let Some(link_kind) = link_kind {
+            let Some(expected_source) = canonical_source.as_ref() else {
+                return Err(InstallError::with_details(
+                    "LOCAL_UNINSTALL_CONNECTION_UNSAFE",
+                    "Agent 中存在无法确认来源的同名连接，未执行删除",
+                    serde_json::json!({ "path": target }),
+                ));
+            };
+            let current_target = target.canonicalize().map_err(|_| {
+                InstallError::with_details(
+                    "LOCAL_UNINSTALL_CONNECTION_UNSAFE",
+                    "Agent 中存在失效或无法确认来源的同名连接，未执行删除",
+                    serde_json::json!({ "path": target }),
+                )
+            })?;
+            if &current_target != expected_source {
+                return Err(InstallError::with_details(
+                    "LOCAL_UNINSTALL_CONNECTION_CONFLICT",
+                    "Agent 中的同名连接指向其他位置，未执行删除",
+                    serde_json::json!({ "path": target }),
+                ));
+            }
+            removal_targets.push((target, LocalRemovalKind::ManagedLink(link_kind)));
+            continue;
+        }
+        if !metadata.is_dir() {
+            return Err(InstallError::with_details(
+                "LOCAL_UNINSTALL_TARGET_UNSAFE",
+                "Agent 中的同名项不是可安全删除的 Skill 目录",
+                serde_json::json!({ "path": target }),
+            ));
+        }
+
+        let connection_key = managed_connection_key(agent, &input.skill_name);
+        let managed_copy =
+            manager_state
+                .connections
+                .get(&connection_key)
+                .is_some_and(|connection| {
+                    connection.mode == ManagedConnectionMode::Copy
+                        && canonical_source.as_ref().is_some_and(|source_path| {
+                            PathBuf::from(&connection.source_path)
+                                .canonicalize()
+                                .is_ok_and(|path| path == *source_path)
+                                && managed_copy_points_to(&target, source_path)
+                        })
+                });
+        if managed_copy || owned_install_metadata_matches(&target, &input)? {
+            removal_targets.push((target, LocalRemovalKind::Directory));
+            continue;
+        }
+        return Err(InstallError::with_details(
+            "LOCAL_UNINSTALL_TARGET_CONFLICT",
+            "Agent 中存在用户管理的同名独立 Skill，未执行删除",
+            serde_json::json!({ "path": target }),
+        ));
+    }
+
+    if !source_owned && removal_targets.is_empty() {
+        return Err(InstallError::new(
+            "LOCAL_UNINSTALL_NOT_FOUND",
+            "没有找到可由平台卸载的本地 Skill",
+        ));
+    }
+
+    for (target, kind) in &removal_targets {
+        match kind {
+            LocalRemovalKind::ManagedLink(link_kind) => {
+                remove_managed_directory_link(target, *link_kind)
+                    .map_err(|error| uninstall_io_error("移除 Agent Skill 连接", error))?;
+            }
+            LocalRemovalKind::Directory => {
+                fs::remove_dir_all(target)
+                    .map_err(|error| uninstall_io_error("删除 Agent Skill 目录", error))?;
+            }
+        }
+    }
+    if source_owned {
+        fs::remove_dir_all(&source)
+            .map_err(|error| uninstall_io_error("删除 Skill 本体", error))?;
+    }
+
+    let mut state_changed = false;
+    for agent in ["claude", "codex"] {
+        if let Some(assignments) = manager_state.assignments.get_mut(agent) {
+            let previous_length = assignments.len();
+            assignments.retain(|skill_name| skill_name != &input.skill_name);
+            state_changed |= assignments.len() != previous_length;
+        }
+        state_changed |= manager_state
+            .connections
+            .remove(&managed_connection_key(agent, &input.skill_name))
+            .is_some();
+    }
+    manager_state
+        .assignments
+        .retain(|_, assignments| !assignments.is_empty());
+    if state_changed {
+        save_local_skill_manager_state(home, &manager_state)?;
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn remove_local_skill_on_disk(
+    input: RemoveLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    remove_local_skill_at_home(&home, input)
+}
+
 /** 只读扫描全部 Agents 工作区、兼容仓库以及 Claude Code/Codex 目录。 */
 #[tauri::command]
 pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
@@ -1473,6 +1686,34 @@ pub async fn set_local_skill_enabled(
                 format!("更新本地 Skill 状态失败：{error}"),
             )
         })?
+}
+
+/** 安全移除平台安装的 Skill 本体及其 Claude Code/Codex 受管连接。 */
+#[tauri::command]
+pub async fn remove_local_skill(
+    input: RemoveLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    info!(
+        "开始卸载 Skill：skill_id={}, skill_name={}",
+        input.skill_id, input.skill_name
+    );
+    let skill_name = input.skill_name.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || remove_local_skill_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_UNINSTALL_FAILED",
+                format!("卸载本地 Skill 失败：{error}"),
+            )
+        })?;
+    match &result {
+        Ok(_) => info!("Skill 卸载完成：skill_name={skill_name}"),
+        Err(uninstall_error) => error!(
+            "Skill 卸载失败：skill_name={}, code={}, message={}",
+            skill_name, uninstall_error.code, uninstall_error.message
+        ),
+    }
+    result
 }
 
 #[cfg(test)]
@@ -1597,6 +1838,121 @@ mod tests {
         assert_eq!(error.code, "INVALID_SKILL_PACKAGE");
         assert!(!root.path().join("test-skill").exists());
         assert!(!root.path().parent().unwrap().join("escape.txt").exists());
+    }
+
+    #[test]
+    fn uninstalls_platform_skill_and_managed_agent_connections() {
+        let home = tempfile::tempdir().unwrap();
+        let bytes = create_package("test-skill", None);
+        let skills_root = home.path().join(".agents").join("skills");
+        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        let source = skills_root.join("test-skill");
+
+        for agent in ["claude", "codex"] {
+            set_local_skill_enabled_at_home(
+                home.path(),
+                SetLocalSkillEnabledInput {
+                    skill_name: "test-skill".to_string(),
+                    source_path: source.to_string_lossy().into_owned(),
+                    agent: agent.to_string(),
+                    enabled: true,
+                },
+            )
+            .unwrap();
+        }
+
+        let records = remove_local_skill_at_home(
+            home.path(),
+            RemoveLocalSkillInput {
+                skill_id: "skill-test".to_string(),
+                skill_name: "test-skill".to_string(),
+            },
+        )
+        .unwrap();
+
+        assert!(!source.exists());
+        assert!(!home
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("test-skill")
+            .exists());
+        assert!(!home
+            .path()
+            .join(".codex")
+            .join("skills")
+            .join("test-skill")
+            .exists());
+        assert!(!records
+            .iter()
+            .any(|record| record.skill_name == "test-skill"));
+        let state = load_local_skill_manager_state(home.path()).unwrap();
+        assert!(state
+            .assignments
+            .values()
+            .all(|skills| { !skills.iter().any(|skill_name| skill_name == "test-skill") }));
+        assert!(state.connections.is_empty());
+    }
+
+    #[test]
+    fn uninstall_stops_before_deleting_an_independent_agent_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let bytes = create_package("test-skill", None);
+        let skills_root = home.path().join(".agents").join("skills");
+        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        let source = skills_root.join("test-skill");
+        let independent = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&independent).unwrap();
+        fs::write(
+            independent.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: independent\n---\n",
+        )
+        .unwrap();
+        fs::write(independent.join("keep.txt"), "keep").unwrap();
+
+        let error = remove_local_skill_at_home(
+            home.path(),
+            RemoveLocalSkillInput {
+                skill_id: "skill-test".to_string(),
+                skill_name: "test-skill".to_string(),
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "LOCAL_UNINSTALL_TARGET_CONFLICT");
+        assert!(source.join("SKILL.md").is_file());
+        assert_eq!(
+            fs::read_to_string(independent.join("keep.txt")).unwrap(),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn uninstall_refuses_an_unmanaged_agents_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: unmanaged\n---\n",
+        )
+        .unwrap();
+
+        let error = remove_local_skill_at_home(
+            home.path(),
+            RemoveLocalSkillInput {
+                skill_id: "skill-test".to_string(),
+                skill_name: "test-skill".to_string(),
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "LOCAL_UNINSTALL_NOT_MANAGED");
+        assert!(source.join("SKILL.md").is_file());
     }
 
     #[test]

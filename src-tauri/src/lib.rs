@@ -25,7 +25,8 @@ pub fn run() {
             auth_callback::begin_desktop_auth_callback,
             installer::install_skill,
             installer::scan_local_skills,
-            installer::set_local_skill_enabled
+            installer::set_local_skill_enabled,
+            installer::remove_local_skill
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

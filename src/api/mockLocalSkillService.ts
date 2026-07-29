@@ -6,6 +6,7 @@ import {
   type LocalSkillLocation,
   type LocalSkillRecord,
   type LocalSkillService,
+  type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
 } from "./contracts";
 import { mockInstallScenarios, skillIds } from "./mockData";
@@ -313,9 +314,28 @@ export class MockLocalSkillService implements LocalSkillService {
     };
   }
 
-  async remove(skillName: string): Promise<void> {
+  async remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]> {
     await this.wait();
-    const index = this.records.findIndex((item) => item.skillName === skillName);
-    if (index >= 0) this.records.splice(index, 1);
+    const ownedRecord = this.records.find(
+      (item) =>
+        item.skillId === input.skillId
+        && item.skillName === input.skillName
+        && (
+          item.status === "PLATFORM_INSTALLED"
+          || item.status === "PLATFORM_MODIFIED"
+        ),
+    );
+    if (!ownedRecord) {
+      throw new SkillApiError(
+        "LOCAL_UNINSTALL_NOT_FOUND",
+        "没有找到可由平台卸载的本地 Skill",
+      );
+    }
+    for (let index = this.records.length - 1; index >= 0; index -= 1) {
+      if (this.records[index]?.skillName === input.skillName) {
+        this.records.splice(index, 1);
+      }
+    }
+    return structuredClone(this.records);
   }
 }

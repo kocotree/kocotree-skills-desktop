@@ -125,6 +125,11 @@ export interface SetLocalSkillEnabledInput {
   enabled: boolean;
 }
 
+export interface RemoveLocalSkillInput {
+  skillId: string;
+  skillName: string;
+}
+
 export interface LocalInstallRequest {
   skill: SkillSummaryDto;
   version: SkillVersionDto;
@@ -154,7 +159,7 @@ export interface SkillInstaller {
 export interface LocalSkillService extends SkillInstaller {
   scanSkills(): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
-  remove(skillName: string): Promise<void>;
+  remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
 }
 
 /**

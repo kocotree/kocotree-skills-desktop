@@ -94,6 +94,41 @@ export function groupLocalSkills(
 }
 
 /**
+ * 返回可由平台安全卸载的本地 Skill，并优先选取全部 Agents 工作区中的本体记录。
+ */
+export function getUninstallableSkillRecords(
+  records: LocalSkillRecord[],
+): Map<string, LocalSkillRecord> {
+  const locationPriority: Record<LocalSkillLocation, number> = {
+    AGENTS: 0,
+    CLAUDE: 1,
+    CODEX: 2,
+    MANAGER: 3,
+  };
+  const candidates = records
+    .filter(
+      (record) =>
+        Boolean(record.skillId)
+        && (
+          record.status === "PLATFORM_INSTALLED"
+          || record.status === "PLATFORM_MODIFIED"
+        ),
+    )
+    .sort(
+      (left, right) =>
+        locationPriority[getLocalSkillLocation(left)]
+        - locationPriority[getLocalSkillLocation(right)],
+    );
+  const recordsBySkillId = new Map<string, LocalSkillRecord>();
+  for (const record of candidates) {
+    if (record.skillId && !recordsBySkillId.has(record.skillId)) {
+      recordsBySkillId.set(record.skillId, record);
+    }
+  }
+  return recordsBySkillId;
+}
+
+/**
  * 返回可作为 Agent 连接本体的 Skill。优先使用全部 Agents 工作区，
  * 旧版统一仓库仅作为兼容来源保留。
  */

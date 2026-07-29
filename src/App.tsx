@@ -10,6 +10,7 @@ import {
   countActiveLocalSkills,
   filterWorkspaceSkillGroups,
   getLocalSkillLocation,
+  getUninstallableSkillRecords,
   groupLocalSkills,
   type LocalSkillFilter,
   type LocalSkillRecord,
@@ -30,6 +31,7 @@ import { InstallConfirmModal } from "./components/InstallConfirmModal";
 import { InstallFeedbackModal, type InstallFeedbackState } from "./components/InstallFeedbackModal";
 import { TagFilter } from "./components/TagFilter";
 import { getSkillPageCount, SkillPagination } from "./components/LocalSkillPagination";
+import { UninstallConfirmModal } from "./components/UninstallConfirmModal";
 import "./App.css";
 
 type PageKey =
@@ -48,6 +50,11 @@ interface InstallPromptState {
   warnings: string[];
   forceRequired: boolean;
   promptTitle?: string;
+}
+
+interface UninstallPromptState {
+  skill: SkillSummaryDto;
+  record: LocalSkillRecord;
 }
 
 const logoTones = ["dark", "blue", "orange", "violet", "green"] as const;
@@ -94,18 +101,24 @@ function SkillCard({
   skill,
   installed,
   installing,
+  uninstallable,
+  uninstalling,
   installDisabled,
   onOpen,
   onInstall,
+  onUninstall,
   highlighted,
   cardRef,
 }: {
   skill: SkillSummaryDto;
   installed: boolean;
   installing: boolean;
+  uninstallable: boolean;
+  uninstalling: boolean;
   installDisabled: boolean;
   onOpen: (skill: SkillSummaryDto) => void;
   onInstall: (skill: SkillSummaryDto) => void;
+  onUninstall: (skill: SkillSummaryDto) => void;
   highlighted: boolean;
   cardRef?: (node: HTMLElement | null) => void;
 }) {
@@ -158,34 +171,46 @@ function SkillCard({
         </span>
         <Tooltip
           className="skill-card-action-tooltip"
-          content={installed
-            ? "已安装，查看详情"
+          content={uninstallable
+            ? "从本地设备卸载此 Skill"
+            : installed
+              ? "已在本地发现，查看详情"
             : installing
               ? `正在安装最新版 v${skill.currentVersion.version}`
               : `安装最新版 v${skill.currentVersion.version}`}
         >
           <button
-            className={installed
-              ? "install-button installed"
+            className={uninstallable
+              ? "install-button uninstall"
+              : installed
+                ? "install-button installed"
               : installing
                 ? "install-button installing"
                 : "install-button"}
             type="button"
-            disabled={!installed && installDisabled}
-            aria-busy={installing}
+            disabled={(uninstallable || !installed) && installDisabled}
+            aria-busy={installing || uninstalling}
             onClick={(event) => {
               event.stopPropagation();
-              if (installed) {
+              if (uninstallable) {
+                onUninstall(skill);
+              } else if (installed) {
                 onOpen(skill);
               } else {
                 onInstall(skill);
               }
             }}
-            aria-label={installed
-              ? `${skill.displayName} 已安装，查看详情`
+            aria-label={uninstallable
+              ? `${skill.displayName} 一键卸载`
+              : installed
+                ? `${skill.displayName} 已在本地发现，查看详情`
               : `一键安装 ${skill.displayName} 最新版 v${skill.currentVersion.version}`}
           >
-            {installed
+            {uninstalling
+              ? "卸载中…"
+              : uninstallable
+                ? "一键卸载"
+                : installed
               ? <AppIcon name="check" size={17} />
               : installing
                 ? "安装中…"
@@ -212,10 +237,13 @@ function BrowsePage({
   authenticated,
   authResolved,
   installedSkillIds,
+  uninstallableSkillIds,
   installingSkillId,
+  uninstallingSkillId,
   onLogin,
   onOpen,
   onInstall,
+  onUninstall,
   refreshKey,
   highlightedSkillId,
   onHighlightComplete,
@@ -223,10 +251,13 @@ function BrowsePage({
   authenticated: boolean;
   authResolved: boolean;
   installedSkillIds: Set<string>;
+  uninstallableSkillIds: Set<string>;
   installingSkillId: string | null;
+  uninstallingSkillId: string | null;
   onLogin: () => void;
   onOpen: (skill: SkillSummaryDto) => void;
   onInstall: (skill: SkillSummaryDto) => void;
+  onUninstall: (skill: SkillSummaryDto) => void;
   refreshKey: number;
   highlightedSkillId: string | null;
   onHighlightComplete: () => void;
@@ -427,9 +458,15 @@ function BrowsePage({
                 skill={skill}
                 installed={installedSkillIds.has(skill.id)}
                 installing={installingSkillId === skill.id}
-                installDisabled={installingSkillId !== null}
+                uninstallable={uninstallableSkillIds.has(skill.id)}
+                uninstalling={uninstallingSkillId === skill.id}
+                installDisabled={
+                  installingSkillId !== null
+                  || uninstallingSkillId !== null
+                }
                 onOpen={onOpen}
                 onInstall={onInstall}
+                onUninstall={onUninstall}
                 highlighted={skill.id === highlightedSkillId}
                 cardRef={skill.id === highlightedSkillId ? (node) => { highlightedCardRef.current = node; } : undefined}
               />
@@ -482,8 +519,10 @@ function App() {
   );
   const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
   const [installFeedback, setInstallFeedback] = useState<InstallFeedbackState | null>(null);
+  const [uninstallPrompt, setUninstallPrompt] = useState<UninstallPromptState | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
+  const [uninstallingSkillId, setUninstallingSkillId] = useState<string | null>(null);
 
   const refreshLocalSkills = useCallback(async () => {
     setLocalSkillsLoading(true);
@@ -754,6 +793,41 @@ function App() {
     });
   }
 
+  function prepareUninstall(skill: SkillSummaryDto): void {
+    const record = getUninstallableSkillRecords(localSkills).get(skill.id);
+    if (!record) {
+      Toast.error("无法确认这个 Skill 的本地安装归属，请在本地 Skill 管理中检查");
+      return;
+    }
+    setUninstallPrompt({ skill, record });
+  }
+
+  async function uninstallSkill(): Promise<void> {
+    if (!uninstallPrompt) return;
+    const { skill, record } = uninstallPrompt;
+    setUninstallingSkillId(skill.id);
+    try {
+      const items = await localSkillService.remove({
+        skillId: skill.id,
+        skillName: record.skillName,
+      });
+      setLocalSkills(items);
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
+      setUninstallPrompt(null);
+      Toast.success(`${skill.displayName} 已从本地设备卸载`);
+    } catch (reason) {
+      console.error("[KocotreeSkills] Skill 卸载失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "卸载失败，请稍后重试",
+      );
+      await refreshLocalSkills();
+    } finally {
+      setUninstallingSkillId(null);
+    }
+  }
+
   function handleUploadVersion(skill: SkillSummaryDto): void {
     requireAuth(() => {
       console.info("[KocotreeSkills] 进入新版本上传流程", { skillId: skill.id });
@@ -793,6 +867,9 @@ function App() {
 
   const localFilter = localFilterForPage(activePage);
   const localSkillGroups = groupLocalSkills(localSkills);
+  const uninstallableSkillIds = new Set(
+    getUninstallableSkillRecords(localSkills).keys(),
+  );
   const localSkillCounts = {
     all: filterWorkspaceSkillGroups(localSkillGroups).length,
     claude: countActiveLocalSkills(localSkillGroups, "claude"),
@@ -942,10 +1019,13 @@ function App() {
             authenticated={currentUser !== null}
             authResolved={authResolved}
             installedSkillIds={installedSkillIds}
+            uninstallableSkillIds={uninstallableSkillIds}
             installingSkillId={installingSkillId}
+            uninstallingSkillId={uninstallingSkillId}
             onLogin={() => setLoginVisible(true)}
             onOpen={handleOpenSkill}
             onInstall={handleInstallLatest}
+            onUninstall={prepareUninstall}
             refreshKey={browseRefreshKey}
             highlightedSkillId={highlightedBrowseSkillId}
             onHighlightComplete={handleBrowseHighlightComplete}
@@ -1020,6 +1100,16 @@ function App() {
       />
 
       <InstallFeedbackModal feedback={installFeedback} onClose={() => setInstallFeedback(null)} />
+
+      <UninstallConfirmModal
+        skill={uninstallPrompt?.skill ?? null}
+        record={uninstallPrompt?.record ?? null}
+        loading={uninstallingSkillId !== null}
+        onCancel={() => {
+          if (uninstallingSkillId === null) setUninstallPrompt(null);
+        }}
+        onConfirm={() => void uninstallSkill()}
+      />
 
       <Modal
         className="login-modal"

@@ -5,6 +5,7 @@ import {
   filterWorkspaceSkillGroups,
   getLocalSkillActivationState,
   getLocalSkillSourceRecord,
+  getUninstallableSkillRecords,
   groupLocalSkills,
 } from "./localSkillSource";
 import { MockLocalSkillService } from "./mockLocalSkillService";
@@ -155,5 +156,67 @@ describe("全部 Agents 工作区", () => {
           && item.location === "AGENTS",
       ),
     ).toBe(true);
+  });
+
+  it("通过 Mock 服务卸载平台 Skill 及其同名 Agent 记录", async () => {
+    const service = new MockLocalSkillService(0);
+    const installed = (await service.scanSkills()).find(
+      (item) =>
+        item.skillId
+        && item.status === "PLATFORM_INSTALLED",
+    )!;
+
+    const remaining = await service.remove({
+      skillId: installed.skillId!,
+      skillName: installed.skillName,
+    });
+
+    expect(
+      remaining.some((item) => item.skillName === installed.skillName),
+    ).toBe(false);
+  });
+
+  it("卸载记录优先选择全部 Agents 本体并排除未知来源", () => {
+    const platformSkillId = "platform-skill";
+    const records = [
+      record({
+        id: "codex-link",
+        skillId: platformSkillId,
+        status: "PLATFORM_INSTALLED",
+        location: "CODEX",
+        entryKind: "SYMLINK",
+      }),
+      record({
+        id: "agents-source",
+        skillId: platformSkillId,
+        status: "PLATFORM_MODIFIED",
+        location: "AGENTS",
+        entryKind: "DIRECTORY",
+      }),
+      record({
+        id: "unknown-source",
+        skillId: "unknown",
+        status: "LOCAL_UNKNOWN",
+      }),
+    ];
+
+    const uninstallable = getUninstallableSkillRecords(records);
+
+    expect(uninstallable.get(platformSkillId)?.id).toBe("agents-source");
+    expect(uninstallable.has("unknown")).toBe(false);
+  });
+
+  it("Mock 服务拒绝卸载用户自己的本地 Skill", async () => {
+    const service = new MockLocalSkillService(0);
+    const localSkill = (await service.scanSkills()).find(
+      (item) => item.status === "LOCAL_UNKNOWN",
+    )!;
+
+    await expect(service.remove({
+      skillId: "not-platform-owned",
+      skillName: localSkill.skillName,
+    })).rejects.toMatchObject({
+      code: "LOCAL_UNINSTALL_NOT_FOUND",
+    });
   });
 });

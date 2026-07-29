@@ -1092,6 +1092,19 @@ textarea:focus-visible,
   background: #def2e5;
 }
 
+.install-button.uninstall {
+  min-width: 78px;
+  border: 1px solid #e9aaa0;
+  background: #fff6f4;
+  color: #bd4d3e;
+}
+
+.install-button.uninstall:not(:disabled):hover {
+  border-color: #d95d4b;
+  background: #d95d4b;
+  color: #fff;
+}
+
 .install-button:disabled {
   cursor: not-allowed;
   opacity: 0.58;
@@ -2316,6 +2329,51 @@ textarea:focus-visible,
 
 .install-confirm-content > small {
   color: var(--muted);
+}
+
+.uninstall-targets {
+  display: grid;
+  gap: 9px;
+  padding: 12px 13px;
+  border: 1px solid #e2e4e1;
+  border-radius: 10px;
+  background: #fafbf9;
+}
+
+.uninstall-targets > strong {
+  color: #454943;
+  font-size: 13px;
+}
+
+.uninstall-targets ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.uninstall-targets li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.uninstall-targets code {
+  min-width: 0;
+  overflow: hidden;
+  color: #555b54;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uninstall-targets li > span {
+  flex: none;
+  color: #8a8f88;
+  font-size: 11px;
 }
 
 .install-feedback-actions {

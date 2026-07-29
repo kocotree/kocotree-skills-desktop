@@ -5,6 +5,7 @@ import {
   type LocalInstallResult,
   type LocalSkillRecord,
   type LocalSkillService,
+  type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
 } from "./contracts";
 
@@ -137,10 +138,19 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  async remove(_skillName: string): Promise<void> {
-    throw new SkillApiError(
-      "LOCAL_REMOVE_UNSUPPORTED",
-      "当前版本暂不支持删除本地 Skill",
-    );
+  async remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "remove_local_skill",
+        { input },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_UNINSTALL_FAILED",
+        commandError?.message ?? "本地 Skill 卸载失败",
+        commandError?.details,
+      );
+    }
   }
 }
