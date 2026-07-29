@@ -20,7 +20,7 @@
 | P0 | 基础自动化测试 | 已完成 | 覆盖正常安装、单层目录、路径穿越、目标冲突、包哈希失败和名称不一致 |
 | P0 | 跨平台 Agent 连接 | 已完成 | macOS 使用目录软连接；Windows 按目录软连接、NTFS Junction、受管目录副本依次降级 |
 | P1 | 真实后端下载联调 | 待开始 | 使用后端签发的短期下载 URL 完成安装 |
-| P1 | Windows 与 macOS 实机验证 | 进行中 | 双平台 CI 完成前端构建和 Rust 测试，并在两个系统实测安装、连接和关闭 |
+| P1 | Windows 与 macOS 实机验证 | 进行中 | 双平台 CI 与 Windows 安装包构建已通过；仍需在 Windows 实机验证安装、连接和关闭 |
 | P1 | 解压内容哈希校验 | 待开始 | 解压结果的 `contentHash` 与平台版本完全一致 |
 | P1 | 本地 Skill 直接上传 | 待开始 | 本地 Skill 卡片提供上传按钮，客户端自动打包并上传实际目录，用户无需手工制作或选择 ZIP |
 | P2 | 同名目录覆盖 | 待开始 | 用户明确确认后才允许覆盖 |
@@ -41,23 +41,85 @@
 - Windows 测试电脑无需 Node.js、Rust 或 pnpm；下载并解压 Artifact 后，直接运行安装程序即可。
 - 未配置代码签名的测试安装包可能触发 SmartScreen，正式发布前需要补充 Windows 代码签名。
 
-## 4. 本地 Skill 直接上传
+## 4. Windows 安装与验收
 
-### 4.1 用户入口
+### 4.1 下载安装包
+
+1. 打开 GitHub Actions 中成功的 [`Windows Installer` 构建](https://github.com/kocotree/kocotree-skills-desktop/actions/runs/30341490159)。
+2. 在运行详情页底部的 **Artifacts** 区域下载 `kocotree-skills-windows-x64`。
+3. 解压下载的 ZIP。普通测试优先运行 NSIS 的 `*-setup.exe`；也可以使用 WiX 的 `.msi`。
+4. 测试安装包尚未签名。如果 SmartScreen 拦截，确认文件来自本项目构建后，点击“更多信息”→“仍要运行”。
+5. 按安装向导完成安装并启动 Kocotree Skills。Windows 电脑不需要额外安装 Node.js、Rust 或 pnpm。
+
+Artifact 保留 14 天；过期后需要重新运行 `Windows Installer` 工作流生成新的安装包。
+
+### 4.2 准备测试 Skill
+
+在 Windows PowerShell 中执行：
+
+```powershell
+$skill = Join-Path $env:USERPROFILE ".agents\skills\windows-test"
+New-Item -ItemType Directory -Force $skill
+
+@"
+---
+name: windows-test
+description: Windows compatibility test
+---
+"@ | Set-Content (Join-Path $skill "SKILL.md")
+```
+
+重新扫描后，“全部 Agents”页面应显示 `windows-test`。
+
+### 4.3 验证 Agent 连接
+
+1. 在“全部 Agents”页面为 `windows-test` 开启 Codex。
+2. 确认 `%USERPROFILE%\.codex\skills\windows-test` 已出现。
+3. 为同一个 Skill 开启 Claude Code，并确认 `%USERPROFILE%\.claude\skills\windows-test` 已出现。
+4. 关闭并重新启动软件，确认两个 Agent 的连接状态仍然正确。
+5. 分别关闭 Codex 和 Claude Code，确认对应 Agent 目录中的入口消失。
+6. 确认 `%USERPROFILE%\.agents\skills\windows-test\SKILL.md` 始终存在，关闭连接不得删除本体。
+
+可以用 PowerShell 查看 Windows 实际采用的连接类型：
+
+```powershell
+Get-Item "$env:USERPROFILE\.codex\skills\windows-test" |
+  Format-List FullName,LinkType,Target,Attributes
+```
+
+- `LinkType` 为 `SymbolicLink`：使用了 Windows 目录软连接。
+- `LinkType` 为 `Junction`：软连接权限不足，已正常降级为 NTFS Junction。
+- 没有 `LinkType`，且目录内存在 `.kocotree-managed-copy.json`：软连接和 Junction 均不可用，已降级为受管目录副本。
+
+普通本地 NTFS 用户目录通常会使用 Symbolic Link 或 Junction。受管目录副本主要覆盖网络用户目录、UNC、WSL 或非 NTFS 等特殊环境；该降级顺序已经由 Windows CI 自动化测试验证。
+
+### 4.4 验收记录
+
+测试时至少记录以下信息：
+
+- Windows 版本和系统架构。
+- 安装使用的是 `.exe` 还是 `.msi`。
+- Codex 和 Claude Code 各自采用的 `LinkType`。
+- 开启、重启扫描、关闭是否成功。
+- SmartScreen、WebView2、文件权限或长路径相关错误的完整提示。
+
+## 5. 本地 Skill 直接上传
+
+### 5.1 用户入口
 
 - 在“全部 Agents”、Claude Code 和 Codex 的本地 Skill 卡片上提供明确的“上传到平台”操作。
 - 同一个 Skill 通过软连接出现在多个 Agent 目录时，上传的是解析后的同一本体目录，不重复上传软连接。
 - 用户不需要先把目录打成 ZIP，也不需要在上传页面再次选择文件。
 - 点击按钮后进入上传确认流程；客户端自动读取 `SKILL.md` 并预填名称、描述等可推导信息，只要求用户补充或确认平台必填信息。
 
-### 4.2 创建与更新
+### 5.2 创建与更新
 
 - 本地记录没有可信的平台 `skillId` 时，默认创建新的平台 Skill，首个版本为 `1.0.0`。
 - 本地记录能够确认平台来源时，默认发布到对应 Skill；版本号预填为当前平台版本的下一个补丁版本，用户可以在提交前修改。
 - 已知平台来源但本地 `skillName` 与平台记录不一致时禁止直接上传，并提示用户选择“创建新 Skill”或修正本地元数据。
 - 本地内容与目标平台版本内容相同时不重复发布，显示“内容没有变化”。
 
-### 4.3 自动打包与安全
+### 5.3 自动打包与安全
 
 - 桌面端通过 Tauri/Rust 从本地 Skill 的真实本体目录生成临时 ZIP；网络接口继续复用现有创建 Skill 和发布版本的 multipart ZIP 契约。
 - 自动打包必须先解析受管软连接，只读取最终 Skill 本体，不把软连接文件本身作为上传内容。
@@ -66,14 +128,14 @@
 - 临时包仅用于本次上传，完成或失败后清理；整个流程不得修改本地 Skill 本体。
 - 服务端仍需重新解析上传包并计算权威哈希，不能信任客户端校验结果。
 
-### 4.4 验收标准
+### 5.4 验收标准
 
 - 用户可以从任一本地 Skill 卡片发起上传，全程不需要手工打包或选择 ZIP。
 - 未关联平台的本地 Skill 可以创建 `1.0.0`；已关联平台的本地 Skill 可以发布默认的下一补丁版本。
 - 同一本体的 Claude/Codex 软连接不会造成重复上传或上传错误目录。
 - 自动打包失败、平台名称冲突、内容未变化和后端上传失败都有明确反馈，且不会修改本地文件。
 
-## 5. 仍非当前范围
+## 6. 仍非当前范围
 
 - 本地 Skill 删除。
 - 备份列表和手动恢复。
