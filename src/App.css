@@ -2646,7 +2646,7 @@ button.my-skill-card:hover {
   font-weight: 450;
 }
 
-.agents-workspace-search {
+.local-skills-search {
   display: flex;
   width: 210px;
   height: 32px;
@@ -2659,12 +2659,12 @@ button.my-skill-card:hover {
   color: #8a9089;
 }
 
-.agents-workspace-search:focus-within {
+.local-skills-search:focus-within {
   border-color: color-mix(in srgb, var(--accent) 55%, #d9ddd8);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent);
 }
 
-.agents-workspace-search input {
+.local-skills-search input {
   width: 100%;
   min-width: 0;
   padding: 0;
@@ -2675,7 +2675,7 @@ button.my-skill-card:hover {
   outline: 0;
 }
 
-.agents-workspace-search input::-webkit-search-cancel-button {
+.local-skills-search input::-webkit-search-cancel-button {
   opacity: 0.55;
 }
 
@@ -3262,7 +3262,7 @@ button.my-skill-card:hover {
     padding-left: 5px;
   }
 
-  .agents-workspace-search {
+  .local-skills-search {
     width: min(100%, 240px);
   }
 

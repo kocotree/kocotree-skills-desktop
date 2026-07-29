@@ -251,11 +251,18 @@ export function isLocalSkillAssigned(
 export function filterLocalSkillGroups(
   groups: LocalSkillGroup[],
   filter: LocalSkillFilter,
+  query = "",
 ): LocalSkillGroup[] {
-  return groups.filter(
-    (group) =>
-      getLocalSkillActivationState(group, filter) !== "disabled",
-  );
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return groups.filter((group) => {
+    if (getLocalSkillActivationState(group, filter) === "disabled") {
+      return false;
+    }
+    if (!normalizedQuery) return true;
+    const record = group.primaryRecord;
+    return record.displayName.toLocaleLowerCase().includes(normalizedQuery)
+      || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
+  });
 }
 
 export function countActiveLocalSkills(

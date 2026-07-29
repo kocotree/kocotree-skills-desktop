@@ -183,7 +183,7 @@ export function AllAgentsSkillsPage({
           </span>
         </span>
         <div className="local-skills-toolbar-actions">
-          <label className="agents-workspace-search">
+          <label className="local-skills-search">
             <AppIcon name="search" size={15} />
             <input
               type="search"

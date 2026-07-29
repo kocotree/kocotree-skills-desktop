@@ -67,6 +67,43 @@ describe("全部 Agents 工作区", () => {
     expect(filterWorkspaceSkillGroups(groups)).toHaveLength(1);
   });
 
+  it("Agent 页面按展示名称和 Skill 名称搜索，不区分大小写并忽略首尾空格", () => {
+    const groups = groupLocalSkills([
+      record({ id: "research-source" }),
+      record({
+        id: "research-claude-link",
+        installPath: "/Users/test/.claude/skills/research",
+        location: "CLAUDE",
+        entryKind: "SYMLINK",
+      }),
+      record({
+        id: "writer-source",
+        skillName: "article-writer",
+        displayName: "Article Writer",
+        installPath: "/Users/test/.agents/skills/article-writer",
+        resolvedPath: "/Users/test/.agents/skills/article-writer",
+      }),
+      record({
+        id: "writer-claude-link",
+        skillName: "article-writer",
+        displayName: "Article Writer",
+        installPath: "/Users/test/.claude/skills/article-writer",
+        resolvedPath: "/Users/test/.agents/skills/article-writer",
+        location: "CLAUDE",
+        entryKind: "SYMLINK",
+      }),
+    ]);
+
+    expect(
+      filterLocalSkillGroups(groups, "claude", "  RESEARCH "),
+    ).toHaveLength(1);
+    expect(
+      filterLocalSkillGroups(groups, "claude", "article-wri")[0]
+        ?.primaryRecord.skillName,
+    ).toBe("article-writer");
+    expect(filterLocalSkillGroups(groups, "claude", "missing")).toHaveLength(0);
+  });
+
   it("将 Windows Junction 识别为受管 Agent 连接", () => {
     const sourcePath = "C:\\Users\\test\\.agents\\skills\\research";
     const groups = groupLocalSkills([

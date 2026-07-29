@@ -138,17 +138,16 @@ export function LocalSkillsPage({
 }) {
   const [pendingControl, setPendingControl] = useState("");
   const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
   const [addVisible, setAddVisible] = useState(false);
   const [addQuery, setAddQuery] = useState("");
   const groups = groupLocalSkills(skills);
-  const visibleGroups = filterLocalSkillGroups(groups, filter);
+  const activeGroups = filterLocalSkillGroups(groups, filter);
+  const visibleGroups = filterLocalSkillGroups(groups, filter, query);
   const pageCount = getLocalSkillPageCount(visibleGroups.length);
   const paginatedGroups = paginateLocalSkills(visibleGroups, page);
   const details = SOURCE_DETAILS[filter];
-  const enabledCount = visibleGroups.filter(
-    (group) =>
-      getLocalSkillActivationState(group, filter) !== "disabled",
-  ).length;
+  const enabledCount = activeGroups.length;
   const occupiedSkillNames = new Set(
     groups.flatMap((group) =>
       getLocalSkillActivationState(group, filter) !== "disabled"
@@ -156,7 +155,7 @@ export function LocalSkillsPage({
         : [],
     ),
   );
-  const normalizedQuery = addQuery.trim().toLocaleLowerCase();
+  const normalizedAddQuery = addQuery.trim().toLocaleLowerCase();
   const availableGroups = groups.filter((group) => {
     const record = getLocalSkillSourceRecord(group);
     if (
@@ -167,13 +166,14 @@ export function LocalSkillsPage({
     ) {
       return false;
     }
-    return !normalizedQuery
-      || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
-      || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
+    return !normalizedAddQuery
+      || record.displayName.toLocaleLowerCase().includes(normalizedAddQuery)
+      || record.skillName.toLocaleLowerCase().includes(normalizedAddQuery);
   });
 
   useEffect(() => {
     setPage(1);
+    setQuery("");
   }, [filter]);
 
   useEffect(() => {
@@ -273,6 +273,19 @@ export function LocalSkillsPage({
           共 <strong>{enabledCount}</strong> 个 Skill
         </span>
         <div className="local-skills-toolbar-actions">
+          <label className="local-skills-search">
+            <AppIcon name="search" size={15} />
+            <input
+              type="search"
+              value={query}
+              placeholder={`搜索 ${AGENT_DETAILS[filter].label} Skill`}
+              aria-label={`搜索 ${AGENT_DETAILS[filter].label} Skill`}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
           <Button
             size="small"
             theme="solid"
@@ -414,16 +427,22 @@ export function LocalSkillsPage({
           })}
           {visibleGroups.length === 0 && (
             <div className="empty-state my-skills-empty">
-              <strong>{details.emptyTitle}</strong>
-              <span>{details.emptyHint}</span>
-              <Button
-                size="small"
-                theme="solid"
-                type="primary"
-                onClick={() => setAddVisible(true)}
-              >
-                添加 Skill
-              </Button>
+              <strong>
+                {query.trim() ? "没有匹配的 Skill" : details.emptyTitle}
+              </strong>
+              <span>
+                {query.trim() ? "换一个名称继续搜索" : details.emptyHint}
+              </span>
+              {!query.trim() && (
+                <Button
+                  size="small"
+                  theme="solid"
+                  type="primary"
+                  onClick={() => setAddVisible(true)}
+                >
+                  添加 Skill
+                </Button>
+              )}
             </div>
           )}
           </section>
@@ -491,10 +510,10 @@ export function LocalSkillsPage({
             {availableGroups.length === 0 && (
               <div className="local-skill-add-empty">
                 <strong>
-                  {normalizedQuery ? "没有匹配的 Skill" : "没有可添加的 Skill"}
+                  {normalizedAddQuery ? "没有匹配的 Skill" : "没有可添加的 Skill"}
                 </strong>
                 <span>
-                  {normalizedQuery
+                  {normalizedAddQuery
                     ? "换一个名称继续搜索"
                     : "工作区中的 Skill 已全部加入管理"}
                 </span>
