@@ -37,6 +37,16 @@ describe("MockSkillApi", () => {
     expect(result.items.every((skill) => skill.status === "ACTIVE")).toBe(true);
   });
 
+  it("Skill 浏览支持按页码和页容量返回列表", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const firstPage = await api.listSkills({ page: 1, pageSize: 5 });
+    const secondPage = await api.listSkills({ page: 2, pageSize: 5 });
+    expect(firstPage.items).toHaveLength(5);
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.total).toBe(firstPage.total);
+    expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
+  });
+
   it("为全部预置 Mock Skill 标记统一 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const mockTag = (await api.listTags()).find((item) => item.name === "Mock");

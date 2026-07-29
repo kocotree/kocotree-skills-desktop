@@ -29,6 +29,7 @@ import { NotificationPanel } from "./components/NotificationPanel";
 import { InstallConfirmModal } from "./components/InstallConfirmModal";
 import { InstallFeedbackModal, type InstallFeedbackState } from "./components/InstallFeedbackModal";
 import { TagFilter } from "./components/TagFilter";
+import { getSkillPageCount, SkillPagination } from "./components/LocalSkillPagination";
 import "./App.css";
 
 type PageKey =
@@ -39,6 +40,7 @@ type PageKey =
   | "local-claude"
   | "local-codex";
 type SortKey = "created" | "updated" | "popular";
+const BROWSE_PAGE_SIZE = 18;
 
 interface InstallPromptState {
   skill: SkillSummaryDto;
@@ -233,6 +235,8 @@ function BrowsePage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [tagId, setTagId] = useState("all");
   const [sort, setSort] = useState<SortKey>("updated");
+  const [page, setPage] = useState(1);
+  const [totalSkills, setTotalSkills] = useState(0);
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
   const [tags, setTags] = useState<TagDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -243,12 +247,14 @@ function BrowsePage({
     if (!highlightedSkillId) return;
     setQuery("");
     setTagId("all");
+    setPage(1);
   }, [highlightedSkillId]);
 
   useEffect(() => {
     if (query === debouncedQuery) return;
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query);
+      setPage(1);
     }, 180);
     return () => window.clearTimeout(timer);
   }, [debouncedQuery, query]);
@@ -277,6 +283,7 @@ function BrowsePage({
   useEffect(() => {
     if (!authenticated) {
       setSkills([]);
+      setTotalSkills(0);
       setError("");
       setLoading(false);
       return;
@@ -285,9 +292,23 @@ function BrowsePage({
     setLoading(true);
     setError("");
     const apiSort = sort === "popular" ? "INSTALLS_DESC" : sort === "created" ? "CREATED_DESC" : "UPDATED_DESC";
-    skillApi.listSkills({ query: debouncedQuery || undefined, tagId: tagId === "all" ? undefined : tagId, sort: apiSort })
+    skillApi.listSkills({
+      query: debouncedQuery || undefined,
+      tagId: tagId === "all" ? undefined : tagId,
+      sort: apiSort,
+      page,
+      pageSize: BROWSE_PAGE_SIZE,
+    })
       .then((result) => {
-        if (active) setSkills(result.items);
+        if (!active) return;
+        const pageCount = getSkillPageCount(result.total, BROWSE_PAGE_SIZE);
+        setTotalSkills(result.total);
+        if (page > pageCount) {
+          setSkills([]);
+          setPage(pageCount);
+          return;
+        }
+        setSkills(result.items);
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -296,7 +317,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, refreshKey, sort, tagId]);
+  }, [authenticated, debouncedQuery, page, refreshKey, sort, tagId]);
 
   if (!authResolved) {
     return (
@@ -342,7 +363,10 @@ function BrowsePage({
               className={sort === "updated" ? "active" : ""}
               type="button"
               aria-pressed={sort === "updated"}
-              onClick={() => setSort("updated")}
+              onClick={() => {
+                setSort("updated");
+                setPage(1);
+              }}
             >
               <AppIcon name="clock" size={16} />最近更新
             </button>
@@ -350,7 +374,10 @@ function BrowsePage({
               className={sort === "created" ? "active" : ""}
               type="button"
               aria-pressed={sort === "created"}
-              onClick={() => setSort("created")}
+              onClick={() => {
+                setSort("created");
+                setPage(1);
+              }}
             >
               <AppIcon name="trend" size={16} />最近创建
             </button>
@@ -358,7 +385,10 @@ function BrowsePage({
               className={sort === "popular" ? "active" : ""}
               type="button"
               aria-pressed={sort === "popular"}
-              onClick={() => setSort("popular")}
+              onClick={() => {
+                setSort("popular");
+                setPage(1);
+              }}
             >
               <AppIcon name="hot" size={16} />热门
             </button>
@@ -377,7 +407,10 @@ function BrowsePage({
         <TagFilter
           tags={tags}
           selectedTagId={tagId}
-          onChange={setTagId}
+          onChange={(nextTagId) => {
+            setTagId(nextTagId);
+            setPage(1);
+          }}
         />
       </section>
 
@@ -386,21 +419,30 @@ function BrowsePage({
       ) : error ? (
         <section className="empty-state"><strong>暂时无法加载</strong><span>{error}</span></section>
       ) : skills.length > 0 ? (
-        <section className="skill-grid" aria-label="Skill 列表">
-          {skills.map((skill) => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              installed={installedSkillIds.has(skill.id)}
-              installing={installingSkillId === skill.id}
-              installDisabled={installingSkillId !== null}
-              onOpen={onOpen}
-              onInstall={onInstall}
-              highlighted={skill.id === highlightedSkillId}
-              cardRef={skill.id === highlightedSkillId ? (node) => { highlightedCardRef.current = node; } : undefined}
-            />
-          ))}
-        </section>
+        <>
+          <section className="skill-grid" aria-label="Skill 列表">
+            {skills.map((skill) => (
+              <SkillCard
+                key={skill.id}
+                skill={skill}
+                installed={installedSkillIds.has(skill.id)}
+                installing={installingSkillId === skill.id}
+                installDisabled={installingSkillId !== null}
+                onOpen={onOpen}
+                onInstall={onInstall}
+                highlighted={skill.id === highlightedSkillId}
+                cardRef={skill.id === highlightedSkillId ? (node) => { highlightedCardRef.current = node; } : undefined}
+              />
+            ))}
+          </section>
+          <SkillPagination
+            page={page}
+            total={totalSkills}
+            pageSize={BROWSE_PAGE_SIZE}
+            ariaLabel="Skill 浏览分页"
+            onChange={setPage}
+          />
+        </>
       ) : (
         <section className="empty-state">
           <AppIcon name="search" size={30} />

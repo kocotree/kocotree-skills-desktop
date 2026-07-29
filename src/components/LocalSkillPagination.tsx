@@ -1,5 +1,12 @@
 const LOCAL_SKILL_PAGE_SIZE = 10;
 
+export function getSkillPageCount(
+  total: number,
+  pageSize: number,
+): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
 export function paginateLocalSkills<T>(
   items: readonly T[],
   page: number,
@@ -9,26 +16,30 @@ export function paginateLocalSkills<T>(
 }
 
 export function getLocalSkillPageCount(total: number): number {
-  return Math.max(1, Math.ceil(total / LOCAL_SKILL_PAGE_SIZE));
+  return getSkillPageCount(total, LOCAL_SKILL_PAGE_SIZE);
 }
 
 /**
- * 功能说明：为本地 Skill 管理页面提供固定每页 10 项的轻量分页导航。
+ * 功能说明：渲染可配置页容量和无障碍名称的 Skill 分页导航。
  */
-export function LocalSkillPagination({
+export function SkillPagination({
   page,
   total,
+  pageSize,
+  ariaLabel,
   onChange,
 }: {
   page: number;
   total: number;
+  pageSize: number;
+  ariaLabel: string;
   onChange: (page: number) => void;
 }) {
-  const pageCount = getLocalSkillPageCount(total);
-  if (total <= LOCAL_SKILL_PAGE_SIZE) return null;
+  const pageCount = getSkillPageCount(total, pageSize);
+  if (total <= pageSize) return null;
 
   return (
-    <nav className="local-skill-pagination" aria-label="本地 Skill 分页">
+    <nav className="skill-pagination" aria-label={ariaLabel}>
       <span>
         第 <strong>{page}</strong> / {pageCount} 页 · 共 {total} 个
       </span>
@@ -63,5 +74,28 @@ export function LocalSkillPagination({
         </button>
       </div>
     </nav>
+  );
+}
+
+/**
+ * 功能说明：为本地 Skill 管理页面提供固定每页 10 项的分页导航。
+ */
+export function LocalSkillPagination({
+  page,
+  total,
+  onChange,
+}: {
+  page: number;
+  total: number;
+  onChange: (page: number) => void;
+}) {
+  return (
+    <SkillPagination
+      page={page}
+      total={total}
+      pageSize={LOCAL_SKILL_PAGE_SIZE}
+      ariaLabel="本地 Skill 分页"
+      onChange={onChange}
+    />
   );
 }
