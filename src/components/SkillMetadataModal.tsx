@@ -89,7 +89,47 @@ export function SkillMetadataModal({
       <div className="metadata-form">
         {canEditDisplayName && <label><span>展示名称</span><input value={displayName} maxLength={100} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>}
         <label><span>展示简介</span><TextArea value={displayDescription} maxCount={1000} autosize={{ minRows: 3, maxRows: 6 }} onChange={setDisplayDescription} /></label>
-        <fieldset className="tag-field"><legend>Tag（最多 5 个）</legend><div>{tags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}{newTagVisible ? <input className="tag-create-input" value={newTagNames} autoFocus onChange={(event) => setNewTagNames(event.currentTarget.value)} placeholder="多个 Tag 使用逗号分隔" /> : <Tooltip content="创建新 Tag"><button className="tag-create-button" type="button" aria-label="创建新 Tag" onClick={() => setNewTagVisible(true)}><AppIcon name="plus" size={15} /></button></Tooltip>}</div></fieldset>
+        <fieldset className="tag-field">
+          <legend>Tag（最多 5 个）</legend>
+          <div>
+            {tags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
+            {newTagVisible ? (
+              <span className="tag-create-editor">
+                <input
+                  className="tag-create-input"
+                  value={newTagNames}
+                  autoFocus
+                  aria-label="创建新 Tag"
+                  onChange={(event) => setNewTagNames(event.currentTarget.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setNewTagNames("");
+                      setNewTagVisible(false);
+                    }
+                  }}
+                  placeholder="多个 Tag 使用逗号分隔"
+                />
+                <Tooltip content="取消创建新 Tag">
+                  <button
+                    className="tag-create-cancel-button"
+                    type="button"
+                    aria-label="取消创建新 Tag"
+                    onClick={() => {
+                      setNewTagNames("");
+                      setNewTagVisible(false);
+                    }}
+                  >
+                    <AppIcon name="close" size={14} />
+                  </button>
+                </Tooltip>
+              </span>
+            ) : (
+              <Tooltip content="创建新 Tag">
+                <button className="tag-create-button" type="button" aria-label="创建新 Tag" onClick={() => setNewTagVisible(true)}><AppIcon name="plus" size={15} /></button>
+              </Tooltip>
+            )}
+          </div>
+        </fieldset>
         {error && <div className="form-error">{error}</div>}
         {needsDuplicateConfirmation && <Button size="small" onClick={() => void save(true)}>确认使用同名展示名称</Button>}
       </div>

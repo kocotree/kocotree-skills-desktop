@@ -10,6 +10,7 @@ export type AppIconName =
   | "download"
   | "check"
   | "plus"
+  | "close"
   | "folder"
   | "file"
   | "agents"
@@ -30,6 +31,7 @@ const iconPaths: Record<AppIconName, React.ReactNode> = {
   download: <><path d="M12 4v10m0 0 4-4m-4 4-4-4" /><path d="M5 18.5h14" /></>,
   check: <><path d="m5 12.5 4.2 4.2L19 7" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
+  close: <><path d="M6 6l12 12M18 6 6 18" /></>,
   folder: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /></>,
   file: <><path d="M6.5 3.5h7l4 4v13h-11z" /><path d="M13.5 3.5v4h4" /></>,
   agents: <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5C9.8 18.2 8.7 15.4 8.7 12S9.8 5.8 12 3.5Z" /></>,

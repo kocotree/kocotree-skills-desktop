@@ -269,23 +269,39 @@ export function UploadPage({
                   <div>
                     {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
                     {newTagInputVisible ? (
-                      <input
-                        className="tag-create-input"
-                        autoFocus
-                        aria-label="创建新 Tag"
-                        value={newTagNames}
-                        onChange={(event) => setNewTagNames(event.currentTarget.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            setNewTagInputVisible(false);
-                          }
-                          if (event.key === "Escape") {
-                            setNewTagInputVisible(false);
-                          }
-                        }}
-                        placeholder="输入 Tag，多个用逗号分隔"
-                      />
+                      <span className="tag-create-editor">
+                        <input
+                          className="tag-create-input"
+                          autoFocus
+                          aria-label="创建新 Tag"
+                          value={newTagNames}
+                          onChange={(event) => setNewTagNames(event.currentTarget.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              setNewTagInputVisible(false);
+                            }
+                            if (event.key === "Escape") {
+                              setNewTagNames("");
+                              setNewTagInputVisible(false);
+                            }
+                          }}
+                          placeholder="输入 Tag，多个用逗号分隔"
+                        />
+                        <Tooltip content="取消创建新 Tag">
+                          <button
+                            className="tag-create-cancel-button"
+                            type="button"
+                            aria-label="取消创建新 Tag"
+                            onClick={() => {
+                              setNewTagNames("");
+                              setNewTagInputVisible(false);
+                            }}
+                          >
+                            <AppIcon name="close" size={14} />
+                          </button>
+                        </Tooltip>
+                      </span>
                     ) : (
                       <Tooltip content="创建新 Tag">
                         <button

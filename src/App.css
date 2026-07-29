@@ -1215,6 +1215,34 @@ textarea:focus-visible,
   box-shadow: 0 0 0 3px rgba(0, 145, 57, 0.1);
 }
 
+.tag-create-editor {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag-create-cancel-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #dfe1e5;
+  border-radius: 50%;
+  background: #fff;
+  color: #777c84;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease;
+}
+
+.tag-create-cancel-button:hover {
+  border-color: #d57868;
+  background: #fff4f1;
+  color: #b84f39;
+}
+
 .version-form-grid {
   margin-top: 16px;
 }
