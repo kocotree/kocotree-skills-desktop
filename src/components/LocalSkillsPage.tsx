@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   canControlLocalSkill,
@@ -16,6 +16,11 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import {
+  getLocalSkillPageCount,
+  LocalSkillPagination,
+  paginateLocalSkills,
+} from "./LocalSkillPagination";
 import { Button, Modal, Spin, Toast } from "./ui";
 
 const SOURCE_DETAILS: Record<
@@ -128,10 +133,13 @@ export function LocalSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
 }) {
   const [pendingControl, setPendingControl] = useState("");
+  const [page, setPage] = useState(1);
   const [addVisible, setAddVisible] = useState(false);
   const [addQuery, setAddQuery] = useState("");
   const groups = groupLocalSkills(skills);
   const visibleGroups = filterLocalSkillGroups(groups, filter);
+  const pageCount = getLocalSkillPageCount(visibleGroups.length);
+  const paginatedGroups = paginateLocalSkills(visibleGroups, page);
   const details = SOURCE_DETAILS[filter];
   const enabledCount = visibleGroups.filter(
     (group) =>
@@ -159,6 +167,14 @@ export function LocalSkillsPage({
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
       || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
   });
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
 
   async function toggleSkill(group: LocalSkillGroup): Promise<void> {
     const sourceRecord = getLocalSkillSourceRecord(group);
@@ -243,8 +259,9 @@ export function LocalSkillsPage({
           </Button>
         </section>
       ) : (
-        <section className="my-skills-list local-skills-list">
-          {visibleGroups.map((group) => {
+        <>
+          <section className="my-skills-list local-skills-list">
+          {paginatedGroups.map((group) => {
             const record = group.primaryRecord;
             const state = getLocalSkillActivationState(group, filter);
             const controlKey = `${group.id}:${filter}`;
@@ -352,7 +369,13 @@ export function LocalSkillsPage({
               </Button>
             </div>
           )}
-        </section>
+          </section>
+          <LocalSkillPagination
+            page={page}
+            total={visibleGroups.length}
+            onChange={setPage}
+          />
+        </>
       )}
 
       <Modal

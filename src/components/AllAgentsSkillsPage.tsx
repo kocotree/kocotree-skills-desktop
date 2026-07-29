@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   canControlLocalSkill,
@@ -16,6 +16,11 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import {
+  getLocalSkillPageCount,
+  LocalSkillPagination,
+  paginateLocalSkills,
+} from "./LocalSkillPagination";
 import { Button, Spin, Toast } from "./ui";
 
 const AGENTS: Array<{
@@ -88,6 +93,7 @@ export function AllAgentsSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [pendingControl, setPendingControl] = useState("");
   const groups = filterWorkspaceSkillGroups(groupLocalSkills(skills));
   const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -97,6 +103,8 @@ export function AllAgentsSkillsPage({
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
       || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
   });
+  const pageCount = getLocalSkillPageCount(visibleGroups.length);
+  const paginatedGroups = paginateLocalSkills(visibleGroups, page);
   const connectedCounts = {
     claude: groups.filter(
       (group) => getLocalSkillActivationState(group, "claude") === "enabled",
@@ -105,6 +113,10 @@ export function AllAgentsSkillsPage({
       (group) => getLocalSkillActivationState(group, "codex") === "enabled",
     ).length,
   };
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
 
   async function toggleSkill(
     group: LocalSkillGroup,
@@ -172,7 +184,10 @@ export function AllAgentsSkillsPage({
               value={query}
               placeholder="搜索工作区 Skill"
               aria-label="搜索全部 Agents Skill"
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
             />
           </label>
           <Button size="small" loading={loading} onClick={onRefresh}>
@@ -195,8 +210,9 @@ export function AllAgentsSkillsPage({
           </Button>
         </section>
       ) : (
-        <section className="my-skills-list local-skills-list agents-workspace-list">
-          {visibleGroups.map((group) => {
+        <>
+          <section className="my-skills-list local-skills-list agents-workspace-list">
+          {paginatedGroups.map((group) => {
             const record = group.workspaceRecord!;
             return (
               <article className="my-skill-card local workspace-skill-card" key={group.id}>
@@ -297,7 +313,13 @@ export function AllAgentsSkillsPage({
               </span>
             </div>
           )}
-        </section>
+          </section>
+          <LocalSkillPagination
+            page={page}
+            total={visibleGroups.length}
+            onChange={setPage}
+          />
+        </>
       )}
     </main>
   );
