@@ -6,7 +6,10 @@ export type DeleteOwnedSkillResult =
       objectKeys: Array<{ bucket: string; objectKey: string }>;
     }
   | {
-      status: "SKILL_NOT_FOUND" | "OWNER_REQUIRED";
+      status: "SKILL_NOT_FOUND";
+    }
+  | {
+      status: "OWNER_REQUIRED";
     };
 
 export const skillDeletionRepository = {

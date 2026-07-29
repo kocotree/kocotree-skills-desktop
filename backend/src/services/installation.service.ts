@@ -17,7 +17,10 @@ export type DownloadTicketResult =
       };
     }
   | {
-      status: "VERSION_NOT_FOUND" | "INSTALLATION_UNAVAILABLE";
+      status: "VERSION_NOT_FOUND";
+    }
+  | {
+      status: "INSTALLATION_UNAVAILABLE";
     };
 
 export const installationService = {
