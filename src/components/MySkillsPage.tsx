@@ -10,6 +10,18 @@ import { Button, Modal, Spin, Toast } from "./ui";
 
 const PAGE_SIZE = 100;
 
+export function filterPublishedSkills<
+  T extends Pick<SkillSummaryDto, "displayName" | "skillName">,
+>(skills: T[], query: string): T[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return skills;
+  return skills.filter(
+    (skill) =>
+      skill.displayName.toLocaleLowerCase().includes(normalizedQuery)
+      || skill.skillName.toLocaleLowerCase().includes(normalizedQuery),
+  );
+}
+
 async function loadAllOwnedSkills(): Promise<SkillSummaryDto[]> {
   const firstPage = await skillApi.listMySkills({
     relation: "OWNED",
@@ -51,6 +63,7 @@ export function MySkillsPage({
   onOpenSkill: (skill: SkillSummaryDto) => void;
 }) {
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
@@ -60,10 +73,12 @@ export function MySkillsPage({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const deleteInputRef = useRef<HTMLInputElement>(null);
+  const visibleSkills = filterPublishedSkills(skills, query);
 
   useEffect(() => {
     if (!currentUser) {
       setSkills([]);
+      setQuery("");
       setLoading(false);
       return;
     }
@@ -167,16 +182,29 @@ export function MySkillsPage({
           <span>
             共 <strong>{skills.length}</strong> 个 Skill
           </span>
-          <Button
-            size="small"
-            loading={loading}
-            disabled={!currentUser}
-            onClick={() =>
-              setRefreshKey((current) => current + 1)
-            }
-          >
-            刷新
-          </Button>
+          <div className="local-skills-toolbar-actions">
+            <label className="local-skills-search">
+              <AppIcon name="search" size={15} />
+              <input
+                type="search"
+                value={query}
+                placeholder="搜索我发布的 Skill"
+                aria-label="搜索我发布的 Skill"
+                disabled={!currentUser}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            <Button
+              size="small"
+              loading={loading}
+              disabled={!currentUser}
+              onClick={() =>
+                setRefreshKey((current) => current + 1)
+              }
+            >
+              刷新
+            </Button>
+          </div>
         </section>
 
         {!currentUser ? (
@@ -212,7 +240,7 @@ export function MySkillsPage({
           </section>
         ) : (
           <section className="my-skills-list">
-            {skills.map((skill) => (
+            {visibleSkills.map((skill) => (
               <article
                 className="my-skill-card online"
                 key={skill.id}
@@ -259,10 +287,16 @@ export function MySkillsPage({
                 </div>
               </article>
             ))}
-            {skills.length === 0 && (
+            {visibleSkills.length === 0 && (
               <div className="empty-state my-skills-empty">
-                <strong>这里还没有 Skill</strong>
-                <span>发布第一个 Skill 后会显示在这里</span>
+                <strong>
+                  {query.trim() ? "没有匹配的 Skill" : "这里还没有 Skill"}
+                </strong>
+                <span>
+                  {query.trim()
+                    ? "换一个名称继续搜索"
+                    : "发布第一个 Skill 后会显示在这里"}
+                </span>
               </div>
             )}
           </section>
