@@ -218,6 +218,50 @@ describe("全部 Agents 工作区", () => {
     ).toBe(true);
   });
 
+  it("通过 Mock 服务移除 Codex 旧连接时保留工作区和兼容仓库本体", async () => {
+    const service = new MockLocalSkillService(0);
+    const initialGroups = groupLocalSkills(await service.scanSkills());
+    const initialGroup = initialGroups.find(
+      (group) => group.workspaceRecord?.skillName === "code-review",
+    )!;
+
+    expect(getLocalSkillActivationState(initialGroup, "codex")).toBe("legacy");
+
+    const removed = await service.setSkillEnabled({
+      skillName: initialGroup.managerRecord!.skillName,
+      sourcePath: initialGroup.managerRecord!.installPath,
+      agent: "codex",
+      enabled: false,
+    });
+    const removedGroups = groupLocalSkills(removed);
+    const workspaceGroup = removedGroups.find(
+      (group) => group.workspaceRecord?.skillName === "code-review",
+    )!;
+
+    expect(getLocalSkillActivationState(workspaceGroup, "codex")).toBe("disabled");
+    expect(
+      removed.some(
+        (record) =>
+          record.location === "CODEX"
+          && record.skillName === "code-review",
+      ),
+    ).toBe(false);
+    expect(
+      removed.some(
+        (record) =>
+          record.location === "AGENTS"
+          && record.skillName === "code-review",
+      ),
+    ).toBe(true);
+    expect(
+      removed.some(
+        (record) =>
+          record.location === "MANAGER"
+          && record.skillName === "code-review",
+      ),
+    ).toBe(true);
+  });
+
   it("通过 Mock 服务卸载平台 Skill 及其同名 Agent 记录", async () => {
     const service = new MockLocalSkillService(0);
     const installed = (await service.scanSkills()).find(

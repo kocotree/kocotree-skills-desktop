@@ -34,13 +34,13 @@ const SOURCE_DETAILS: Record<
 > = {
   claude: {
     title: "Claude Code Skills",
-    description: "读取用户目录/.claude/skills；关闭后会移除受管连接和对应卡片",
+    description: "读取用户目录/.claude/skills；移除后会删除受管连接和对应卡片",
     emptyTitle: "Claude Code 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
   codex: {
     title: "Codex Skills",
-    description: "读取用户目录/.codex/skills；关闭后会移除受管连接和对应卡片",
+    description: "读取用户目录/.codex/skills；移除后会删除受管连接和对应卡片",
     emptyTitle: "Codex 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
   },
@@ -217,6 +217,42 @@ export function LocalSkillsPage({
     }
   }
 
+  async function removeSkill(group: LocalSkillGroup): Promise<void> {
+    const state = getLocalSkillActivationState(group, filter);
+    const sourceRecord = state === "legacy"
+      ? group.managerRecord
+      : getLocalSkillSourceRecord(group);
+    if (
+      !sourceRecord
+      || !canControlLocalSkill(group)
+      || !["enabled", "legacy"].includes(state)
+    ) {
+      return;
+    }
+    const controlKey = `${group.id}:${filter}`;
+    setPendingControl(controlKey);
+    try {
+      await onSetEnabled({
+        skillName: sourceRecord.skillName,
+        sourcePath: sourceRecord.installPath,
+        agent: filter,
+        enabled: false,
+      });
+      Toast.success(
+        `已从 ${AGENT_DETAILS[filter].label} 移除 ${sourceRecord.displayName}，Skill 本体仍保留`,
+      );
+    } catch (reason) {
+      console.error("[KocotreeSkills] 移除 Agent Skill 连接失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "移除 Agent Skill 连接失败",
+      );
+    } finally {
+      setPendingControl("");
+    }
+  }
+
   function closeAddModal(): void {
     if (pendingControl) return;
     setAddVisible(false);
@@ -349,14 +385,29 @@ export function LocalSkillsPage({
                       </span>
                     )}
                   </div>
-                  <Button
-                    size="small"
-                    onClick={() => void revealLocalSkill(record)}
-                  >
-                    {getLocalSkillSourceRecord(group)
-                      ? "打开 Skill 本体"
-                      : "在目录中显示"}
-                  </Button>
+                  <div className="my-skill-card-footer-actions">
+                    {["enabled", "legacy"].includes(state) && (
+                      <Button
+                        size="small"
+                        theme="light"
+                        type="danger"
+                        loading={pending}
+                        disabled={Boolean(pendingControl)}
+                        aria-label={`从 ${AGENT_DETAILS[filter].label} 移除 ${record.displayName}`}
+                        onClick={() => void removeSkill(group)}
+                      >
+                        移除
+                      </Button>
+                    )}
+                    <Button
+                      size="small"
+                      onClick={() => void revealLocalSkill(record)}
+                    >
+                      {getLocalSkillSourceRecord(group)
+                        ? "打开 Skill 本体"
+                        : "在目录中显示"}
+                    </Button>
+                  </div>
                 </div>
               </article>
             );

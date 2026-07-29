@@ -2983,6 +2983,13 @@ button.my-skill-card:hover {
   margin-top: auto;
 }
 
+.my-skill-card-footer-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
 .local-status,
 .skill-status,
 .online-status {

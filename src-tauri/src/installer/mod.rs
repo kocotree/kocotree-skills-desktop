@@ -2059,6 +2059,54 @@ mod tests {
     }
 
     #[test]
+    fn removing_a_legacy_codex_link_preserves_both_skill_sources() {
+        let home = tempfile::tempdir().unwrap();
+        let workspace_source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let legacy_source = home
+            .path()
+            .join(".skills-manager")
+            .join("skills")
+            .join("test-skill");
+        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&workspace_source).unwrap();
+        fs::create_dir_all(&legacy_source).unwrap();
+        for path in [&workspace_source, &legacy_source] {
+            fs::write(
+                path.join("SKILL.md"),
+                "---\nname: test-skill\ndescription: test\n---\n",
+            )
+            .unwrap();
+        }
+        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
+        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
+
+        let records = set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: legacy_source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: false,
+            },
+        )
+        .unwrap();
+
+        assert!(workspace_source.join("SKILL.md").is_file());
+        assert!(legacy_source.join("SKILL.md").is_file());
+        assert!(matches!(
+            fs::symlink_metadata(&codex_link),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        ));
+        assert!(!records
+            .iter()
+            .any(|record| record.location == "CODEX" && record.skill_name == "test-skill"));
+    }
+
+    #[test]
     fn enabling_still_refuses_a_link_to_an_unknown_location() {
         let home = tempfile::tempdir().unwrap();
         let source = home
