@@ -498,6 +498,7 @@ function BrowsePage({
 function App() {
   const [activePage, setActivePage] = useState<PageKey>("browse");
   const [selectedSkill, setSelectedSkill] = useState<SkillSummaryDto | null>(null);
+  const [selectedSkillContext, setSelectedSkillContext] = useState<"browse" | "manage">("browse");
   const [highlightedBrowseSkillId, setHighlightedBrowseSkillId] = useState<string | null>(null);
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
   const [uploadSessionKey, setUploadSessionKey] = useState(0);
@@ -663,6 +664,13 @@ function App() {
 
   function handleOpenSkill(skill: SkillSummaryDto): void {
     console.info("[KocotreeSkills] 准备打开 Skill 详情", { skillId: skill.id });
+    setSelectedSkillContext("browse");
+    setSelectedSkill(skill);
+  }
+
+  function handleOpenManagedSkill(skill: SkillSummaryDto): void {
+    console.info("[KocotreeSkills] 准备管理 Skill", { skillId: skill.id });
+    setSelectedSkillContext("manage");
     setSelectedSkill(skill);
   }
 
@@ -843,6 +851,7 @@ function App() {
     setUploadTargetSkill(null);
     setUploadSessionKey((current) => current + 1);
     setActivePage("browse");
+    setSelectedSkillContext("browse");
     setSelectedSkill(skill);
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
   }
@@ -858,6 +867,7 @@ function App() {
   const handleOpenNotificationSkill = useCallback((skillId: string) => {
     skillApi.getSkill(skillId).then((skill) => {
       setActivePage("browse");
+      setSelectedSkillContext("browse");
       setSelectedSkill(skill);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 通知关联 Skill 加载失败", reason);
@@ -1034,7 +1044,7 @@ function App() {
           <MySkillsPage
             currentUser={currentUser}
             onLogin={() => setLoginVisible(true)}
-            onOpenSkill={handleOpenSkill}
+            onOpenSkill={handleOpenManagedSkill}
           />
         ) : activePage === "local-all" ? (
           <AllAgentsSkillsPage
@@ -1074,6 +1084,7 @@ function App() {
 
       <SkillDetailModal
         skill={selectedSkill}
+        context={selectedSkillContext}
         installedSkillIds={installedSkillIds}
         currentUser={currentUser}
         onClose={() => setSelectedSkill(null)}

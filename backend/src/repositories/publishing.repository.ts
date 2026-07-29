@@ -251,6 +251,7 @@ export const publishingRepository = {
   async publishVersion(input: {
     skillId: string;
     baseVersionId: string;
+    ownerId: string;
     version: StoredVersionInput;
     displayName?: string;
     displayDescription?: string;
@@ -286,6 +287,7 @@ export const publishingRepository = {
         where: {
           id: input.skillId,
           latestVersionId: input.baseVersionId,
+          createdBy: input.ownerId,
         },
         data: {
           latestVersionId: input.version.id,

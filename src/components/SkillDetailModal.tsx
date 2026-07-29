@@ -17,6 +17,7 @@ import { OwnershipTransferModal } from "./OwnershipTransferModal";
 
 interface SkillDetailModalProps {
   skill: SkillSummaryDto | null;
+  context: "browse" | "manage";
   installedSkillIds: Set<string>;
   currentUser: UserDto | null;
   onClose: () => void;
@@ -75,6 +76,7 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
 /**
  * 功能说明：展示 Skill 平台信息、版本历史、版本文件树和文本文件预览。
  * @param skill - 当前打开的 Skill 摘要，为 null 时关闭模态框。
+ * @param context - 详情来源；浏览场景只允许安装，管理场景才显示管理操作。
  * @param installedSkillIds - 客户端已安装 Skill 编号集合。
  * @param currentUser - 当前登录用户，匿名状态为 null。
  * @param onClose - 关闭详情模态框的回调。
@@ -86,6 +88,7 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
  */
 export function SkillDetailModal({
   skill,
+  context,
   installedSkillIds,
   currentUser,
   onClose,
@@ -209,7 +212,7 @@ export function SkillDetailModal({
   const orderedFileEntries = orderFileEntries(fileEntries);
   const sortedCollaborators = [...(detail?.collaborators ?? [])].sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
   const canManageSkill = Boolean(detail && currentUser && (currentUser.role === "ADMIN" || detail.owner.id === currentUser.id));
-  const canManageVersion = Boolean(detail && currentUser && (currentUser.role === "ADMIN" || detail.owner.id === currentUser.id || detail.collaborators.some((user) => user.id === currentUser.id)));
+  const showManagementActions = context === "manage" && canManageSkill;
 
   async function handleManagementConfirm(): Promise<void> {
     if (!detail || !managementAction || !managementReason.trim()) return;
@@ -267,10 +270,10 @@ export function SkillDetailModal({
                   {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
                 </Button>
               )}
-              {canManageSkill && detail.status === "ARCHIVED" && (
+              {showManagementActions && detail.status === "ARCHIVED" && (
                 <Button theme="solid" type="primary" loading={managementLoading} onClick={() => { setManagementReason(""); setManagementAction({ type: "restore" }); }}>恢复 Skill</Button>
               )}
-              {(detail.status === "ACTIVE" || canManageVersion) && (
+              {showManagementActions && (
                 <Dropdown
                   className="detail-more-menu"
                   contentClassName="detail-more-dropdown"
@@ -281,13 +284,11 @@ export function SkillDetailModal({
                       {detail.status === "ACTIVE" && (
                         <Dropdown.Item onClick={() => onUploadVersion(detail)}>上传新版本</Dropdown.Item>
                       )}
-                      {canManageVersion && (
-                        <Dropdown.Item onClick={() => setMetadataVisible(true)}>编辑展示信息</Dropdown.Item>
-                      )}
-                      {canManageSkill && detail.collaborators.some((user) => user.status === "ACTIVE") && (
+                      <Dropdown.Item onClick={() => setMetadataVisible(true)}>编辑展示信息</Dropdown.Item>
+                      {detail.collaborators.some((user) => user.status === "ACTIVE") && (
                         <Dropdown.Item onClick={() => setOwnershipVisible(true)}>转移所有权</Dropdown.Item>
                       )}
-                      {canManageSkill && detail.status === "ACTIVE" && (
+                      {detail.status === "ACTIVE" && (
                         <Dropdown.Item type="danger" onClick={() => { setManagementReason(""); setManagementAction({ type: "archive" }); }}>归档 Skill</Dropdown.Item>
                       )}
                     </Dropdown.Menu>
@@ -431,7 +432,7 @@ export function SkillDetailModal({
                       {version.status === "WITHDRAWN" && <span className="withdrawal-reason">撤回原因：{version.withdrawalReason}</span>}
                     </button>
                     <div className="version-actions">
-                      {canManageVersion && version.status === "PUBLISHED" && version.version !== "1.0.0" && (
+                      {showManagementActions && version.status === "PUBLISHED" && version.version !== "1.0.0" && (
                         <Button size="small" type="danger" theme="borderless" onClick={() => { setManagementReason(""); setManagementAction({ type: "withdraw", version }); }}>撤回</Button>
                       )}
                       <Button size="small" disabled={version.status === "WITHDRAWN" || detail.status !== "ACTIVE"} onClick={() => onInstall(detail, version)}>安装</Button>

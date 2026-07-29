@@ -308,8 +308,7 @@ export class MockSkillApi implements SkillApi {
     await this.wait();
     const user = this.requireUser();
     const skill = this.findSkill(skillId);
-    if (!this.canCollaborate(skill, user)) throw new SkillApiError("FORBIDDEN", "只有 Owner 或协作者可以修改展示信息");
-    if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
+    if (skill.owner.id !== user.id) throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示信息");
     if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
     const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
       ? this.resolveTags(input.tagIds, input.newTagNames)
@@ -326,6 +325,7 @@ export class MockSkillApi implements SkillApi {
     await this.wait();
     const user = this.requireUser();
     const skill = this.findSkill(skillId);
+    if (skill.owner.id !== user.id) throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以发布新版本");
     if (skill.status !== "ACTIVE") throw new SkillApiError("SKILL_UNAVAILABLE", "当前 Skill 状态不允许发布新版本");
     const parsed = await parseSkillPackage(input.file);
     if (parsed.inspection.skillName !== skill.skillName) throw new SkillApiError("SKILL_NAME_MISMATCH", "ZIP 中的 Skill 名称与目标 Skill 不一致，建议发布为新的 Skill", { expectedSkillName: skill.skillName, actualSkillName: parsed.inspection.skillName });
@@ -335,7 +335,6 @@ export class MockSkillApi implements SkillApi {
     if (versions.some((version) => version.version === input.version)) throw new SkillApiError("VERSION_ALREADY_EXISTS", "该版本号已经存在");
     if (compareSemVer(input.version, skill.currentVersion.version) <= 0) throw new SkillApiError("VERSION_NOT_GREATER", "新版本必须高于当前版本");
     if (versions.some((version) => version.contentHash === parsed.inspection.contentHash)) throw new SkillApiError("CONTENT_UNCHANGED", "ZIP 内容与历史版本一致，无需重复发布");
-    if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
     if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
     const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
       ? this.resolveTags(input.tagIds, input.newTagNames)
@@ -348,7 +347,6 @@ export class MockSkillApi implements SkillApi {
       uploadedBy: user, publishedAt: now, withdrawnBy: null, withdrawnAt: null, withdrawalReason: null,
     };
     versions.unshift(version);
-    if (skill.owner.id !== user.id && !skill.collaborators.some((item) => item.id === user.id)) skill.collaborators.push(user);
     skill.currentVersion = version;
     skill.skillDescription = version.skillDescription;
     if (input.displayName !== undefined) skill.displayName = input.displayName;

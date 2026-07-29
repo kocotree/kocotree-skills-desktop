@@ -478,6 +478,13 @@ export const publishingService = {
         "没有找到该 Skill",
       );
     }
+    if (skill.createdBy !== input.userId) {
+      throw new PublishingError(
+        403,
+        "OWNER_REQUIRED",
+        "只有 Owner 可以发布新版本",
+      );
+    }
     if (skill.status !== "PUBLISHED" || !skill.latestVersion) {
       throw new PublishingError(
         409,
@@ -508,13 +515,6 @@ export const publishingService = {
         400,
         "VERSION_NOT_GREATER",
         "新版本必须高于所有历史版本",
-      );
-    }
-    if (displayName !== undefined && skill.createdBy !== input.userId) {
-      throw new PublishingError(
-        403,
-        "OWNER_REQUIRED",
-        "只有 Owner 可以修改展示名称",
       );
     }
     if (displayName !== undefined) {
@@ -573,6 +573,7 @@ export const publishingService = {
       await publishingRepository.publishVersion({
         skillId: input.skillId,
         baseVersionId: input.baseVersionId,
+        ownerId: input.userId,
         displayName,
         displayDescription,
         tagIds: tags?.tagIds,

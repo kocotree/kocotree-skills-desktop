@@ -320,12 +320,12 @@ Authorization: Bearer <token>
 | `version` | `string` | 是 | 更高 SemVer。 |
 | `changelog` | `string` | 是 | 不可变更新说明。 |
 | `displayName` | `string` | 否 | 仅 Owner 可提交。 |
-| `displayDescription` | `string` | 否 | Owner 或协作者可提交。 |
+| `displayDescription` | `string` | 否 | 仅 Owner 可提交。 |
 | `tagIds` | `string[]` | 否 | 出现时完整替换 Tag 关联。 |
 | `newTagNames` | `string[]` | 否 | 新 Tag 名称。 |
 | `confirmDuplicateDisplayName` | `boolean` | 否 | Owner 确认展示名称重名。 |
 
-任何登录用户可以更新 `ACTIVE` Skill；`ARCHIVED` 只允许 Owner、已有协作者和管理员。首次更新者在同一事务成功后成为协作者并可应用展示简介与 Tags。任何字段失败都会回滚整个请求。
+只有 Owner 可以给现有 Skill 发布新版本，并在同一事务中应用展示简介与 Tags。客户端是否显示发布入口不影响该服务端权限校验。任何字段失败都会回滚整个请求。
 
 `tagIds` 与 `newTagNames` 的编码方式与创建 Skill 相同，均使用重复表单字段。
 传入任一 Tag 字段时服务端会视为完整替换；替换后必须至少保留 1 个 Tag，不能清空全部 Tag。
@@ -350,7 +350,7 @@ Authorization: Bearer <token>
 }
 ```
 
-请求至少包含一个可修改字段。`displayName` 仅 Owner 可改；展示简介和 Tags 允许 Owner 与协作者修改。修改不创建版本，采用后提交覆盖前提交。修改为重名展示名称时，客户端确认后携带 `confirmDuplicateDisplayName=true` 重试。
+请求至少包含一个可修改字段。展示名称、展示简介和 Tags 均仅 Owner 可改。修改不创建版本，采用后提交覆盖前提交。修改为重名展示名称时，客户端确认后携带 `confirmDuplicateDisplayName=true` 重试。
 
 ### 8.4 永久删除 Skill
 

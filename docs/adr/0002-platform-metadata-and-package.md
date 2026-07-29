@@ -1,7 +1,9 @@
 # ADR-0002：平台元数据与原始包分离
 
-- 状态：已接受
+- 状态：部分被 ADR-0005 取代
 - 日期：2026-07-15
+
+> ADR-0005 已取代协作者可以修改平台展示信息的权限规则。当前仅 Owner 可以修改 `displayName`、`displayDescription` 和 Tag。
 
 ## 背景
 
@@ -12,7 +14,7 @@
 - 从 `SKILL.md` frontmatter 提取 `skillName` 和 `skillDescription`。
 - `skillName` 是平台全局唯一身份，创建后不可修改。
 - 平台单独保存 `displayName`、`displayDescription` 和 Tag。
-- `displayName` 只允许当前 Owner 修改；`displayDescription` 和 Tag 允许 Owner 与协作者修改。
+- `displayName`、`displayDescription` 和 Tag 只允许当前 Owner 修改。
 - 平台信息修改不创建 SkillVersion，也不写回 ZIP 或 `SKILL.md`，但保留更新者、时间和变更字段审计。
 - 原始 ZIP 与每个版本的 `SKILL.md` 快照不可变。
 - 发布新版本时，ZIP 中的 `skillName` 必须与 Skill 聚合一致。版本请求可以携带调用者有权修改的平台信息，并与版本创建使用同一事务。
