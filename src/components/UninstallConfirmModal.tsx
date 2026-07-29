@@ -62,6 +62,7 @@ export function UninstallConfirmModal({
               <li><code>{`~/.agents/skills/${skillName}`}</code></li>
               <li><code>{`~/.codex/skills/${skillName}`}</code><span>受管连接或副本</span></li>
               <li><code>{`~/.claude/skills/${skillName}`}</code><span>受管连接或副本</span></li>
+              <li><code>{`~/.skills-manager/skills/${skillName}`}</code><span>确认属于旧连接时清理</span></li>
             </ul>
           </div>
 

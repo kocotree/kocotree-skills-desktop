@@ -43,6 +43,7 @@ const STATUS_LABELS: Record<LocalSkillStatus, string> = {
 const ACTIVATION_LABELS: Record<LocalSkillActivationState, string> = {
   enabled: "已连接",
   disabled: "未连接",
+  legacy: "旧连接",
   unmanaged: "存在冲突",
 };
 
@@ -54,6 +55,9 @@ function activationDescription(
   const label = agent === "claude" ? "Claude Code" : "Codex";
   if (state === "unmanaged") {
     return `${label} 中存在独立安装目录或其他连接，软件不会覆盖它`;
+  }
+  if (state === "legacy") {
+    return `检测到指向旧版兼容仓库的连接；点击后迁移到用户目录/.agents/skills 本体`;
   }
   if (!canControlLocalSkill(group)) {
     return "该工作区条目不是实体目录，不能作为 Agent 连接的本体";
@@ -127,11 +131,11 @@ export function AllAgentsSkillsPage({
     if (
       !sourceRecord
       || !canControlLocalSkill(group)
-      || (state !== "enabled" && state !== "disabled")
+      || !["enabled", "disabled", "legacy"].includes(state)
     ) {
       return;
     }
-    const enabled = state === "disabled";
+    const enabled = state === "disabled" || state === "legacy";
     const controlKey = `${group.id}:${agent}`;
     setPendingControl(controlKey);
     try {
@@ -143,7 +147,9 @@ export function AllAgentsSkillsPage({
       });
       const agentLabel = agent === "claude" ? "Claude Code" : "Codex";
       Toast.success(
-        `${sourceRecord.displayName} 已${enabled ? "连接到" : "断开"} ${agentLabel}`,
+        state === "legacy"
+          ? `${sourceRecord.displayName} 的旧连接已迁移到 ${agentLabel}`
+          : `${sourceRecord.displayName} 已${enabled ? "连接到" : "断开"} ${agentLabel}`,
       );
     } catch (reason) {
       console.error("[KocotreeSkills] 更新工作区连接失败", reason);
@@ -241,7 +247,7 @@ export function AllAgentsSkillsPage({
                     const controlKey = `${group.id}:${agent.id}`;
                     const pending = pendingControl === controlKey;
                     const interactive = canControlLocalSkill(group)
-                      && (state === "enabled" || state === "disabled");
+                      && ["enabled", "disabled", "legacy"].includes(state);
                     return (
                       <div
                         className={`skill-agent-control skill-agent-control-${agent.id}`}

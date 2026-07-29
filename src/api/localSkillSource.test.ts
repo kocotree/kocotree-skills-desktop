@@ -111,6 +111,37 @@ describe("全部 Agents 工作区", () => {
     expect(filterLocalSkillGroups(groups, "codex")).toHaveLength(1);
   });
 
+  it("将指向兼容仓库的同名连接合并到工作区并标记为旧连接", () => {
+    const workspacePath = "/Users/test/.agents/skills/research";
+    const managerPath = "/Users/test/.skills-manager/skills/research";
+    const groups = groupLocalSkills([
+      record({
+        id: "agents-source",
+        installPath: workspacePath,
+        resolvedPath: workspacePath,
+      }),
+      record({
+        id: "manager-source",
+        installPath: managerPath,
+        resolvedPath: managerPath,
+        location: "MANAGER",
+      }),
+      record({
+        id: "legacy-codex-link",
+        installPath: "/Users/test/.codex/skills/research",
+        resolvedPath: managerPath,
+        location: "CODEX",
+        entryKind: "SYMLINK",
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.workspaceRecord?.id).toBe("agents-source");
+    expect(groups[0]?.managerRecord?.id).toBe("manager-source");
+    expect(groups[0]?.agentRecords.codex?.id).toBe("legacy-codex-link");
+    expect(getLocalSkillActivationState(groups[0]!, "codex")).toBe("legacy");
+  });
+
   it("通过 Mock 服务为 .agents 本体创建和移除 Codex 连接", async () => {
     const service = new MockLocalSkillService(0);
     const initial = await service.scanSkills();
@@ -154,6 +185,35 @@ describe("全部 Agents 工作区", () => {
         (item) =>
           item.skillName === source.skillName
           && item.location === "AGENTS",
+      ),
+    ).toBe(true);
+  });
+
+  it("通过 Mock 服务将 Codex 旧连接迁移到 .agents 本体", async () => {
+    const service = new MockLocalSkillService(0);
+    const initialGroups = groupLocalSkills(await service.scanSkills());
+    const initialGroup = initialGroups.find(
+      (group) => group.workspaceRecord?.skillName === "code-review",
+    )!;
+
+    expect(getLocalSkillActivationState(initialGroup, "codex")).toBe("legacy");
+
+    const migrated = await service.setSkillEnabled({
+      skillName: initialGroup.workspaceRecord!.skillName,
+      sourcePath: initialGroup.workspaceRecord!.installPath,
+      agent: "codex",
+      enabled: true,
+    });
+    const migratedGroup = groupLocalSkills(migrated).find(
+      (group) => group.workspaceRecord?.skillName === "code-review",
+    )!;
+
+    expect(getLocalSkillActivationState(migratedGroup, "codex")).toBe("enabled");
+    expect(
+      migrated.some(
+        (record) =>
+          record.location === "MANAGER"
+          && record.skillName === "code-review",
       ),
     ).toBe(true);
   });

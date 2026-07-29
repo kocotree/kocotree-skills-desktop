@@ -2768,6 +2768,10 @@ button.my-skill-card:hover {
   background: #8f9490;
 }
 
+.skill-agent-toggle.state-legacy .skill-agent-toggle-track {
+  background: #d89a38;
+}
+
 .skill-agent-toggle.state-enabled .skill-agent-toggle-knob,
 .skill-agent-toggle.state-unmanaged .skill-agent-toggle-knob {
   transform: translateX(12px);
@@ -2788,6 +2792,11 @@ button.my-skill-card:hover {
 
 .skill-agent-toggle.state-unmanaged .skill-agent-state {
   color: #686d69;
+}
+
+.skill-agent-toggle.state-legacy .skill-agent-state {
+  color: #9a6213;
+  font-weight: 650;
 }
 
 .local-skills-toolbar-actions {

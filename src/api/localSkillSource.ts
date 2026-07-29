@@ -9,6 +9,7 @@ export type LocalSkillFilter = Exclude<LocalSkillAgent, "agents">;
 export type LocalSkillActivationState =
   | "enabled"
   | "disabled"
+  | "legacy"
   | "unmanaged";
 
 export interface LocalSkillGroup {
@@ -45,6 +46,14 @@ function locationToAgent(
 
 function resolvedKey(record: LocalSkillRecord): string {
   return normalizedPath(record.resolvedPath ?? record.installPath);
+}
+
+function isManagedConnectionRecord(record: LocalSkillRecord): boolean {
+  return (
+    record.entryKind === "SYMLINK"
+    || record.entryKind === "JUNCTION"
+    || record.entryKind === "COPY"
+  );
 }
 
 export function groupLocalSkills(
@@ -85,12 +94,55 @@ export function groupLocalSkills(
     groups.set(key, group);
   }
 
-  return [...groups.values()].sort((left, right) =>
+  const groupedRecords = [...groups.values()];
+  const workspaceGroupsBySkillName = new Map(
+    groupedRecords
+      .filter((group) => group.workspaceRecord)
+      .map((group) => [group.workspaceRecord!.skillName, group]),
+  );
+  const mergedLegacyGroups = new Set<LocalSkillGroup>();
+  for (const legacyGroup of groupedRecords) {
+    if (!legacyGroup.managerRecord || legacyGroup.workspaceRecord) continue;
+    const workspaceGroup = workspaceGroupsBySkillName.get(
+      legacyGroup.managerRecord.skillName,
+    );
+    if (!workspaceGroup || workspaceGroup.managerRecord) continue;
+    const legacyAgentRecords = (["claude", "codex"] as const)
+      .map((agent) => [agent, legacyGroup.agentRecords[agent]] as const)
+      .filter(
+        (
+          entry,
+        ): entry is readonly [
+          "claude" | "codex",
+          LocalSkillRecord,
+        ] =>
+          Boolean(entry[1])
+          && isManagedConnectionRecord(entry[1]!)
+          && resolvedKey(entry[1]!) === resolvedKey(legacyGroup.managerRecord!),
+      );
+    if (
+      legacyAgentRecords.length === 0
+      || legacyAgentRecords.some(
+        ([agent]) => Boolean(workspaceGroup.agentRecords[agent]),
+      )
+    ) {
+      continue;
+    }
+    workspaceGroup.managerRecord = legacyGroup.managerRecord;
+    for (const [agent, record] of legacyAgentRecords) {
+      workspaceGroup.agentRecords[agent] = record;
+    }
+    mergedLegacyGroups.add(legacyGroup);
+  }
+
+  return groupedRecords
+    .filter((group) => !mergedLegacyGroups.has(group))
+    .sort((left, right) =>
     left.primaryRecord.displayName.localeCompare(
       right.primaryRecord.displayName,
       "zh-CN",
     ),
-  );
+    );
 }
 
 /**
@@ -150,12 +202,20 @@ function isManagedLink(
   const sourceRecord = getLocalSkillSourceRecord(group);
   return Boolean(
     sourceRecord
-      && (
-        record.entryKind === "SYMLINK"
-        || record.entryKind === "JUNCTION"
-        || record.entryKind === "COPY"
-      )
+      && isManagedConnectionRecord(record)
       && resolvedKey(record) === resolvedKey(sourceRecord),
+  );
+}
+
+function isLegacyManagedLink(
+  group: LocalSkillGroup,
+  record: LocalSkillRecord,
+): boolean {
+  return Boolean(
+    group.workspaceRecord
+      && group.managerRecord
+      && isManagedConnectionRecord(record)
+      && resolvedKey(record) === resolvedKey(group.managerRecord),
   );
 }
 
@@ -170,9 +230,13 @@ export function getLocalSkillActivationState(
     (record): record is LocalSkillRecord => Boolean(record),
   );
   if (directRecords.length === 0) return "disabled";
-  return directRecords.every((record) => isManagedLink(group, record))
-    ? "enabled"
-    : "unmanaged";
+  if (directRecords.every((record) => isManagedLink(group, record))) {
+    return "enabled";
+  }
+  if (directRecords.every((record) => isLegacyManagedLink(group, record))) {
+    return "legacy";
+  }
+  return "unmanaged";
 }
 
 export function isLocalSkillAssigned(

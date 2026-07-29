@@ -176,6 +176,14 @@ const initialMockRecords: LocalSkillRecord[] = [
         : record.installPath,
     };
   }),
+  {
+    ...initialRecords[0],
+    id: "agents-code-review",
+    installPath: "~/.agents/skills/code-review",
+    location: "AGENTS",
+    entryKind: "DIRECTORY",
+    resolvedPath: "~/.agents/skills/code-review",
+  },
 ];
 
 /** 浏览器开发阶段使用的本地 Skill 内存模拟服务。 */
@@ -229,10 +237,18 @@ export class MockLocalSkillService implements LocalSkillService {
       );
     const conflictingRecord = existingRecords.find(
       ({ record }) =>
-        (record.entryKind !== "SYMLINK"
+        (
+          record.entryKind !== "SYMLINK"
           && record.entryKind !== "JUNCTION"
-          && record.entryKind !== "COPY")
-        || record.resolvedPath !== sourceRecord.resolvedPath,
+          && record.entryKind !== "COPY"
+        )
+        || (
+          record.resolvedPath !== sourceRecord.resolvedPath
+          && !(
+            sourceRecord.location === "AGENTS"
+            && record.resolvedPath === managerPath(input.skillName)
+          )
+        ),
     );
     if (conflictingRecord) {
       throw new SkillApiError(
@@ -254,6 +270,12 @@ export class MockLocalSkillService implements LocalSkillService {
           entryKind: "SYMLINK",
           resolvedPath: sourceRecord.resolvedPath,
         });
+      } else {
+        for (const { record } of existingRecords) {
+          if (record.resolvedPath === managerPath(input.skillName)) {
+            record.resolvedPath = sourceRecord.resolvedPath;
+          }
+        }
       }
     } else {
       for (const { index } of [...existingRecords].sort(

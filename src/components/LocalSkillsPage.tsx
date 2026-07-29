@@ -68,6 +68,7 @@ const STATUS_LABELS: Record<LocalSkillStatus, string> = {
 const ACTIVATION_LABELS: Record<LocalSkillActivationState, string> = {
   enabled: "已开启",
   disabled: "已关闭",
+  legacy: "旧连接",
   unmanaged: "独立安装",
 };
 
@@ -78,6 +79,9 @@ function activationDescription(
 ): string {
   if (state === "unmanaged") {
     return "Skill 是独立安装目录或指向其他位置的链接，为避免数据丢失不能通过开关关闭";
+  }
+  if (state === "legacy") {
+    return `检测到指向旧版兼容仓库的连接；点击后迁移到全部 Agents 工作区本体`;
   }
   if (!canControlLocalSkill(group)) {
     return "该 Skill 不在可控制的全部 Agents 工作区或兼容仓库中";
@@ -182,11 +186,11 @@ export function LocalSkillsPage({
     if (
       !sourceRecord
       || !canControlLocalSkill(group)
-      || (state !== "enabled" && state !== "disabled")
+      || !["enabled", "disabled", "legacy"].includes(state)
     ) {
       return;
     }
-    const enabled = state === "disabled";
+    const enabled = state === "disabled" || state === "legacy";
     const controlKey = `${group.id}:${filter}`;
     setPendingControl(controlKey);
     try {
@@ -197,7 +201,9 @@ export function LocalSkillsPage({
         enabled,
       });
       Toast.success(
-        `${AGENT_DETAILS[filter].label} 已${enabled ? "开启" : "关闭"} ${sourceRecord.displayName}`,
+        state === "legacy"
+          ? `${AGENT_DETAILS[filter].label} 的旧连接已迁移`
+          : `${AGENT_DETAILS[filter].label} 已${enabled ? "开启" : "关闭"} ${sourceRecord.displayName}`,
       );
     } catch (reason) {
       console.error("[KocotreeSkills] 更新本地 Skill 状态失败", reason);
@@ -267,7 +273,7 @@ export function LocalSkillsPage({
             const controlKey = `${group.id}:${filter}`;
             const pending = pendingControl === controlKey;
             const interactive = canControlLocalSkill(group)
-              && (state === "enabled" || state === "disabled");
+              && ["enabled", "disabled", "legacy"].includes(state);
             return (
               <article className="my-skill-card local" key={group.id}>
                 <button
@@ -310,7 +316,7 @@ export function LocalSkillsPage({
                       className={`skill-agent-toggle state-${state}`}
                       type="button"
                       role="switch"
-                      aria-checked={state !== "disabled"}
+                      aria-checked={state === "enabled"}
                       aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
                       disabled={!interactive || Boolean(pendingControl)}
                       onClick={() => void toggleSkill(group)}

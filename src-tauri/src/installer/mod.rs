@@ -96,6 +96,8 @@ struct LocalSkillManagerState {
     assignments: HashMap<String, Vec<String>>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     connections: HashMap<String, ManagedConnectionState>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    legacy_sources: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -866,6 +868,7 @@ fn empty_local_skill_manager_state() -> LocalSkillManagerState {
         schema_version: 1,
         assignments: HashMap::new(),
         connections: HashMap::new(),
+        legacy_sources: HashMap::new(),
     }
 }
 
@@ -1113,6 +1116,35 @@ fn preferred_agent_skills_root(home: &Path, agent: &str) -> Result<PathBuf, Inst
     }
 }
 
+fn verified_legacy_manager_source(
+    home: &Path,
+    skill_name: &str,
+) -> Result<Option<PathBuf>, InstallError> {
+    let legacy_source = home.join(".skills-manager").join("skills").join(skill_name);
+    let metadata = match fs::symlink_metadata(&legacy_source) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_error("检查旧版 Skill 本体", error)),
+    };
+    let link_kind = managed_directory_link_kind(&legacy_source, &metadata)
+        .map_err(|error| io_error("检查旧版 Skill 本体类型", error))?;
+    if link_kind.is_some() || !metadata.is_dir() {
+        return Ok(None);
+    }
+    let skill_md = match fs::read_to_string(legacy_source.join("SKILL.md")) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_error("读取旧版 Skill 定义", error)),
+    };
+    if parse_skill_name(&skill_md).ok().as_deref() != Some(skill_name) {
+        return Ok(None);
+    }
+    legacy_source
+        .canonicalize()
+        .map(Some)
+        .map_err(|error| io_error("定位旧版 Skill 本体", error))
+}
+
 #[cfg(unix)]
 fn managed_directory_link_kind(
     _path: &Path,
@@ -1293,6 +1325,8 @@ fn set_local_skill_enabled_at_home(
     let connection_key = managed_connection_key(&input.agent, &input.skill_name);
     let mut manager_state = load_local_skill_manager_state(home)?;
     let mut manager_state_changed = false;
+    let legacy_manager_source = verified_legacy_manager_source(home, &input.skill_name)?;
+    let mut legacy_links_to_replace = Vec::new();
     #[cfg(any(windows, test))]
     let stored_connection = manager_state.connections.get(&connection_key).cloned();
     #[cfg(any(windows, test))]
@@ -1320,6 +1354,16 @@ fn set_local_skill_enabled_at_home(
                             )
                         })?;
                         if current_target != canonical_source {
+                            if legacy_manager_source
+                                .as_ref()
+                                .is_some_and(|legacy_source| *legacy_source == current_target)
+                            {
+                                legacy_links_to_replace.push((
+                                    target_path.clone(),
+                                    connection_mode_from_link_kind(link_kind),
+                                ));
+                                continue;
+                            }
                             return Err(InstallError::new(
                                 "LOCAL_SKILL_TARGET_CONFLICT",
                                 "目标位置已有指向其他 Skill 的连接",
@@ -1351,6 +1395,23 @@ fn set_local_skill_enabled_at_home(
                     return Err(io_error("检查 Agent Skill 入口", error));
                 }
             }
+        }
+        let migrated_legacy_connection = !legacy_links_to_replace.is_empty();
+        for (target_path, mode) in legacy_links_to_replace {
+            remove_managed_connection_target(&target_path, mode)
+                .map_err(|error| io_error("迁移旧版 Agent Skill 连接", error))?;
+        }
+        if migrated_legacy_connection {
+            let legacy_source = legacy_manager_source
+                .as_ref()
+                .expect("迁移旧连接前必须确认旧版 Skill 本体")
+                .to_string_lossy()
+                .into_owned();
+            manager_state_changed |=
+                manager_state.legacy_sources.get(&input.skill_name) != Some(&legacy_source);
+            manager_state
+                .legacy_sources
+                .insert(input.skill_name.clone(), legacy_source);
         }
         if active_mode.is_none() {
             let preferred_root = preferred_agent_skills_root(home, &input.agent)?;
@@ -1538,6 +1599,8 @@ fn remove_local_skill_at_home(
     }
 
     let mut manager_state = load_local_skill_manager_state(home)?;
+    let legacy_manager_source = verified_legacy_manager_source(home, &input.skill_name)?;
+    let mut found_legacy_connection = false;
     let mut removal_targets = Vec::<(PathBuf, LocalRemovalKind)>::new();
     for agent in ["claude", "codex"] {
         let target = preferred_agent_skills_root(home, agent)?.join(&input.skill_name);
@@ -1549,13 +1612,6 @@ fn remove_local_skill_at_home(
         let link_kind = managed_directory_link_kind(&target, &metadata)
             .map_err(|error| uninstall_io_error("检查 Agent Skill 连接", error))?;
         if let Some(link_kind) = link_kind {
-            let Some(expected_source) = canonical_source.as_ref() else {
-                return Err(InstallError::with_details(
-                    "LOCAL_UNINSTALL_CONNECTION_UNSAFE",
-                    "Agent 中存在无法确认来源的同名连接，未执行删除",
-                    serde_json::json!({ "path": target }),
-                ));
-            };
             let current_target = target.canonicalize().map_err(|_| {
                 InstallError::with_details(
                     "LOCAL_UNINSTALL_CONNECTION_UNSAFE",
@@ -1563,13 +1619,20 @@ fn remove_local_skill_at_home(
                     serde_json::json!({ "path": target }),
                 )
             })?;
-            if &current_target != expected_source {
+            let points_to_current_source = canonical_source
+                .as_ref()
+                .is_some_and(|expected_source| &current_target == expected_source);
+            let points_to_legacy_source = legacy_manager_source
+                .as_ref()
+                .is_some_and(|legacy_source| &current_target == legacy_source);
+            if !points_to_current_source && !points_to_legacy_source {
                 return Err(InstallError::with_details(
                     "LOCAL_UNINSTALL_CONNECTION_CONFLICT",
                     "Agent 中的同名连接指向其他位置，未执行删除",
                     serde_json::json!({ "path": target }),
                 ));
             }
+            found_legacy_connection |= points_to_legacy_source;
             removal_targets.push((target, LocalRemovalKind::ManagedLink(link_kind)));
             continue;
         }
@@ -1629,6 +1692,21 @@ fn remove_local_skill_at_home(
         fs::remove_dir_all(&source)
             .map_err(|error| uninstall_io_error("删除 Skill 本体", error))?;
     }
+    let legacy_was_migrated = legacy_manager_source.as_ref().is_some_and(|legacy_source| {
+        manager_state
+            .legacy_sources
+            .get(&input.skill_name)
+            .and_then(|path| PathBuf::from(path).canonicalize().ok())
+            .is_some_and(|path| path == *legacy_source)
+    });
+    if (found_legacy_connection || legacy_was_migrated) && legacy_manager_source.is_some() {
+        fs::remove_dir_all(
+            legacy_manager_source
+                .as_ref()
+                .expect("已确认存在旧版 Skill 本体"),
+        )
+        .map_err(|error| uninstall_io_error("删除旧版 Skill 本体", error))?;
+    }
 
     let mut state_changed = false;
     for agent in ["claude", "codex"] {
@@ -1642,6 +1720,10 @@ fn remove_local_skill_at_home(
             .remove(&managed_connection_key(agent, &input.skill_name))
             .is_some();
     }
+    state_changed |= manager_state
+        .legacy_sources
+        .remove(&input.skill_name)
+        .is_some();
     manager_state
         .assignments
         .retain(|_, assignments| !assignments.is_empty());
@@ -1925,6 +2007,184 @@ mod tests {
             fs::read_to_string(independent.join("keep.txt")).unwrap(),
             "keep"
         );
+    }
+
+    #[test]
+    fn enabling_replaces_a_verified_legacy_manager_link() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let legacy_source = home
+            .path()
+            .join(".skills-manager")
+            .join("skills")
+            .join("test-skill");
+        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&legacy_source).unwrap();
+        for path in [&source, &legacy_source] {
+            fs::write(
+                path.join("SKILL.md"),
+                "---\nname: test-skill\ndescription: test\n---\n",
+            )
+            .unwrap();
+        }
+        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
+        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
+
+        set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            codex_link.canonicalize().unwrap(),
+            source.canonicalize().unwrap()
+        );
+        assert!(legacy_source.join("SKILL.md").is_file());
+        let state = load_local_skill_manager_state(home.path()).unwrap();
+        assert_eq!(
+            PathBuf::from(state.legacy_sources.get("test-skill").unwrap()),
+            legacy_source.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn enabling_still_refuses_a_link_to_an_unknown_location() {
+        let home = tempfile::tempdir().unwrap();
+        let source = home
+            .path()
+            .join(".agents")
+            .join("skills")
+            .join("test-skill");
+        let unknown_source = home.path().join("other").join("test-skill");
+        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&unknown_source).unwrap();
+        for path in [&source, &unknown_source] {
+            fs::write(
+                path.join("SKILL.md"),
+                "---\nname: test-skill\ndescription: test\n---\n",
+            )
+            .unwrap();
+        }
+        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
+        create_managed_directory_link(&unknown_source, &codex_link).unwrap();
+
+        let error = set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: true,
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, "LOCAL_SKILL_TARGET_CONFLICT");
+        assert_eq!(
+            codex_link.canonicalize().unwrap(),
+            unknown_source.canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn uninstall_removes_verified_legacy_links_and_manager_copy() {
+        let home = tempfile::tempdir().unwrap();
+        let bytes = create_package("test-skill", None);
+        let skills_root = home.path().join(".agents").join("skills");
+        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        let source = skills_root.join("test-skill");
+        let legacy_source = home
+            .path()
+            .join(".skills-manager")
+            .join("skills")
+            .join("test-skill");
+        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&legacy_source).unwrap();
+        fs::write(
+            legacy_source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: legacy\n---\n",
+        )
+        .unwrap();
+        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
+        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
+        set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: source.to_string_lossy().into_owned(),
+                agent: "codex".to_string(),
+                enabled: true,
+            },
+        )
+        .unwrap();
+
+        remove_local_skill_at_home(
+            home.path(),
+            RemoveLocalSkillInput {
+                skill_id: "skill-test".to_string(),
+                skill_name: "test-skill".to_string(),
+            },
+        )
+        .unwrap();
+
+        assert!(!source.exists());
+        assert!(!codex_link.exists());
+        assert!(!legacy_source.exists());
+    }
+
+    #[test]
+    fn uninstall_preserves_an_unassigned_legacy_manager_directory() {
+        let home = tempfile::tempdir().unwrap();
+        let bytes = create_package("test-skill", None);
+        let skills_root = home.path().join(".agents").join("skills");
+        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        let legacy_source = home
+            .path()
+            .join(".skills-manager")
+            .join("skills")
+            .join("test-skill");
+        fs::create_dir_all(&legacy_source).unwrap();
+        fs::write(
+            legacy_source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: independent legacy copy\n---\n",
+        )
+        .unwrap();
+        set_local_skill_enabled_at_home(
+            home.path(),
+            SetLocalSkillEnabledInput {
+                skill_name: "test-skill".to_string(),
+                source_path: skills_root
+                    .join("test-skill")
+                    .to_string_lossy()
+                    .into_owned(),
+                agent: "claude".to_string(),
+                enabled: true,
+            },
+        )
+        .unwrap();
+
+        remove_local_skill_at_home(
+            home.path(),
+            RemoveLocalSkillInput {
+                skill_id: "skill-test".to_string(),
+                skill_name: "test-skill".to_string(),
+            },
+        )
+        .unwrap();
+
+        assert!(legacy_source.join("SKILL.md").is_file());
     }
 
     #[test]
