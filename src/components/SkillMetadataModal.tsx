@@ -5,7 +5,7 @@ import { AppIcon } from "./AppIcon";
 import { mergeTagNames, parseTagNames } from "./tagNames";
 
 /**
- * 功能说明：按 Owner 与协作者权限编辑平台展示信息，不创建内容版本。
+ * 功能说明：由 Owner 编辑平台展示信息，不创建内容版本。
  * @param skill - 当前编辑的 Skill。
  * @param currentUser - 当前登录用户。
  * @param visible - 是否显示编辑模态框。
@@ -37,7 +37,9 @@ export function SkillMetadataModal({
   const [error, setError] = useState("");
   const [needsDuplicateConfirmation, setNeedsDuplicateConfirmation] = useState(false);
 
-  const canEditDisplayName = Boolean(skill && currentUser && (currentUser.role === "ADMIN" || skill.owner.id === currentUser.id));
+  const canEditMetadata = Boolean(
+    skill && currentUser && skill.owner.id === currentUser.id,
+  );
 
   useEffect(() => {
     if (!visible || !skill) return;
@@ -101,7 +103,7 @@ export function SkillMetadataModal({
     setNeedsDuplicateConfirmation(false);
     try {
       const updated = await skillApi.updateSkillMetadata(skill.id, {
-        displayName: canEditDisplayName ? displayName : undefined,
+        displayName: canEditMetadata ? displayName : undefined,
         displayDescription,
         tagIds: selectedTagIds,
         newTagNames,
@@ -126,10 +128,10 @@ export function SkillMetadataModal({
       width={620}
       centered
       onCancel={onCancel}
-      footer={<div className="metadata-actions"><Button disabled={saving} onClick={onCancel}>取消</Button><Button theme="solid" type="primary" loading={saving} disabled={!displayDescription.trim() || (canEditDisplayName && !displayName.trim())} onClick={() => void save(false)}>保存</Button></div>}
+      footer={<div className="metadata-actions"><Button disabled={saving} onClick={onCancel}>取消</Button><Button theme="solid" type="primary" loading={saving} disabled={!canEditMetadata || !displayDescription.trim() || !displayName.trim()} onClick={() => void save(false)}>保存</Button></div>}
     >
       <div className="metadata-form">
-        {canEditDisplayName && <label><span>展示名称</span><input value={displayName} maxLength={100} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>}
+        {canEditMetadata && <label><span>展示名称</span><input value={displayName} maxLength={100} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>}
         <label><span>展示简介</span><TextArea value={displayDescription} maxCount={1000} autosize={{ minRows: 3, maxRows: 6 }} onChange={setDisplayDescription} /></label>
         <fieldset className="tag-field" aria-required="true">
           <legend>Tag（必选，最多 5 个）</legend>

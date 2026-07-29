@@ -7,6 +7,7 @@ import type {
   ListVersionsQuery,
   PublishSkillVersionDto,
   SkillApi,
+  UpdateSkillMetadataDto,
 } from "./contracts";
 import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
@@ -96,6 +97,13 @@ class IncrementalSkillApi extends MockSkillApi {
     input: PublishSkillVersionDto,
   ) {
     return this.publishing.publishSkillVersion(skillId, input);
+  }
+
+  override updateSkillMetadata(
+    skillId: string,
+    input: UpdateSkillMetadataDto,
+  ) {
+    return this.publishing.updateSkillMetadata(skillId, input);
   }
 
   override deleteSkill(skillId: string) {

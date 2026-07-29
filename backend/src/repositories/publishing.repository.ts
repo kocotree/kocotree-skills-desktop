@@ -23,7 +23,12 @@ type StoredVersionInput = {
 };
 
 export class PublishingPersistenceError extends Error {
-  constructor(readonly code: "VERSION_CONFLICT" | "TAG_NOT_FOUND") {
+  constructor(
+    readonly code:
+      | "VERSION_CONFLICT"
+      | "TAG_NOT_FOUND"
+      | "OWNER_REQUIRED",
+  ) {
     super(code);
     this.name = "PublishingPersistenceError";
   }
@@ -184,6 +189,18 @@ export const publishingRepository = {
     });
   },
 
+  getSkillForMetadataUpdate(skillId: string) {
+    return prisma.skill.findUnique({
+      where: {
+        id: skillId,
+      },
+      select: {
+        id: true,
+        createdBy: true,
+      },
+    });
+  },
+
   async createPublishedSkill(input: {
     skillId: string;
     slug: string;
@@ -245,6 +262,46 @@ export const publishingRepository = {
         },
       });
       return skill.id;
+    });
+  },
+
+  async updateSkillMetadata(input: {
+    skillId: string;
+    ownerId: string;
+    displayName?: string;
+    displayDescription?: string;
+    tagIds?: string[];
+    newTags?: NewTag[];
+  }): Promise<string> {
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.skill.updateMany({
+        where: {
+          id: input.skillId,
+          createdBy: input.ownerId,
+        },
+        data: {
+          ...(input.displayName !== undefined
+            ? { name: input.displayName }
+            : {}),
+          ...(input.displayDescription !== undefined
+            ? { description: input.displayDescription }
+            : {}),
+          updatedAt: new Date(),
+        },
+      });
+      if (updated.count !== 1) {
+        throw new PublishingPersistenceError("OWNER_REQUIRED");
+      }
+
+      if (input.tagIds !== undefined) {
+        await replaceTags(
+          tx,
+          input.skillId,
+          input.tagIds,
+          input.newTags || [],
+        );
+      }
+      return input.skillId;
     });
   },
 

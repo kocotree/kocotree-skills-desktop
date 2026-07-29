@@ -503,6 +503,7 @@ function App() {
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
   const [uploadSessionKey, setUploadSessionKey] = useState(0);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
+  const [publishedRefreshKey, setPublishedRefreshKey] = useState(0);
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [loginVisible, setLoginVisible] = useState(false);
@@ -1045,6 +1046,7 @@ function App() {
             currentUser={currentUser}
             onLogin={() => setLoginVisible(true)}
             onOpenSkill={handleOpenManagedSkill}
+            refreshKey={publishedRefreshKey}
           />
         ) : activePage === "local-all" ? (
           <AllAgentsSkillsPage
@@ -1094,6 +1096,7 @@ function App() {
         onChanged={(skill) => {
           setSelectedSkill(skill);
           setBrowseRefreshKey((current) => current + 1);
+          setPublishedRefreshKey((current) => current + 1);
         }}
       />
 

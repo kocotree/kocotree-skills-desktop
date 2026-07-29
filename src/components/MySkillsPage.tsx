@@ -51,22 +51,25 @@ async function loadAllOwnedSkills(): Promise<SkillSummaryDto[]> {
  * @param currentUser - 当前登录用户，未登录时显示登录引导。
  * @param onLogin - 用户请求登录时触发。
  * @param onOpenSkill - 打开 Skill 详情的回调。
+ * @param refreshKey - 外部管理操作成功后触发重新加载的版本号。
  * @returns 当前用户拥有的 Skill 列表。
  */
 export function MySkillsPage({
   currentUser,
   onLogin,
   onOpenSkill,
+  refreshKey,
 }: {
   currentUser: UserDto | null;
   onLogin: () => void;
   onOpenSkill: (skill: SkillSummaryDto) => void;
+  refreshKey: number;
 }) {
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [manualRefreshKey, setManualRefreshKey] = useState(0);
   const [deleteTarget, setDeleteTarget] =
     useState<SkillSummaryDto | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
@@ -109,7 +112,7 @@ export function MySkillsPage({
     return () => {
       active = false;
     };
-  }, [currentUser, refreshKey]);
+  }, [currentUser, manualRefreshKey, refreshKey]);
 
   function beginDelete(skill: SkillSummaryDto): void {
     setDeleteTarget(skill);
@@ -199,7 +202,7 @@ export function MySkillsPage({
               loading={loading}
               disabled={!currentUser}
               onClick={() =>
-                setRefreshKey((current) => current + 1)
+                setManualRefreshKey((current) => current + 1)
               }
             >
               刷新

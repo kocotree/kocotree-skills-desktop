@@ -57,6 +57,16 @@ export type PublishVersionInput = {
   userId: string;
 };
 
+export type UpdateSkillMetadataInput = {
+  skillId: string;
+  displayName?: string;
+  displayDescription?: string;
+  tagIds?: string[];
+  newTagNames?: string[];
+  confirmDuplicateDisplayName: boolean;
+  userId: string;
+};
+
 function compareIdentifiers(left: string, right: string): number {
   const leftNumeric = /^\d+$/.test(left);
   const rightNumeric = /^\d+$/.test(right);
@@ -282,7 +292,7 @@ async function deleteUploadedObject(objectKey: string): Promise<void> {
 
 function mapPersistenceError(
   error: unknown,
-  operation: "CREATE" | "PUBLISH",
+  operation: "CREATE" | "PUBLISH" | "UPDATE",
 ): never {
   if (error instanceof PublishingError) throw error;
   if (error instanceof PublishingPersistenceError) {
@@ -291,6 +301,13 @@ function mapPersistenceError(
         409,
         "VERSION_CONFLICT",
         "发布期间已经出现新版本，请刷新后重试",
+      );
+    }
+    if (error.code === "OWNER_REQUIRED") {
+      throw new PublishingError(
+        403,
+        "OWNER_REQUIRED",
+        "只有 Owner 可以修改展示信息",
       );
     }
     throw new PublishingError(
@@ -310,22 +327,32 @@ function mapPersistenceError(
         "该 Skill 名称已经存在，请发布为新版本",
       );
     }
+    if (operation === "PUBLISH") {
+      throw new PublishingError(
+        409,
+        "VERSION_ALREADY_EXISTS",
+        "该版本号已经存在",
+      );
+    }
     throw new PublishingError(
-      409,
-      "VERSION_ALREADY_EXISTS",
-      "该版本号已经存在",
+      400,
+      "INVALID_REQUEST",
+      "展示信息无法更新",
     );
   }
   throw error;
 }
 
-async function loadPublishedSkill(skillId: string) {
+async function loadPublishedSkill(
+  skillId: string,
+  failureMessage = "发布成功，但无法读取最新 Skill 信息",
+) {
   const skill = await catalogService.getSkill(skillId);
   if (!skill) {
     throw new PublishingError(
       500,
       "PUBLISHING_FAILED",
-      "发布成功，但无法读取最新 Skill 信息",
+      failureMessage,
     );
   }
   return skill;
@@ -420,6 +447,93 @@ export const publishingService = {
       mapPersistenceError(error, "CREATE");
     }
     return loadPublishedSkill(skillId);
+  },
+
+  async updateSkillMetadata(input: UpdateSkillMetadataInput) {
+    if (!UUID_PATTERN.test(input.skillId)) {
+      throw new PublishingError(
+        404,
+        "SKILL_NOT_FOUND",
+        "没有找到该 Skill",
+      );
+    }
+    if (
+      input.displayName === undefined &&
+      input.displayDescription === undefined &&
+      input.tagIds === undefined &&
+      input.newTagNames === undefined
+    ) {
+      throw new PublishingError(
+        400,
+        "INVALID_REQUEST",
+        "请至少修改一项展示信息",
+      );
+    }
+
+    const displayName =
+      input.displayName === undefined
+        ? undefined
+        : validateText(input.displayName, "展示名称", 100);
+    const displayDescription =
+      input.displayDescription === undefined
+        ? undefined
+        : validateText(
+            input.displayDescription,
+            "展示简介",
+            1_000,
+          );
+    const shouldReplaceTags =
+      input.tagIds !== undefined ||
+      input.newTagNames !== undefined;
+    const tags = shouldReplaceTags
+      ? normalizeTags(
+          input.tagIds || [],
+          input.newTagNames || [],
+        )
+      : undefined;
+
+    const skill =
+      await publishingRepository.getSkillForMetadataUpdate(
+        input.skillId,
+      );
+    if (!skill) {
+      throw new PublishingError(
+        404,
+        "SKILL_NOT_FOUND",
+        "没有找到该 Skill",
+      );
+    }
+    if (skill.createdBy !== input.userId) {
+      throw new PublishingError(
+        403,
+        "OWNER_REQUIRED",
+        "只有 Owner 可以修改展示信息",
+      );
+    }
+    if (displayName !== undefined) {
+      await ensureDisplayNameConfirmed(
+        displayName,
+        input.confirmDuplicateDisplayName,
+        input.skillId,
+      );
+    }
+
+    try {
+      await publishingRepository.updateSkillMetadata({
+        skillId: input.skillId,
+        ownerId: input.userId,
+        displayName,
+        displayDescription,
+        tagIds: tags?.tagIds,
+        newTags: tags?.newTags,
+      });
+    } catch (error) {
+      mapPersistenceError(error, "UPDATE");
+    }
+    return loadPublishedSkill(
+      input.skillId,
+      "展示信息已更新，但无法读取最新 Skill 信息",
+    );
   },
 
   async publishVersion(input: PublishVersionInput) {

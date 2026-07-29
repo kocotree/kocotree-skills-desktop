@@ -302,15 +302,14 @@ desktop 领域规则。服务端仍应重新解析 ZIP，并以服务端计算�
 
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
-| `PATCH /api/skills/{skillId}` | 无 | C | Skill 和 Tag 表可复用；需新增权限规则、字段和接口 |
+| `PATCH /api/skills/{skillId}` | 已实现 | A | Owner 校验、展示字段和 Tag 替换在同一事务中完成 |
 
-需要支持：
+当前支持：
 
-- Owner 修改展示名称。
-- Owner 或协作者修改展示简介和 Tag。
+- Owner 修改展示名称、展示简介和 Tag。
 - 必须至少 1 个、最多 5 个 Tag。
 - 同名展示名称二次确认。
-- 更新 `updatedBy` 和 `updatedAt`。
+- 更新 `updatedAt`；独立的展示信息审计模型后续再补。
 
 ### 7.8 版本历史、详情和发布
 
@@ -576,7 +575,7 @@ VITE_API_BASE_URL=https://skills-api.example.com
 2. 指定版本文件树和文件预览。**已提前完成**
 3. 新建 Skill 契约升级。
 4. 发布新版本。
-5. 修改展示信息。
+5. 修改展示信息。**已完成**
 6. 我的 Skill。
 7. 归档、恢复和版本撤回。
 

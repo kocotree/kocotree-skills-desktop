@@ -146,16 +146,15 @@ describe("MockSkillApi", () => {
     })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "SKILL_NAME_MISMATCH"));
   });
 
-  it("普通用户发布成功后成为协作者", async () => {
+  it("非 Owner 不能发布新版本", async () => {
     const api = new MockSkillApi({ delayMs: 0, initialUser: mockUsers.chen });
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const updated = await api.publishSkillVersion(target.id, {
+    await expect(api.publishSkillVersion(target.id, {
       file: await createSkillZip(target.skillName, "", "new collaborator"),
       baseVersionId: target.currentVersion.id,
       version: "1.4.3",
-      changelog: "补充协作者测试",
-    });
-    expect(updated.collaborators.map((user) => user.id)).toContain(mockUsers.chen.id);
+      changelog: "尝试更新其他人的 Skill",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
   it("协作者不能修改展示名称", async () => {
@@ -166,12 +165,12 @@ describe("MockSkillApi", () => {
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
-  it("协作者可以修改展示简介", async () => {
+  it("协作者不能修改展示简介", async () => {
     const api = new MockSkillApi({ delayMs: 0, initialUser: mockUsers.lin });
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const updated = await api.updateSkillMetadata(target.id, { displayDescription: "协作者更新后的展示简介。" });
-    expect(updated.displayDescription).toContain("协作者更新");
-    expect(updated.updatedBy.id).toBe(mockUsers.lin.id);
+    await expect(api.updateSkillMetadata(target.id, {
+      displayDescription: "协作者尝试更新展示简介。",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
   it("所有权只能转移给现有协作者", async () => {

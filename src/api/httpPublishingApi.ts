@@ -2,6 +2,7 @@ import type {
   CreateSkillDto,
   PublishSkillVersionDto,
   SkillDetailDto,
+  UpdateSkillMetadataDto,
 } from "./contracts";
 import { AuthenticatedHttpClient } from "./httpClient";
 
@@ -88,6 +89,30 @@ export class HttpPublishingApi {
       {
         method: "POST",
         body: formData,
+      },
+    );
+  }
+
+  updateSkillMetadata(
+    skillId: string,
+    input: UpdateSkillMetadataDto,
+  ): Promise<SkillDetailDto> {
+    const payload: UpdateSkillMetadataDto = {
+      ...input,
+      tagIds:
+        input.tagIds && input.tagIds.length > 0
+          ? input.tagIds
+          : undefined,
+      newTagNames:
+        input.newTagNames && input.newTagNames.length > 0
+          ? input.newTagNames
+          : undefined,
+    };
+    return this.http.request<SkillDetailDto>(
+      `/api/skills/${encodeURIComponent(skillId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
       },
     );
   }

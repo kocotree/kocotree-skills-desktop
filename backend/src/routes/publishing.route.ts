@@ -43,6 +43,73 @@ function readBoolean(
   return value === "true" || value === "1";
 }
 
+function parseMetadataBody(body: unknown): {
+  displayName?: string;
+  displayDescription?: string;
+  tagIds?: string[];
+  newTagNames?: string[];
+  confirmDuplicateDisplayName: boolean;
+} {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new PublishingError(
+      400,
+      "INVALID_REQUEST",
+      "请求内容必须是 JSON 对象",
+    );
+  }
+  const input = body as Record<string, unknown>;
+  const readOptionalString = (name: string): string | undefined => {
+    const value = input[name];
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") {
+      throw new PublishingError(
+        400,
+        "INVALID_REQUEST",
+        `${name} 格式无效`,
+      );
+    }
+    return value;
+  };
+  const readOptionalStrings = (
+    name: string,
+  ): string[] | undefined => {
+    const value = input[name];
+    if (value === undefined) return undefined;
+    if (
+      !Array.isArray(value) ||
+      value.some((item) => typeof item !== "string")
+    ) {
+      throw new PublishingError(
+        400,
+        "INVALID_REQUEST",
+        `${name} 格式无效`,
+      );
+    }
+    return value as string[];
+  };
+  const confirmation = input.confirmDuplicateDisplayName;
+  if (
+    confirmation !== undefined &&
+    typeof confirmation !== "boolean"
+  ) {
+    throw new PublishingError(
+      400,
+      "INVALID_REQUEST",
+      "confirmDuplicateDisplayName 格式无效",
+    );
+  }
+
+  return {
+    displayName: readOptionalString("displayName"),
+    displayDescription: readOptionalString(
+      "displayDescription",
+    ),
+    tagIds: readOptionalStrings("tagIds"),
+    newTagNames: readOptionalStrings("newTagNames"),
+    confirmDuplicateDisplayName: confirmation === true,
+  };
+}
+
 async function parseMultipart(
   request: FastifyRequest,
 ): Promise<ParsedMultipart> {
@@ -106,6 +173,15 @@ function sendPublishingError(
   request: { log: { error: (value: unknown, message: string) => void } },
   reply: Parameters<typeof failure>[0],
   error: unknown,
+  fallback: {
+    logMessage: string;
+    userMessage: string;
+    errorCode: string;
+  } = {
+    logMessage: "Skill 发布失败",
+    userMessage: "发布暂时失败，请稍后重试",
+    errorCode: "PUBLISHING_FAILED",
+  },
 ) {
   if (error instanceof SkillPackageError) {
     return failure(
@@ -138,12 +214,12 @@ function sendPublishingError(
       `ZIP 不能超过 ${config.skillUploadMaxMb} MB`,
     );
   }
-  request.log.error(error, "Skill 发布失败");
+  request.log.error(error, fallback.logMessage);
   return failure(
     reply,
     503,
-    "PUBLISHING_FAILED",
-    "发布暂时失败，请稍后重试",
+    fallback.errorCode,
+    fallback.userMessage,
   );
 }
 
@@ -178,6 +254,38 @@ export const publishingRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(201).send(success(result, 201));
     } catch (error) {
       return sendPublishingError(request, reply, error);
+    }
+  });
+
+  app.patch("/skills/:skillId", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    const params = request.params as { skillId?: string };
+    const skillId = params.skillId?.trim() || "";
+    if (!UUID_PATTERN.test(skillId)) {
+      return failure(
+        reply,
+        404,
+        "SKILL_NOT_FOUND",
+        "没有找到该 Skill",
+      );
+    }
+
+    try {
+      const input = parseMetadataBody(request.body);
+      const result = await publishingService.updateSkillMetadata({
+        skillId,
+        ...input,
+        userId: auth.user.id,
+      });
+      return success(result);
+    } catch (error) {
+      return sendPublishingError(request, reply, error, {
+        logMessage: "Skill 展示信息更新失败",
+        userMessage: "展示信息暂时无法更新，请稍后重试",
+        errorCode: "SKILL_METADATA_UPDATE_FAILED",
+      });
     }
   });
 

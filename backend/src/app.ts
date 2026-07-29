@@ -15,7 +15,7 @@ export function buildApp() {
 
   void app.register(cors, {
     origin: config.frontendOrigins,
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
   void app.register(multipart, {
     throwFileSizeLimit: true,
