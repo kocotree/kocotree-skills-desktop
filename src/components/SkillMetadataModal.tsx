@@ -54,6 +54,11 @@ export function SkillMetadataModal({
 
   async function save(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!skill) return;
+    const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
+    if (selectedTagIds.length + createdTags.length === 0) {
+      setError("请至少选择或创建 1 个 Tag");
+      return;
+    }
     setSaving(true);
     setError("");
     setNeedsDuplicateConfirmation(false);
@@ -62,7 +67,7 @@ export function SkillMetadataModal({
         displayName: canEditDisplayName ? displayName : undefined,
         displayDescription,
         tagIds: selectedTagIds,
-        newTagNames: newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean),
+        newTagNames: createdTags,
         confirmDuplicateDisplayName,
       });
       onUpdated(updated);
@@ -89,8 +94,8 @@ export function SkillMetadataModal({
       <div className="metadata-form">
         {canEditDisplayName && <label><span>展示名称</span><input value={displayName} maxLength={100} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>}
         <label><span>展示简介</span><TextArea value={displayDescription} maxCount={1000} autosize={{ minRows: 3, maxRows: 6 }} onChange={setDisplayDescription} /></label>
-        <fieldset className="tag-field">
-          <legend>Tag（最多 5 个）</legend>
+        <fieldset className="tag-field" aria-required="true">
+          <legend>Tag（必选，最多 5 个）</legend>
           <div>
             {tags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
             {newTagVisible ? (
@@ -100,7 +105,10 @@ export function SkillMetadataModal({
                   value={newTagNames}
                   autoFocus
                   aria-label="创建新 Tag"
-                  onChange={(event) => setNewTagNames(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setNewTagNames(event.currentTarget.value);
+                    setError("");
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === "Escape") {
                       setNewTagNames("");

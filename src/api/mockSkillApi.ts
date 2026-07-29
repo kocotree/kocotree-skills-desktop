@@ -145,6 +145,7 @@ export class MockSkillApi implements SkillApi {
       }
       if (!selected.some((item) => item.id === tag.id)) selected.push(tag);
     }
+    if (selected.length === 0) throw new SkillApiError("INVALID_REQUEST", "请至少选择或创建 1 个 Tag");
     if (selected.length > 5) throw new SkillApiError("INVALID_REQUEST", "每个 Skill 最多选择 5 个 Tag");
     return selected;
   }
@@ -245,6 +246,7 @@ export class MockSkillApi implements SkillApi {
     const parsed = await parseSkillPackage(input.file);
     if (this.skills.some((skill) => skill.skillName === parsed.inspection.skillName)) throw new SkillApiError("DUPLICATE_SKILL_NAME", "该 Skill 名称已经存在，请发布为新版本");
     this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName);
+    const resolvedTags = this.resolveTags(input.tagIds, input.newTagNames);
     const now = new Date().toISOString();
     const skillId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
@@ -259,7 +261,7 @@ export class MockSkillApi implements SkillApi {
     const skill: SkillDetailDto = {
       id: skillId, skillName: version.skillName, displayName: input.displayName, skillDescription: version.skillDescription,
       displayDescription: input.displayDescription, status: "ACTIVE", owner: user, collaborators: [],
-      tags: this.resolveTags(input.tagIds, input.newTagNames), currentVersion: version, installCount: 0,
+      tags: resolvedTags, currentVersion: version, installCount: 0,
       derivedFrom: derivedSkill && derivedVersion ? { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" } : null,
       derivedChain: derivedSkill && derivedVersion ? [...derivedSkill.derivedChain, { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" }] : [],
       updatedBy: user, archivedAt: null, archiveReason: null, nameConflictReason: null, createdAt: now, updatedAt: now,
@@ -308,12 +310,13 @@ export class MockSkillApi implements SkillApi {
     const skill = this.findSkill(skillId);
     if (!this.canCollaborate(skill, user)) throw new SkillApiError("FORBIDDEN", "只有 Owner 或协作者可以修改展示信息");
     if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
-    if (input.displayName !== undefined) {
-      this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
-      skill.displayName = input.displayName;
-    }
+    if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
+    const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
+      ? this.resolveTags(input.tagIds, input.newTagNames)
+      : undefined;
+    if (input.displayName !== undefined) skill.displayName = input.displayName;
     if (input.displayDescription !== undefined) skill.displayDescription = input.displayDescription;
-    if (input.tagIds !== undefined || input.newTagNames !== undefined) skill.tags = this.resolveTags(input.tagIds, input.newTagNames);
+    if (resolvedTags) skill.tags = resolvedTags;
     skill.updatedBy = user;
     skill.updatedAt = new Date().toISOString();
     return clone(skill);
@@ -334,6 +337,9 @@ export class MockSkillApi implements SkillApi {
     if (versions.some((version) => version.contentHash === parsed.inspection.contentHash)) throw new SkillApiError("CONTENT_UNCHANGED", "ZIP 内容与历史版本一致，无需重复发布");
     if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
     if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
+    const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
+      ? this.resolveTags(input.tagIds, input.newTagNames)
+      : undefined;
     const now = new Date().toISOString();
     const version: SkillVersionDto = {
       id: crypto.randomUUID(), skillId, version: input.version, status: "PUBLISHED", skillName: parsed.inspection.skillName,
@@ -347,7 +353,7 @@ export class MockSkillApi implements SkillApi {
     skill.skillDescription = version.skillDescription;
     if (input.displayName !== undefined) skill.displayName = input.displayName;
     if (input.displayDescription !== undefined) skill.displayDescription = input.displayDescription;
-    if (input.tagIds !== undefined || input.newTagNames !== undefined) skill.tags = this.resolveTags(input.tagIds, input.newTagNames);
+    if (resolvedTags) skill.tags = resolvedTags;
     skill.updatedBy = user;
     skill.updatedAt = now;
     this.versionFiles.set(version.id, parsed.source);

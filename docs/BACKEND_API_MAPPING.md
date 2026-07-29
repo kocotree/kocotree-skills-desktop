@@ -308,7 +308,7 @@ desktop 领域规则。服务端仍应重新解析 ZIP，并以服务端计算�
 
 - Owner 修改展示名称。
 - Owner 或协作者修改展示简介和 Tag。
-- 最多 5 个 Tag。
+- 必须至少 1 个、最多 5 个 Tag。
 - 同名展示名称二次确认。
 - 更新 `updatedBy` 和 `updatedAt`。
 

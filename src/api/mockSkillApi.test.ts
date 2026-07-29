@@ -67,13 +67,48 @@ describe("MockSkillApi", () => {
     expect((await api.listVersionFiles(created.id, created.currentVersion.id)).some((item) => item.path === "SKILL.md")).toBe(true);
   });
 
+  it("创建 Skill 时必须选择或创建至少一个 Tag", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    await api.signIn();
+    await expect(api.createSkill({
+      file: await createSkillZip("tag-required"),
+      displayName: "Tag 必填测试",
+      displayDescription: "验证发布时不能省略 Tag。",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+  });
+
+  it("编辑展示信息时不能清空全部 Tag", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const user = await api.signIn();
+    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
+    await expect(api.updateSkillMetadata(target.id, {
+      tagIds: [],
+      newTagNames: [],
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+  });
+
+  it("发布新版本时不能清空全部 Tag，失败后不修改当前版本", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    await api.signIn();
+    const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
+    await expect(api.publishSkillVersion(target.id, {
+      file: await createSkillZip(target.skillName, "", "tag required"),
+      baseVersionId: target.currentVersion.id,
+      version: "9.0.0",
+      changelog: "验证 Tag 必填",
+      tagIds: [],
+      newTagNames: [],
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+    expect((await api.getSkill(target.id)).currentVersion.id).toBe(target.currentVersion.id);
+  });
+
   it("展示名称重复时要求用户明确确认", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
     const file = await createSkillZip("another-review");
-    await expect(api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。" }))
+    await expect(api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", newTagNames: ["测试"] }))
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "DISPLAY_NAME_CONFIRMATION_REQUIRED"));
-    const created = await api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", confirmDuplicateDisplayName: true });
+    const created = await api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", newTagNames: ["测试"], confirmDuplicateDisplayName: true });
     expect(created.skillName).toBe("another-review");
   });
 

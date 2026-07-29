@@ -103,7 +103,7 @@ ZIP 本地解析和平台版本安装属于客户端能力，不通过服务端 
 | `id` | `string` | 是 | 稳定标识。 |
 | `name` | `string` | 是 | 展示名称。 |
 
-Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
+Tag 治理规则暂缓。单个 Skill 必须关联至少 1 个、最多 5 个 Tag。
 
 ### 4.3 SkillVersion
 
@@ -139,7 +139,7 @@ Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
 | `displayDescription` | `string` | 是 | 平台展示简介。 |
 | `status` | `ACTIVE \| ARCHIVED \| NAME_CONFLICT` | 是 | 在线状态。 |
 | `owner` | `User` | 是 | 当前 Owner。 |
-| `tags` | `Tag[]` | 是 | 最多 5 个。 |
+| `tags` | `Tag[]` | 是 | 至少 1 个，最多 5 个。 |
 | `currentVersion` | `SkillVersion` | 是 | 最高 `PUBLISHED` 版本。 |
 | `installCount` | `integer` | 是 | 成功安装操作总数。 |
 | `derivedFrom` | `DerivedSource \| null` | 是 | 直接派生来源。 |
@@ -289,13 +289,13 @@ Authorization: Bearer <token>
 | `file` | ZIP | 是 | 原始 ZIP。 |
 | `displayName` | `string` | 是 | 平台展示名称。 |
 | `displayDescription` | `string` | 是 | 平台展示简介。 |
-| `tagIds` | `string[]` | 否 | 已有 Tag。 |
-| `newTagNames` | `string[]` | 否 | 新 Tag 名称。 |
+| `tagIds` | `string[]` | 条件必填 | 已有 Tag；与 `newTagNames` 至少提供一项。 |
+| `newTagNames` | `string[]` | 条件必填 | 新 Tag 名称；与 `tagIds` 至少提供一项。 |
 | `confirmDuplicateDisplayName` | `boolean` | 否 | 确认展示名称重名。 |
 | `forkedFromSkillId` | `string` | 否 | 派生来源 Skill。 |
 | `forkedFromVersionId` | `string` | 否 | 派生来源版本。 |
 
-来源字段必须同时出现。服务端固定创建 `1.0.0`，更新说明为“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
+来源字段必须同时出现。发布时必须选择或创建至少 1 个 Tag。服务端固定创建 `1.0.0`，更新说明为“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
 
 `tagIds` 与 `newTagNames` 使用重复表单字段传递，每个数组元素对应一个同名字段。例如：
 
@@ -328,7 +328,7 @@ Authorization: Bearer <token>
 任何登录用户可以更新 `ACTIVE` Skill；`ARCHIVED` 只允许 Owner、已有协作者和管理员。首次更新者在同一事务成功后成为协作者并可应用展示简介与 Tags。任何字段失败都会回滚整个请求。
 
 `tagIds` 与 `newTagNames` 的编码方式与创建 Skill 相同，均使用重复表单字段。
-客户端需要清空全部 Tag 时额外提交 `replaceTags=true`；传入任一 Tag 字段时服务端也会自动视为完整替换。
+传入任一 Tag 字段时服务端会视为完整替换；替换后必须至少保留 1 个 Tag，不能清空全部 Tag。
 
 响应 `201 ApiResponse<SkillDetail>`。
 

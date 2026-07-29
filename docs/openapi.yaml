@@ -945,6 +945,7 @@ components:
           $ref: '#/components/schemas/User'
         tags:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             $ref: '#/components/schemas/Tag'
@@ -1014,6 +1015,7 @@ components:
           type: string
     CreateSkillRequest:
       type: object
+      description: tagIds 与 newTagNames 至少提供一项，且合计至少 1 个、最多 5 个 Tag。
       required: [file, displayName, displayDescription]
       properties:
         file:
@@ -1029,11 +1031,13 @@ components:
           maxLength: 1000
         tagIds:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string
@@ -1075,11 +1079,13 @@ components:
           maxLength: 1000
         tagIds:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string
@@ -1087,7 +1093,7 @@ components:
             maxLength: 50
         replaceTags:
           type: boolean
-          description: 即使 Tag 数组为空，也完整替换现有 Tag 关联。
+          description: 完整替换现有 Tag 关联；替换后必须至少保留 1 个 Tag。
         confirmDuplicateDisplayName:
           type: boolean
           default: false
@@ -1110,11 +1116,13 @@ components:
           maxLength: 1000
         tagIds:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
+          minItems: 1
           maxItems: 5
           items:
             type: string

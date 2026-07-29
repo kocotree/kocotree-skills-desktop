@@ -156,6 +156,13 @@ function normalizeTags(
       newTags.set(slug, { slug, name });
     }
   }
+  if (normalizedTagIds.length + newTags.size === 0) {
+    throw new PublishingError(
+      400,
+      "INVALID_REQUEST",
+      "请至少选择或创建 1 个 Tag",
+    );
+  }
   if (normalizedTagIds.length + newTags.size > 5) {
     throw new PublishingError(
       400,

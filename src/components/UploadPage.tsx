@@ -139,6 +139,11 @@ export function UploadPage({
       setError("请先选择并成功解析一个 ZIP");
       return;
     }
+    const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
+    if (selectedTagIds.length + createdTags.length === 0) {
+      setError("请至少选择或创建 1 个 Tag");
+      return;
+    }
     setPublishing(true);
     setError("");
     setDuplicateConflicts([]);
@@ -153,11 +158,10 @@ export function UploadPage({
           displayName: targetSkill.owner.id === currentUser.id || currentUser.role === "ADMIN" ? displayName : undefined,
           displayDescription,
           tagIds: selectedTagIds,
-          newTagNames: newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean),
+          newTagNames: createdTags,
           confirmDuplicateDisplayName,
         });
       } else {
-        const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
         if (selectedTagIds.length + createdTags.length > 5) {
           throw new SkillApiError("INVALID_REQUEST", "已有 Tag 与新 Tag 合计不能超过 5 个");
         }
@@ -264,8 +268,8 @@ export function UploadPage({
                 <label className="field"><span>展示名称</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
                 <label className="field"><span>首个版本</span><input readOnly value="1.0.0" /></label>
                 <label className="field field-wide"><span>展示简介</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                <fieldset className="tag-field field-wide">
-                  <legend>选择已有 Tag（最多 5 个）</legend>
+                <fieldset className="tag-field field-wide" aria-required="true">
+                  <legend>选择 Tag（必选，最多 5 个）</legend>
                   <div>
                     {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
                     {newTagInputVisible ? (
@@ -275,7 +279,10 @@ export function UploadPage({
                           autoFocus
                           aria-label="创建新 Tag"
                           value={newTagNames}
-                          onChange={(event) => setNewTagNames(event.currentTarget.value)}
+                          onChange={(event) => {
+                            setNewTagNames(event.currentTarget.value);
+                            setError("");
+                          }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
                               event.preventDefault();
@@ -325,8 +332,8 @@ export function UploadPage({
                   <label className="field"><span>展示名称</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
                 )}
                 <label className="field field-wide"><span>展示简介</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                <fieldset className="tag-field field-wide">
-                  <legend>Tag（最多 5 个）</legend>
+                <fieldset className="tag-field field-wide" aria-required="true">
+                  <legend>Tag（必选，最多 5 个）</legend>
                   <div>{availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}</div>
                 </fieldset>
               </div>
