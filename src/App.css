@@ -518,6 +518,10 @@ textarea:focus-visible,
   background: #fff;
 }
 
+.upload-page-host {
+  height: 100%;
+}
+
 .page-content {
   display: flex;
   height: 100%;

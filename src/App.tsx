@@ -435,6 +435,7 @@ function App() {
   const [selectedSkill, setSelectedSkill] = useState<SkillSummaryDto | null>(null);
   const [highlightedBrowseSkillId, setHighlightedBrowseSkillId] = useState<string | null>(null);
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
+  const [uploadSessionKey, setUploadSessionKey] = useState(0);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
@@ -730,6 +731,7 @@ function App() {
       console.info("[KocotreeSkills] 进入新版本上传流程", { skillId: skill.id });
       setSelectedSkill(null);
       setUploadTargetSkill(skill);
+      setUploadSessionKey((current) => current + 1);
       setActivePage("upload");
     });
   }
@@ -737,6 +739,7 @@ function App() {
   function handlePublished(skill: SkillSummaryDto): void {
     setBrowseRefreshKey((current) => current + 1);
     setUploadTargetSkill(null);
+    setUploadSessionKey((current) => current + 1);
     setActivePage("browse");
     setSelectedSkill(skill);
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
@@ -798,7 +801,13 @@ function App() {
             type="button"
             aria-label="上传 Skill"
             title="上传 Skill"
-            onClick={() => requireAuth(() => { setUploadTargetSkill(null); setActivePage("upload"); })}
+            onClick={() => requireAuth(() => {
+              if (uploadTargetSkill) {
+                setUploadTargetSkill(null);
+                setUploadSessionKey((current) => current + 1);
+              }
+              setActivePage("upload");
+            })}
           >
             <AppIcon name="upload" size={20} />
             <span>上传 Skill</span>
@@ -936,14 +945,22 @@ function App() {
             onRefresh={() => void refreshLocalSkills()}
             onSetEnabled={setLocalSkillEnabled}
           />
-        ) : (
-          currentUser ? <UploadPage
-            targetSkill={uploadTargetSkill}
-            currentUser={currentUser}
-            onCancel={() => { setUploadTargetSkill(null); setActivePage("browse"); }}
-            onPublished={handlePublished}
-            onSwitchToCreate={() => setUploadTargetSkill(null)}
-          /> : null
+        ) : null}
+        {currentUser && (
+          <div className="upload-page-host" hidden={activePage !== "upload"}>
+            <UploadPage
+              key={uploadSessionKey}
+              targetSkill={uploadTargetSkill}
+              currentUser={currentUser}
+              onCancel={() => {
+                setUploadTargetSkill(null);
+                setUploadSessionKey((current) => current + 1);
+                setActivePage("browse");
+              }}
+              onPublished={handlePublished}
+              onSwitchToCreate={() => setUploadTargetSkill(null)}
+            />
+          </div>
         )}
       </div>
 
