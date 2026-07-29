@@ -1215,6 +1215,37 @@ textarea:focus-visible,
   box-shadow: 0 0 0 3px rgba(0, 145, 57, 0.1);
 }
 
+.tag-created-chip {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px 0 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tag-created-chip > button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.tag-created-chip > button:hover {
+  background: rgba(0, 145, 57, 0.12);
+}
+
 .tag-create-editor {
   display: inline-flex;
   min-width: 0;

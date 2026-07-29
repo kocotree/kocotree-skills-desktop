@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Modal, TextArea, Tooltip, Toast } from "./ui";
 import { skillApi, SkillApiError, type SkillDetailDto, type TagDto, type UserDto } from "../api";
 import { AppIcon } from "./AppIcon";
+import { mergeTagNames, parseTagNames } from "./tagNames";
 
 /**
  * 功能说明：按 Owner 与协作者权限编辑平台展示信息，不创建内容版本。
@@ -29,7 +30,8 @@ export function SkillMetadataModal({
   const [displayDescription, setDisplayDescription] = useState("");
   const [tags, setTags] = useState<TagDto[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [newTagNames, setNewTagNames] = useState("");
+  const [newTagNames, setNewTagNames] = useState<string[]>([]);
+  const [newTagDraft, setNewTagDraft] = useState("");
   const [newTagVisible, setNewTagVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -42,20 +44,55 @@ export function SkillMetadataModal({
     setDisplayName(skill.displayName);
     setDisplayDescription(skill.displayDescription);
     setSelectedTagIds(skill.tags.map((tag) => tag.id));
-    setNewTagNames("");
+    setNewTagNames([]);
+    setNewTagDraft("");
+    setNewTagVisible(false);
     setError("");
     setNeedsDuplicateConfirmation(false);
     skillApi.listTags().then(setTags).catch((reason: unknown) => console.error("[KocotreeSkills] 编辑信息时加载 Tag 失败", reason));
   }, [skill, visible]);
 
   function toggleTag(tagId: string): void {
-    setSelectedTagIds((items) => items.includes(tagId) ? items.filter((id) => id !== tagId) : items.length < 5 ? [...items, tagId] : items);
+    setSelectedTagIds((items) => {
+      if (items.includes(tagId)) {
+        setError("");
+        return items.filter((id) => id !== tagId);
+      }
+      if (items.length + newTagNames.length >= 5) {
+        setError("每个 Skill 最多选择或创建 5 个 Tag");
+        return items;
+      }
+      setError("");
+      return [...items, tagId];
+    });
+  }
+
+  function commitNewTagDraft(): void {
+    const draftNames = parseTagNames(newTagDraft);
+    if (draftNames.length === 0) {
+      setError("请输入 Tag 名称");
+      return;
+    }
+    const matchedTagIds = tags
+      .filter((tag) => draftNames.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()))
+      .map((tag) => tag.id);
+    const unmatchedNames = draftNames.filter((name) => !tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase()));
+    const nextTagIds = [...new Set([...selectedTagIds, ...matchedTagIds])];
+    const nextNewTagNames = mergeTagNames(newTagNames, unmatchedNames.join(","));
+    if (nextTagIds.length + nextNewTagNames.length > 5) {
+      setError("每个 Skill 最多选择或创建 5 个 Tag");
+      return;
+    }
+    setSelectedTagIds(nextTagIds);
+    setNewTagNames(nextNewTagNames);
+    setNewTagDraft("");
+    setNewTagVisible(false);
+    setError("");
   }
 
   async function save(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!skill) return;
-    const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
-    if (selectedTagIds.length + createdTags.length === 0) {
+    if (selectedTagIds.length + newTagNames.length === 0) {
       setError("请至少选择或创建 1 个 Tag");
       return;
     }
@@ -67,7 +104,7 @@ export function SkillMetadataModal({
         displayName: canEditDisplayName ? displayName : undefined,
         displayDescription,
         tagIds: selectedTagIds,
-        newTagNames: createdTags,
+        newTagNames,
         confirmDuplicateDisplayName,
       });
       onUpdated(updated);
@@ -98,24 +135,43 @@ export function SkillMetadataModal({
           <legend>Tag（必选，最多 5 个）</legend>
           <div>
             {tags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
+            {newTagNames.map((name) => (
+              <span className="tag-created-chip" key={name}>
+                {name}
+                <button
+                  type="button"
+                  aria-label={`删除新 Tag：${name}`}
+                  onClick={() => {
+                    setNewTagNames((items) => items.filter((item) => item !== name));
+                    setError("");
+                  }}
+                >
+                  <AppIcon name="close" size={12} />
+                </button>
+              </span>
+            ))}
             {newTagVisible ? (
               <span className="tag-create-editor">
                 <input
                   className="tag-create-input"
-                  value={newTagNames}
+                  value={newTagDraft}
                   autoFocus
                   aria-label="创建新 Tag"
                   onChange={(event) => {
-                    setNewTagNames(event.currentTarget.value);
+                    setNewTagDraft(event.currentTarget.value);
                     setError("");
                   }}
                   onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      commitNewTagDraft();
+                    }
                     if (event.key === "Escape") {
-                      setNewTagNames("");
+                      setNewTagDraft("");
                       setNewTagVisible(false);
                     }
                   }}
-                  placeholder="多个 Tag 使用逗号分隔"
+                  placeholder="输入后按回车添加"
                 />
                 <Tooltip content="取消创建新 Tag">
                   <button
@@ -123,7 +179,7 @@ export function SkillMetadataModal({
                     type="button"
                     aria-label="取消创建新 Tag"
                     onClick={() => {
-                      setNewTagNames("");
+                      setNewTagDraft("");
                       setNewTagVisible(false);
                     }}
                   >

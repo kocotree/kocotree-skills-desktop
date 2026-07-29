@@ -11,6 +11,7 @@ import {
   type UserDto,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import { mergeTagNames, parseTagNames } from "./tagNames";
 
 interface UploadPageProps {
   targetSkill: SkillSummaryDto | null;
@@ -52,7 +53,8 @@ export function UploadPage({
   const [inspection, setInspection] = useState<SkillPackageInspection | null>(null);
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [newTagNames, setNewTagNames] = useState("");
+  const [newTagNames, setNewTagNames] = useState<string[]>([]);
+  const [newTagDraft, setNewTagDraft] = useState("");
   const [newTagInputVisible, setNewTagInputVisible] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
@@ -73,6 +75,9 @@ export function UploadPage({
   useEffect(() => {
     setVersion(targetSkill ? nextPatchVersion(targetSkill.currentVersion.version) : "1.0.0");
     setChangelog(targetSkill ? "" : "首次发布");
+    setNewTagNames([]);
+    setNewTagDraft("");
+    setNewTagInputVisible(false);
     setError("");
     setDuplicateConflicts([]);
     if (targetSkill) {
@@ -119,14 +124,40 @@ export function UploadPage({
 
   function toggleTag(tagId: string): void {
     setSelectedTagIds((current) => {
-      if (current.includes(tagId)) return current.filter((id) => id !== tagId);
-      if (current.length >= 5) {
+      if (current.includes(tagId)) {
+        setError("");
+        return current.filter((id) => id !== tagId);
+      }
+      if (current.length + newTagNames.length >= 5) {
         setError("每个 Skill 最多选择或创建 5 个 Tag");
         return current;
       }
       setError("");
       return [...current, tagId];
     });
+  }
+
+  function commitNewTagDraft(): void {
+    const draftNames = parseTagNames(newTagDraft);
+    if (draftNames.length === 0) {
+      setError("请输入 Tag 名称");
+      return;
+    }
+    const matchedTagIds = availableTags
+      .filter((tag) => draftNames.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()))
+      .map((tag) => tag.id);
+    const unmatchedNames = draftNames.filter((name) => !availableTags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase()));
+    const nextTagIds = [...new Set([...selectedTagIds, ...matchedTagIds])];
+    const nextNewTagNames = mergeTagNames(newTagNames, unmatchedNames.join(","));
+    if (nextTagIds.length + nextNewTagNames.length > 5) {
+      setError("每个 Skill 最多选择或创建 5 个 Tag");
+      return;
+    }
+    setSelectedTagIds(nextTagIds);
+    setNewTagNames(nextNewTagNames);
+    setNewTagDraft("");
+    setNewTagInputVisible(false);
+    setError("");
   }
 
   /**
@@ -139,8 +170,7 @@ export function UploadPage({
       setError("请先选择并成功解析一个 ZIP");
       return;
     }
-    const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
-    if (selectedTagIds.length + createdTags.length === 0) {
+    if (selectedTagIds.length + newTagNames.length === 0) {
       setError("请至少选择或创建 1 个 Tag");
       return;
     }
@@ -158,11 +188,11 @@ export function UploadPage({
           displayName: targetSkill.owner.id === currentUser.id || currentUser.role === "ADMIN" ? displayName : undefined,
           displayDescription,
           tagIds: selectedTagIds,
-          newTagNames: createdTags,
+          newTagNames,
           confirmDuplicateDisplayName,
         });
       } else {
-        if (selectedTagIds.length + createdTags.length > 5) {
+        if (selectedTagIds.length + newTagNames.length > 5) {
           throw new SkillApiError("INVALID_REQUEST", "已有 Tag 与新 Tag 合计不能超过 5 个");
         }
         result = await skillApi.createSkill({
@@ -170,7 +200,7 @@ export function UploadPage({
           displayName,
           displayDescription,
           tagIds: selectedTagIds,
-          newTagNames: createdTags,
+          newTagNames,
           forkedFromSkillId: forkSource?.id,
           forkedFromVersionId: forkSource?.currentVersion.id,
           confirmDuplicateDisplayName,
@@ -272,28 +302,43 @@ export function UploadPage({
                   <legend>选择 Tag（必选，最多 5 个）</legend>
                   <div>
                     {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
+                    {newTagNames.map((name) => (
+                      <span className="tag-created-chip" key={name}>
+                        {name}
+                        <button
+                          type="button"
+                          aria-label={`删除新 Tag：${name}`}
+                          onClick={() => {
+                            setNewTagNames((items) => items.filter((item) => item !== name));
+                            setError("");
+                          }}
+                        >
+                          <AppIcon name="close" size={12} />
+                        </button>
+                      </span>
+                    ))}
                     {newTagInputVisible ? (
                       <span className="tag-create-editor">
                         <input
                           className="tag-create-input"
                           autoFocus
                           aria-label="创建新 Tag"
-                          value={newTagNames}
+                          value={newTagDraft}
                           onChange={(event) => {
-                            setNewTagNames(event.currentTarget.value);
+                            setNewTagDraft(event.currentTarget.value);
                             setError("");
                           }}
                           onKeyDown={(event) => {
                             if (event.key === "Enter") {
                               event.preventDefault();
-                              setNewTagInputVisible(false);
+                              commitNewTagDraft();
                             }
                             if (event.key === "Escape") {
-                              setNewTagNames("");
+                              setNewTagDraft("");
                               setNewTagInputVisible(false);
                             }
                           }}
-                          placeholder="输入 Tag，多个用逗号分隔"
+                          placeholder="输入后按回车添加"
                         />
                         <Tooltip content="取消创建新 Tag">
                           <button
@@ -301,7 +346,7 @@ export function UploadPage({
                             type="button"
                             aria-label="取消创建新 Tag"
                             onClick={() => {
-                              setNewTagNames("");
+                              setNewTagDraft("");
                               setNewTagInputVisible(false);
                             }}
                           >
