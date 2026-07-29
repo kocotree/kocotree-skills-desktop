@@ -28,6 +28,7 @@ import { AllAgentsSkillsPage } from "./components/AllAgentsSkillsPage";
 import { NotificationPanel } from "./components/NotificationPanel";
 import { InstallConfirmModal } from "./components/InstallConfirmModal";
 import { InstallFeedbackModal, type InstallFeedbackState } from "./components/InstallFeedbackModal";
+import { TagFilter } from "./components/TagFilter";
 import "./App.css";
 
 type PageKey =
@@ -373,26 +374,11 @@ function BrowsePage({
           </label>
         </div>
 
-        <div className="source-row">
-          <span>标签</span>
-          <button
-            className={tagId === "all" ? "source-chip active" : "source-chip"}
-            type="button"
-            onClick={() => setTagId("all")}
-          >
-            全部标签
-          </button>
-          {tags.map((item) => (
-            <button
-              className={tagId === item.id ? "source-chip active" : "source-chip"}
-              type="button"
-              key={item.id}
-              onClick={() => setTagId(item.id)}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
+        <TagFilter
+          tags={tags}
+          selectedTagId={tagId}
+          onChange={setTagId}
+        />
       </section>
 
       {loading ? (
