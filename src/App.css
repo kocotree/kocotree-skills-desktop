@@ -1048,6 +1048,12 @@ textarea:focus-visible,
   background: #e8e9ec;
 }
 
+.upload-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .file-dropzone {
   display: grid;
   min-height: 150px;
@@ -1064,6 +1070,12 @@ textarea:focus-visible,
 .file-dropzone:hover {
   border-color: var(--accent);
   background: var(--accent-surface);
+}
+
+.file-dropzone.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+  box-shadow: 0 0 0 3px rgba(0, 145, 57, 0.08);
 }
 
 .file-dropzone.is-loading {
@@ -3054,6 +3066,10 @@ button.my-skill-card:hover {
   .file-dropzone {
     min-height: 132px;
     padding: 14px;
+  }
+
+  .upload-source-grid {
+    grid-template-columns: 1fr;
   }
 
   .form-actions,

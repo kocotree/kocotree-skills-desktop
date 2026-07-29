@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Tooltip } from "./ui";
 import {
   parseSkillPackage,
+  parseSkillFolder,
   skillApi,
   SkillApiError,
+  type ParsedSkillPackage,
   type SkillDetailDto,
   type SkillSummaryDto,
   type SkillPackageInspection,
@@ -21,6 +23,13 @@ interface UploadPageProps {
   onSwitchToCreate: () => void;
 }
 
+type UploadSourceType = "zip" | "folder";
+
+const folderInputAttributes = {
+  directory: "",
+  webkitdirectory: "",
+};
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -33,7 +42,7 @@ function nextPatchVersion(version: string): string {
 }
 
 /**
- * 功能说明：在本地解析 ZIP，并在用户确认后一次性创建 Skill 或发布指定 Skill 新版本。
+ * 功能说明：在本地解析 ZIP 或自动打包文件夹，并在用户确认后创建 Skill 或发布指定 Skill 新版本。
  * @param targetSkill - 从详情页进入时绑定的目标 Skill，新建流程为 null。
  * @param currentUser - 当前已登录的发布用户。
  * @param onCancel - 取消发布并返回浏览页的回调。
@@ -49,6 +58,7 @@ export function UploadPage({
   onSwitchToCreate,
 }: UploadPageProps) {
   const [fileName, setFileName] = useState("");
+  const [selectedSourceType, setSelectedSourceType] = useState<UploadSourceType | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<SkillPackageInspection | null>(null);
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
@@ -92,34 +102,63 @@ export function UploadPage({
   }, [inspection, targetSkill]);
 
   /**
-   * 功能说明：选择 ZIP 后立即在客户端本地解析，并将只读包信息保存在当前页面状态中。
-   * @param file - 用户选择的 ZIP 文件。
+   * 功能说明：解析用户选择的 ZIP 或文件夹，并将可上传文件与只读包信息保存在页面状态中。
+   * @param sourceName - 页面展示的 ZIP 文件名或文件夹名。
+   * @param sourceType - 用户选择的上传来源类型。
+   * @param parse - 对应来源的本地解析与打包操作。
    * @returns 无返回值。
    */
-  async function inspectFile(file: File): Promise<void> {
-    setFileName(file.name);
+  async function inspectSource(
+    sourceName: string,
+    sourceType: UploadSourceType,
+    parse: () => Promise<ParsedSkillPackage>,
+  ): Promise<void> {
+    setFileName(sourceName);
+    setSelectedSourceType(sourceType);
     setSelectedFile(null);
     setInspection(null);
     setError("");
     setInspecting(true);
-    console.info("[KocotreeSkills] 开始解析 Skill ZIP", { fileName: file.name, size: file.size });
+    console.info("[KocotreeSkills] 开始解析 Skill 上传来源", {
+      sourceName,
+      sourceType,
+    });
     try {
-      const { inspection: result, uploadFile } = await parseSkillPackage(file);
+      const { inspection: result, uploadFile } = await parse();
       setSelectedFile(uploadFile);
       setInspection(result);
       if (!targetSkill) {
         setDisplayName(result.skillName);
         setDisplayDescription(result.skillDescription);
       }
-      console.info("[KocotreeSkills] Skill ZIP 解析完成", {
+      console.info("[KocotreeSkills] Skill 上传来源解析完成", {
         skillName: result.skillName,
+        sourceType,
       });
     } catch (reason) {
-      console.error("[KocotreeSkills] Skill ZIP 解析失败", reason);
-      setError(reason instanceof SkillApiError ? reason.message : "ZIP 解析失败，请重新选择文件");
+      console.error("[KocotreeSkills] Skill 上传来源解析失败", reason);
+      setError(reason instanceof SkillApiError ? reason.message : "Skill 解析失败，请重新选择");
     } finally {
       setInspecting(false);
     }
+  }
+
+  async function inspectFile(file: File): Promise<void> {
+    await inspectSource(
+      file.name,
+      "zip",
+      () => parseSkillPackage(file),
+    );
+  }
+
+  async function inspectFolder(files: File[]): Promise<void> {
+    const firstPath = files[0]?.webkitRelativePath || "";
+    const folderName = firstPath.split("/")[0] || "Skill 文件夹";
+    await inspectSource(
+      folderName,
+      "folder",
+      () => parseSkillFolder(files),
+    );
   }
 
   function toggleTag(tagId: string): void {
@@ -167,7 +206,7 @@ export function UploadPage({
    */
   async function publish(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!inspection || !selectedFile) {
-      setError("请先选择并成功解析一个 ZIP");
+      setError("请先选择并成功解析 Skill ZIP 或文件夹");
       return;
     }
     if (selectedTagIds.length + newTagNames.length === 0) {
@@ -236,33 +275,50 @@ export function UploadPage({
       <header className="page-heading upload-heading">
         <div>
           <h1>{targetSkill ? "上传新版本" : "上传 Skill"}</h1>
-          <p>{targetSkill ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）` : "在本地解析 ZIP，并确认平台展示信息后发布"}</p>
+          <p>{targetSkill ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）` : "在本地解析 ZIP 或文件夹，并确认平台展示信息后发布"}</p>
         </div>
       </header>
 
       <form className="upload-panel" onSubmit={(event) => void handleSubmit(event)}>
         <div className="form-section-heading">
           <span className="section-number">1</span>
-          <div><h2>选择 Skill ZIP</h2><p>最大 50 MB，根目录或单层外包装目录中必须包含 SKILL.md</p></div>
+          <div><h2>选择 Skill ZIP 或文件夹</h2><p>文件夹会在本地自动打包；根目录或单层外包装目录中必须包含 SKILL.md</p></div>
         </div>
 
-        <label className={inspecting ? "file-dropzone is-loading" : "file-dropzone"}>
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            disabled={inspecting || publishing}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) void inspectFile(file);
-            }}
-          />
-          <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
-          <strong>{inspecting ? "正在解析 ZIP…" : fileName || "拖入 Skill ZIP，或点击选择文件"}</strong>
-          <small>{fileName && !inspecting ? "重新点击可更换文件" : "仅支持 .zip 文件"}</small>
-        </label>
+        <div className="upload-source-grid">
+          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "zip" ? " is-selected" : ""}`}>
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              disabled={inspecting || publishing}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void inspectFile(file);
+              }}
+            />
+            <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
+            <strong>{inspecting && selectedSourceType === "zip" ? "正在解析 ZIP…" : selectedSourceType === "zip" ? fileName : "选择 Skill ZIP"}</strong>
+            <small>{selectedSourceType === "zip" && !inspecting ? "重新点击可更换 ZIP" : "沿用现有 ZIP 上传流程"}</small>
+          </label>
+          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "folder" ? " is-selected" : ""}`}>
+            <input
+              type="file"
+              multiple
+              disabled={inspecting || publishing}
+              {...folderInputAttributes}
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files || []);
+                if (files.length > 0) void inspectFolder(files);
+              }}
+            />
+            <span className="dropzone-icon"><AppIcon name="folder" size={25} /></span>
+            <strong>{inspecting && selectedSourceType === "folder" ? "正在打包文件夹…" : selectedSourceType === "folder" ? fileName : "选择 Skill 文件夹"}</strong>
+            <small>{selectedSourceType === "folder" && !inspecting ? "重新点击可更换文件夹" : "自动打包后复用 ZIP 上传"}</small>
+          </label>
+        </div>
 
         {inspection && (
-          <section className="inspection-result" aria-label="ZIP 解析结果">
+          <section className="inspection-result" aria-label="Skill 包解析结果">
             <div className="inspection-heading"><strong>本地解析成功</strong></div>
             <dl>
               <div><dt>Skill 名称</dt><dd><code>{inspection.skillName}</code></dd></div>
@@ -277,7 +333,7 @@ export function UploadPage({
         {nameMismatch && inspection && targetSkill && (
           <div className="mismatch-notice">
             <strong>Skill 名称不一致，不能作为新版本发布</strong>
-            <span>目标为 <code>{targetSkill.skillName}</code>，ZIP 中为 <code>{inspection.skillName}</code>。</span>
+            <span>目标为 <code>{targetSkill.skillName}</code>，所选 Skill 中为 <code>{inspection.skillName}</code>。</span>
             <Button size="small" onClick={() => { setForkSource(targetSkill); onSwitchToCreate(); }}>作为派生 Skill 发布</Button>
           </div>
         )}
