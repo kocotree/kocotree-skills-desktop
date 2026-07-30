@@ -1,7 +1,6 @@
 import JSZip from "jszip";
 import {
   SkillApiError,
-  type CreateOwnershipTransferDto,
   type CreateSkillDto,
   type DeleteSkillResultDto,
   type DownloadTicketDto,
@@ -14,9 +13,7 @@ import {
   type ListSkillsQuery,
   type ListVersionsQuery,
   type NotificationPageDto,
-  type OwnershipTransferDto,
   type PublishSkillVersionDto,
-  type ReasonDto,
   type SkillApi,
   type SkillDetailDto,
   type SkillFileContentDto,
@@ -93,7 +90,6 @@ export class MockSkillApi implements SkillApi {
   private readonly versionSkillMd = new Map(Object.entries(mockVersionFiles).map(([id, source]) => [id, source.skillMd]));
   private readonly installationEvents = new Set<string>();
   private readonly notifications = clone(mockNotifications);
-  private readonly transfers: OwnershipTransferDto[] = [];
   private currentUser: UserDto | null;
 
   constructor(options: MockSkillApiOptions = {}) {
@@ -177,7 +173,6 @@ export class MockSkillApi implements SkillApi {
     await this.wait();
     const user = this.requireUser();
     const items = this.skills.filter((skill) => {
-      if (query.relation === "ARCHIVED") return skill.status === "ARCHIVED" && this.canCollaborate(skill, user);
       if (query.relation === "OWNED") return skill.owner.id === user.id && skill.status !== "ARCHIVED";
       return skill.collaborators.some((item) => item.id === user.id) && skill.status !== "ARCHIVED";
     });
@@ -359,45 +354,6 @@ export class MockSkillApi implements SkillApi {
     return clone(skill);
   }
 
-  async withdrawSkillVersion(skillId: string, versionId: string, input: ReasonDto): Promise<SkillVersionDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (!this.canCollaborate(skill, user)) throw new SkillApiError("FORBIDDEN", "没有撤回版本的权限");
-    const version = this.findVersion(skillId, versionId);
-    if (version.version === "1.0.0") throw new SkillApiError("INITIAL_VERSION_REQUIRED", "首个 1.0.0 版本不能撤回");
-    version.status = "WITHDRAWN";
-    version.withdrawnBy = user;
-    version.withdrawnAt = new Date().toISOString();
-    version.withdrawalReason = input.reason;
-    return clone(version);
-  }
-
-  async archiveSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以归档 Skill");
-    skill.status = "ARCHIVED";
-    skill.archivedAt = new Date().toISOString();
-    skill.archiveReason = input.reason;
-    return clone(skill);
-  }
-
-  async restoreSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以恢复 Skill");
-    skill.status = "ACTIVE";
-    skill.archivedAt = null;
-    skill.archiveReason = null;
-    skill.updatedBy = user;
-    skill.updatedAt = new Date().toISOString();
-    console.info("[MockSkillApi] Skill 恢复完成", { skillId, reason: input.reason });
-    return clone(skill);
-  }
-
   async getInstallationStatus(skillId: string, versionId?: string): Promise<InstallationStatusDto> {
     await this.wait();
     const skill = this.findSkill(skillId);
@@ -416,36 +372,6 @@ export class MockSkillApi implements SkillApi {
         : null,
     };
   }
-
-  async createOwnershipTransfer(skillId: string, input: CreateOwnershipTransferDto): Promise<OwnershipTransferDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以转移所有权");
-    const target = skill.collaborators.find((item) => item.id === input.targetUserId);
-    if (!target) throw new SkillApiError("COLLABORATOR_REQUIRED", "所有权只能转移给现有协作者");
-    const transfer: OwnershipTransferDto = { id: crypto.randomUUID(), skillId, fromOwner: skill.owner, targetUser: target, status: "PENDING", reason: input.reason ?? null, createdBy: user, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), resolvedAt: null };
-    this.transfers.push(transfer);
-    return clone(transfer);
-  }
-
-  private resolveTransfer(transferId: string, status: "ACCEPTED" | "REJECTED" | "CANCELED"): OwnershipTransferDto {
-    const transfer = this.transfers.find((item) => item.id === transferId);
-    if (!transfer) throw new SkillApiError("TRANSFER_NOT_FOUND", "没有找到所有权转移邀请");
-    if (transfer.status !== "PENDING") throw new SkillApiError("TRANSFER_RESOLVED", "该邀请已经处理");
-    transfer.status = status;
-    transfer.resolvedAt = new Date().toISOString();
-    if (status === "ACCEPTED") {
-      const skill = this.findSkill(transfer.skillId);
-      skill.collaborators = [...skill.collaborators.filter((item) => item.id !== transfer.targetUser.id), transfer.fromOwner];
-      skill.owner = transfer.targetUser;
-    }
-    return transfer;
-  }
-
-  async acceptOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "ACCEPTED")); }
-  async rejectOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "REJECTED")); }
-  async cancelOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "CANCELED")); }
 
   /**
    * 功能说明：签发模拟下载凭证，并生成可供真实 Tauri 安装器使用的 ZIP data URL。

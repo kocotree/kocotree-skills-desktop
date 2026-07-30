@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Tooltip, Toast } from "./ui";
+import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Tooltip } from "./ui";
 import {
   skillApi,
   SkillApiError,
@@ -11,9 +11,7 @@ import {
   type UserDto,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import { ReasonActionModal } from "./ReasonActionModal";
 import { SkillMetadataModal } from "./SkillMetadataModal";
-import { OwnershipTransferModal } from "./OwnershipTransferModal";
 
 interface SkillDetailModalProps {
   skill: SkillSummaryDto | null;
@@ -109,11 +107,7 @@ export function SkillDetailModal({
   const [fileTreeLoading, setFileTreeLoading] = useState(false);
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [fileError, setFileError] = useState("");
-  const [managementAction, setManagementAction] = useState<{ type: "archive" | "restore" | "withdraw"; version?: SkillVersionDto } | null>(null);
-  const [managementReason, setManagementReason] = useState("");
-  const [managementLoading, setManagementLoading] = useState(false);
   const [metadataVisible, setMetadataVisible] = useState(false);
-  const [ownershipVisible, setOwnershipVisible] = useState(false);
 
   useEffect(() => {
     if (!skill) {
@@ -211,40 +205,8 @@ export function SkillDetailModal({
   const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath) ?? null;
   const orderedFileEntries = orderFileEntries(fileEntries);
   const sortedCollaborators = [...(detail?.collaborators ?? [])].sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
-  const canManageSkill = Boolean(detail && currentUser && (currentUser.role === "ADMIN" || detail.owner.id === currentUser.id));
+  const canManageSkill = Boolean(detail && currentUser && detail.owner.id === currentUser.id);
   const showManagementActions = context === "manage" && canManageSkill;
-
-  async function handleManagementConfirm(): Promise<void> {
-    if (!detail || !managementAction || !managementReason.trim()) return;
-    setManagementLoading(true);
-    try {
-      if (managementAction.type === "archive") {
-        const updated = await skillApi.archiveSkill(detail.id, { reason: managementReason.trim() });
-        setDetail(updated);
-        onChanged(updated);
-        Toast.success("Skill 已归档");
-      } else if (managementAction.type === "restore") {
-        const updated = await skillApi.restoreSkill(detail.id, { reason: managementReason.trim() });
-        setDetail(updated);
-        onChanged(updated);
-        Toast.success("Skill 已恢复");
-      } else if (managementAction.version) {
-        const updatedVersion = await skillApi.withdrawSkillVersion(detail.id, managementAction.version.id, { reason: managementReason.trim() });
-        setVersions((items) => items.map((item) => item.id === updatedVersion.id ? updatedVersion : item));
-        const updatedDetail = detail.currentVersion.id === updatedVersion.id ? { ...detail, currentVersion: updatedVersion } : detail;
-        setDetail(updatedDetail);
-        onChanged(updatedDetail);
-        Toast.success(`v${updatedVersion.version} 已撤回`);
-      }
-      setManagementAction(null);
-      setManagementReason("");
-    } catch (reason) {
-      console.error("[KocotreeSkills] Skill 管理操作失败", reason);
-      Toast.error(reason instanceof SkillApiError ? reason.message : "操作失败，请稍后重试");
-    } finally {
-      setManagementLoading(false);
-    }
-  }
 
   return (
     <>
@@ -270,9 +232,6 @@ export function SkillDetailModal({
                   {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
                 </Button>
               )}
-              {showManagementActions && detail.status === "ARCHIVED" && (
-                <Button theme="solid" type="primary" loading={managementLoading} onClick={() => { setManagementReason(""); setManagementAction({ type: "restore" }); }}>恢复 Skill</Button>
-              )}
               {showManagementActions && (
                 <Dropdown
                   className="detail-more-menu"
@@ -285,12 +244,6 @@ export function SkillDetailModal({
                         <Dropdown.Item onClick={() => onUploadVersion(detail)}>上传新版本</Dropdown.Item>
                       )}
                       <Dropdown.Item onClick={() => setMetadataVisible(true)}>编辑展示信息</Dropdown.Item>
-                      {detail.collaborators.some((user) => user.status === "ACTIVE") && (
-                        <Dropdown.Item onClick={() => setOwnershipVisible(true)}>转移所有权</Dropdown.Item>
-                      )}
-                      {detail.status === "ACTIVE" && (
-                        <Dropdown.Item type="danger" onClick={() => { setManagementReason(""); setManagementAction({ type: "archive" }); }}>归档 Skill</Dropdown.Item>
-                      )}
                     </Dropdown.Menu>
                   )}
                 >
@@ -432,9 +385,6 @@ export function SkillDetailModal({
                       {version.status === "WITHDRAWN" && <span className="withdrawal-reason">撤回原因：{version.withdrawalReason}</span>}
                     </button>
                     <div className="version-actions">
-                      {showManagementActions && version.status === "PUBLISHED" && version.version !== "1.0.0" && (
-                        <Button size="small" type="danger" theme="borderless" onClick={() => { setManagementReason(""); setManagementAction({ type: "withdraw", version }); }}>撤回</Button>
-                      )}
                       <Button size="small" disabled={version.status === "WITHDRAWN" || detail.status !== "ACTIVE"} onClick={() => onInstall(detail, version)}>安装</Button>
                     </div>
                   </article>
@@ -521,21 +471,6 @@ export function SkillDetailModal({
         </div>
       ) : null}
     </Modal>
-    <ReasonActionModal
-      title={managementAction?.type === "withdraw" ? "撤回版本" : managementAction?.type === "restore" ? "恢复 Skill" : "归档 Skill"}
-      description={managementAction?.type === "withdraw"
-        ? "撤回后该版本将无法继续安装，本地已经安装的副本仍可使用。"
-        : managementAction?.type === "restore"
-          ? "恢复后 Skill 将重新出现在技能广场，并允许用户下载和安装。"
-          : "归档后 Skill 不再出现在技能广场，本地已经安装的副本仍可使用。"}
-      visible={managementAction !== null}
-      reason={managementReason}
-      loading={managementLoading}
-      confirmType={managementAction?.type === "restore" ? "primary" : "danger"}
-      onReasonChange={setManagementReason}
-      onCancel={() => { setManagementAction(null); setManagementReason(""); }}
-      onConfirm={() => void handleManagementConfirm()}
-    />
     <SkillMetadataModal
       skill={detail}
       currentUser={currentUser}
@@ -546,12 +481,6 @@ export function SkillDetailModal({
         setDetail(updated);
         onChanged(updated);
       }}
-    />
-    <OwnershipTransferModal
-      skill={detail}
-      visible={ownershipVisible}
-      onCancel={() => setOwnershipVisible(false)}
-      onCreated={() => setOwnershipVisible(false)}
     />
     </>
   );

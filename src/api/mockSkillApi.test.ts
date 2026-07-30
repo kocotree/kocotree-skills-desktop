@@ -173,16 +173,6 @@ describe("MockSkillApi", () => {
     })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
-  it("所有权只能转移给现有协作者", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const transfer = await api.createOwnershipTransfer(target.id, { targetUserId: mockUsers.lin.id, reason: "职责调整" });
-    expect(transfer.status).toBe("PENDING");
-    await expect(api.createOwnershipTransfer(target.id, { targetUserId: mockUsers.chen.id }))
-      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "COLLABORATOR_REQUIRED"));
-  });
-
   it("安装上报使用事件 ID 保持幂等", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
@@ -200,37 +190,6 @@ describe("MockSkillApi", () => {
     expect((await api.listNotifications()).unreadCount).toBeGreaterThan(0);
     await api.readAllNotifications();
     expect((await api.listNotifications()).unreadCount).toBe(0);
-  });
-
-  it("归档后从广场隐藏并保留在我的 Skill", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    const user = await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
-    await api.archiveSkill(target.id, { reason: "测试归档" });
-    expect((await api.listSkills()).items.some((skill) => skill.id === target.id)).toBe(false);
-    expect((await api.listMySkills({ relation: "ARCHIVED" })).items.some((skill) => skill.id === target.id)).toBe(true);
-  });
-
-  it("填写原因后可以恢复已归档 Skill", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    const user = await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
-    await api.archiveSkill(target.id, { reason: "测试归档" });
-    const restored = await api.restoreSkill(target.id, { reason: "恢复维护" });
-    expect(restored.status).toBe("ACTIVE");
-    expect(restored.archiveReason).toBeNull();
-    expect((await api.listSkills()).items.some((skill) => skill.id === target.id)).toBe(true);
-  });
-
-  it("允许撤回后续版本但保留 1.0.0", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    await api.signIn();
-    const codeReview = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const withdrawn = await api.withdrawSkillVersion(codeReview.id, codeReview.currentVersion.id, { reason: "存在错误" });
-    expect(withdrawn.status).toBe("WITHDRAWN");
-    const sqlChecker = (await api.listSkills()).items.find((skill) => skill.skillName === "sql-checker")!;
-    await expect(api.withdrawSkillVersion(sqlChecker.id, sqlChecker.currentVersion.id, { reason: "尝试撤回首版" }))
-      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INITIAL_VERSION_REQUIRED"));
   });
 
   it("本地同名未知 Skill 需要强制替换", async () => {

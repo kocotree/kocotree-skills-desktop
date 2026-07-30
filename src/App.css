@@ -2003,56 +2003,30 @@ textarea:focus-visible,
   color: #d54848;
 }
 
-.version-actions,
-.reason-action-footer {
+.version-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
 }
 
-.reason-action-content {
-  display: grid;
-  gap: 13px;
-}
-
-.reason-action-content > p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.reason-action-content label {
-  display: grid;
-  gap: 7px;
-}
-
-.reason-action-content label > span {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.metadata-actions,
-.ownership-actions {
+.metadata-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 
-.metadata-form,
-.ownership-form {
+.metadata-form {
   display: grid;
   gap: 15px;
 }
 
-.metadata-form > label,
-.ownership-form > label {
+.metadata-form > label {
   display: grid;
   gap: 7px;
 }
 
-.metadata-form > label > span,
-.ownership-form > label > span {
+.metadata-form > label > span {
   font-size: 12px;
   font-weight: 600;
 }
@@ -2069,16 +2043,6 @@ textarea:focus-visible,
 .metadata-form input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(0, 145, 57, 0.1);
-}
-
-.ownership-form > p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.ownership-form .ui-select {
-  width: 100%;
 }
 
 .file-browser-toolbar {
@@ -3396,8 +3360,7 @@ button.my-skill-card:hover {
   .form-actions,
   .detail-footer,
   .install-confirm-actions,
-  .metadata-actions,
-  .ownership-actions {
+  .metadata-actions {
     flex-wrap: wrap;
   }
 

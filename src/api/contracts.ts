@@ -33,9 +33,6 @@ export type InstallationStatusDto = components["schemas"]["InstallationStatus"];
 export type InstallationResolutionDto = components["schemas"]["InstallationResolution"];
 export type NotificationDto = components["schemas"]["Notification"];
 export type NotificationPageDto = components["schemas"]["NotificationPage"];
-export type OwnershipTransferDto = components["schemas"]["OwnershipTransfer"];
-export type ReasonDto = components["schemas"]["ReasonRequest"];
-export type CreateOwnershipTransferDto = components["schemas"]["CreateOwnershipTransferRequest"];
 export interface CreateSkillDto {
   file: File;
   displayName: string;
@@ -179,14 +176,7 @@ export interface SkillApi {
   deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
   updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto>;
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto): Promise<SkillDetailDto>;
-  withdrawSkillVersion(skillId: string, versionId: string, input: ReasonDto): Promise<SkillVersionDto>;
-  archiveSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto>;
-  restoreSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto>;
   getInstallationStatus(skillId: string, versionId?: string): Promise<InstallationStatusDto>;
-  createOwnershipTransfer(skillId: string, input: CreateOwnershipTransferDto): Promise<OwnershipTransferDto>;
-  acceptOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
-  rejectOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
-  cancelOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
   getDownloadTicket(skillId: string, versionId: string): Promise<DownloadTicketDto>;
   resolveInstallation(input: ResolveInstallationDto): Promise<InstallationResolutionDto>;
   recordInstallation(event: InstallationEventDto): Promise<void>;
