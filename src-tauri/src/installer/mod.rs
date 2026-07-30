@@ -120,7 +120,6 @@ fn windows_nvm_has_command(command: &str) -> bool {
 
 #[cfg(windows)]
 fn windows_claude_command_directories(home: &Path) -> Vec<PathBuf> {
-    #[allow(unused_mut)]
     let mut directories = vec![
         home.join(".local").join("bin"),
         home.join(".claude").join("local"),
@@ -167,7 +166,7 @@ fn claude_code_is_installed(home: &Path) -> bool {
         return true;
     }
 
-    let mut directories = vec![
+    let directories = vec![
         home.join(".local").join("bin"),
         home.join(".claude").join("local"),
         home.join(".npm-global").join("bin"),
@@ -177,12 +176,14 @@ fn claude_code_is_installed(home: &Path) -> bool {
         PathBuf::from("/opt/homebrew/bin"),
     ];
     #[cfg(windows)]
-    {
+    let directories = {
+        let mut directories = directories;
         if windows_nvm_has_command("claude") {
             return true;
         }
         directories.extend(windows_claude_command_directories(home));
-    }
+        directories
+    };
 
     directories
         .iter()
