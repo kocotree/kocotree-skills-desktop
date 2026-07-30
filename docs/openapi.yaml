@@ -15,9 +15,7 @@ tags:
   - name: Skills
     description: Skill 查询、创建和生命周期管理。
   - name: Versions
-    description: 不可变版本、文件树和撤回。
-  - name: Ownership
-    description: 所有权转移邀请。
+    description: 不可变版本和文件树。
   - name: Installations
     description: 下载凭证、安装匹配和安装上报。
   - name: Notifications
@@ -52,7 +50,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [OWNED, COLLABORATED, ARCHIVED]
+            enum: [OWNED, COLLABORATED]
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -156,7 +154,7 @@ paths:
     get:
       tags: [Skills]
       summary: 获取 Skill 详情
-      description: 归档 Skill 仅对其 Owner、协作者和管理员返回完整详情。
+      description: 历史归档数据仅作只读兼容；当前产品不再创建归档状态。
       operationId: getSkill
       security:
         - BearerAuth: []
@@ -343,79 +341,6 @@ paths:
                 $ref: '#/components/schemas/FileContentResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-  /api/skills/{skillId}/versions/{versionId}/withdraw:
-    post:
-      tags: [Versions]
-      summary: 撤回版本
-      operationId: withdrawSkillVersion
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/SkillId'
-        - $ref: '#/components/parameters/VersionId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReasonRequest'
-      responses:
-        '200':
-          description: 版本已撤回
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SkillVersionResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/skills/{skillId}/archive:
-    post:
-      tags: [Skills]
-      summary: 归档 Skill
-      operationId: archiveSkill
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/SkillId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReasonRequest'
-      responses:
-        '200':
-          description: Skill 已归档
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SkillDetailResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/skills/{skillId}/restore:
-    post:
-      tags: [Skills]
-      summary: 恢复 Skill
-      operationId: restoreSkill
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/SkillId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ReasonRequest'
-      responses:
-        '200':
-          description: Skill 已恢复
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SkillDetailResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
   /api/skills/{skillId}/installation-status:
     get:
       tags: [Installations]
@@ -428,7 +353,7 @@ paths:
         - name: versionId
           in: query
           required: false
-          description: 本地安装凭证记录的版本 ID，用于判断该版本是否已撤回。
+          description: 本地安装凭证记录的版本 ID；可能返回历史撤回版本的兼容状态。
           schema:
             type: string
       responses:
@@ -438,84 +363,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InstallationStatusResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/skills/{skillId}/ownership-transfers:
-    post:
-      tags: [Ownership]
-      summary: 发起所有权转移邀请
-      operationId: createOwnershipTransfer
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/SkillId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOwnershipTransferRequest'
-      responses:
-        '201':
-          description: 邀请已创建
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OwnershipTransferCreatedResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/ownership-transfers/{transferId}/accept:
-    post:
-      tags: [Ownership]
-      summary: 接受所有权转移
-      operationId: acceptOwnershipTransfer
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/TransferId'
-      responses:
-        '200':
-          description: 已接受
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OwnershipTransferResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/ownership-transfers/{transferId}/reject:
-    post:
-      tags: [Ownership]
-      summary: 拒绝所有权转移
-      operationId: rejectOwnershipTransfer
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/TransferId'
-      responses:
-        '200':
-          description: 已拒绝
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OwnershipTransferResponse'
-        default:
-          $ref: '#/components/responses/ErrorResponse'
-  /api/ownership-transfers/{transferId}/cancel:
-    post:
-      tags: [Ownership]
-      summary: 取消所有权转移
-      operationId: cancelOwnershipTransfer
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/TransferId'
-      responses:
-        '200':
-          description: 已取消
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OwnershipTransferResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
   /api/skills/{skillId}/versions/{versionId}/download-tickets:
@@ -663,12 +510,6 @@ components:
       required: true
       schema:
         type: string
-    TransferId:
-      name: transferId
-      in: path
-      required: true
-      schema:
-        type: string
     Page:
       name: page
       in: query
@@ -720,14 +561,12 @@ components:
     BusinessErrorCode:
       type: string
       enum:
-        - COLLABORATOR_REQUIRED
         - CONTENT_UNCHANGED
         - DISPLAY_NAME_CONFIRMATION_REQUIRED
         - DUPLICATE_SKILL_NAME
         - FILE_NOT_FOUND
         - FILE_PREVIEW_UNAVAILABLE
         - FORBIDDEN
-        - INITIAL_VERSION_REQUIRED
         - INSTALLATION_UNAVAILABLE
         - INVALID_REQUEST
         - INVALID_SEMVER
@@ -738,8 +577,6 @@ components:
         - SKILL_NAME_MISMATCH
         - SKILL_NOT_FOUND
         - SKILL_UNAVAILABLE
-        - TRANSFER_NOT_FOUND
-        - TRANSFER_RESOLVED
         - UNAUTHENTICATED
         - USER_DISABLED
         - VERSION_ALREADY_EXISTS
@@ -1131,51 +968,6 @@ components:
         confirmDuplicateDisplayName:
           type: boolean
           default: false
-    ReasonRequest:
-      type: object
-      required: [reason]
-      properties:
-        reason:
-          type: string
-          minLength: 1
-          maxLength: 1000
-    CreateOwnershipTransferRequest:
-      type: object
-      required: [targetUserId]
-      properties:
-        targetUserId:
-          type: string
-        reason:
-          type: [string, 'null']
-          maxLength: 1000
-    OwnershipTransfer:
-      type: object
-      required: [id, skillId, fromOwner, targetUser, status, reason, createdBy, createdAt, expiresAt, resolvedAt]
-      properties:
-        id:
-          type: string
-        skillId:
-          type: string
-        fromOwner:
-          $ref: '#/components/schemas/User'
-        targetUser:
-          $ref: '#/components/schemas/User'
-        status:
-          type: string
-          enum: [PENDING, ACCEPTED, REJECTED, CANCELED, EXPIRED]
-        reason:
-          type: [string, 'null']
-        createdBy:
-          $ref: '#/components/schemas/User'
-        createdAt:
-          type: string
-          format: date-time
-        expiresAt:
-          type: string
-          format: date-time
-        resolvedAt:
-          type: [string, 'null']
-          format: date-time
     InstallationStatus:
       type: object
       required: [skillId, status, archivedAt, archiveReason, nameConflictReason, versionStatus, withdrawalReason, recommendedVersion]
@@ -1269,7 +1061,7 @@ components:
           type: string
         type:
           type: string
-          enum: [VERSION_PUBLISHED, METADATA_UPDATED, OWNERSHIP_TRANSFER, SKILL_STATUS_CHANGED]
+          enum: [VERSION_PUBLISHED, METADATA_UPDATED]
         title:
           type: string
         body:
@@ -1419,22 +1211,6 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/InstallationStatus'
-    OwnershipTransferResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiOkMeta'
-        - type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/OwnershipTransfer'
-    OwnershipTransferCreatedResponse:
-      allOf:
-        - $ref: '#/components/schemas/ApiCreatedMeta'
-        - type: object
-          required: [data]
-          properties:
-            data:
-              $ref: '#/components/schemas/OwnershipTransfer'
     DownloadTicketCreatedResponse:
       allOf:
         - $ref: '#/components/schemas/ApiCreatedMeta'
