@@ -13,7 +13,7 @@ Kocotree Skills 是使用 Tauri 2、React 和 TypeScript 开发的 Skill 浏览�
 
 真实后端和身份适配器尚未接入。登录协议与令牌生命周期由后续认证接入方提供。上传页面支持手工 ZIP，也支持选择文件夹后在内存中自动打包；两种入口都会校验文件路径、大小、数量、`SKILL.md` 元数据和内容哈希。
 
-Tauri 窗口中的安装会把 Mock 接口生成的 ZIP 写入 `~/.agents/skills/<skillName>`。目标目录存在时停止安装，不覆盖已有内容。浏览器页面仍使用内存 Mock，不写入本地目录。
+Tauri 窗口中的安装会把 Mock 接口生成的 ZIP 写入私有仓库 `~/.skills-manager/skills/<skillName>`。只有用户分别开启 Claude Code 或 Codex 后，客户端才会在对应 Agent 的扫描目录创建生效入口；关闭后会彻底移除入口。目标目录存在时停止安装，不覆盖已有内容。浏览器页面仍使用内存 Mock，不写入本地目录。
 
 ## 本地运行
 

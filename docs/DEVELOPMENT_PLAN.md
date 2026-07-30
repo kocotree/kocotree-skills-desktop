@@ -2,7 +2,7 @@
 
 ## 1. 当前目标
 
-当前版本优先完成平台 Skill 的真实安装。桌面客户端负责下载平台版本、校验 ZIP、安全解压并写入 `~/.agents/skills/<skillName>`；浏览器开发环境继续使用 Mock 安装。
+当前版本优先完成平台 Skill 的真实安装。桌面客户端负责下载平台版本、校验 ZIP、安全解压并写入私有仓库 `~/.skills-manager/skills/<skillName>`；浏览器开发环境继续使用 Mock 安装。
 
 ## 2. 计划表
 
@@ -30,12 +30,14 @@
 
 ## 3. macOS 与 Windows 连接策略
 
-- Skill 本体统一保存在当前用户目录下的 `.agents/skills/<skillName>`。
+- Skill 本体统一保存在当前用户目录下的 `.skills-manager/skills/<skillName>`，该目录不被 Agent 自动扫描。
 - macOS 和 Linux 使用目录软连接接入 Claude Code 与 Codex。
 - Windows 先尝试目录软连接；权限不足或开发者模式未开启时降级为无需管理员权限的 NTFS Junction。
 - 软连接与 Junction 都不可用（例如部分 UNC、WSL 或非 NTFS 路径）时，创建带管理标记的目录副本。
 - 受管副本保存源目录摘要；扫描发现本体变化时自动刷新。关闭时必须同时验证状态记录、管理标记和源路径，只删除 Agent 目标，不删除 Skill 本体。
-- 前端统一使用“连接”术语，不向用户暴露不同操作系统的底层实现。
+- 前端统一使用“开启/关闭”术语，不向用户暴露不同操作系统的底层实现。
+- `~/.agents/skills` 仅作为旧版共享目录迁移来源；扫描时将其中的实体 Skill 搬入私有仓库，避免 Claude Code 或 Codex 绕过开关直接发现。
+- 关闭保证磁盘扫描入口完全消失；已经启动的 Agent 会话可能缓存启动时的 Skill 清单，需要新建任务或重启 Agent 才会刷新。
 - CI 必须在 macOS 与 Windows 上分别运行前端测试、前端生产构建和 Rust 测试。
 - `Windows Installer` 工作流在 `nangua` 分支相关代码更新时自动运行，也支持从 GitHub Actions 手动触发。
 - 工作流生成 NSIS `.exe` 和 WiX `.msi`，并上传到 `kocotree-skills-windows-x64` Artifact，保留 14 天。
@@ -59,7 +61,7 @@ Artifact 保留 14 天；过期后需要重新运行 `Windows Installer` 工作�
 在 Windows PowerShell 中执行：
 
 ```powershell
-$skill = Join-Path $env:USERPROFILE ".agents\skills\windows-test"
+$skill = Join-Path $env:USERPROFILE ".skills-manager\skills\windows-test"
 New-Item -ItemType Directory -Force $skill
 
 @"
@@ -79,7 +81,8 @@ description: Windows compatibility test
 3. 为同一个 Skill 开启 Claude Code，并确认 `%USERPROFILE%\.claude\skills\windows-test` 已出现。
 4. 关闭并重新启动软件，确认两个 Agent 的连接状态仍然正确。
 5. 分别关闭 Codex 和 Claude Code，确认对应 Agent 目录中的入口消失。
-6. 确认 `%USERPROFILE%\.agents\skills\windows-test\SKILL.md` 始终存在，关闭连接不得删除本体。
+6. 确认 `%USERPROFILE%\.skills-manager\skills\windows-test\SKILL.md` 始终存在，关闭不得删除私有本体。
+7. 分别关闭 Claude Code 与 Codex，确认 `%USERPROFILE%\.claude\skills\windows-test` 和 `%USERPROFILE%\.codex\skills\windows-test` 完全不存在。
 
 可以用 PowerShell 查看 Windows 实际采用的连接类型：
 

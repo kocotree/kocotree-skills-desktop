@@ -334,9 +334,9 @@
 
 **问题：** Claude 与 Codex 如何共用 Skill？
 
-**选择：** 统一安装到 `~/.agents/skills`，Claude 使用目录链接。
+**选择：** 统一安装到私有仓库 `~/.skills-manager/skills`，Claude Code 与 Codex 都使用各自扫描目录中的受管入口。
 
-**最终规则：** Claude 目录非空时不移动、不覆盖，Codex 安装仍可继续。
+**最终规则：** 两个 Agent 都只有在用户开启后才能扫描到 Skill；关闭时彻底移除对应入口。Agent 目录存在独立同名内容时不移动、不覆盖。
 
 ### 12.2 产品动作
 
@@ -350,7 +350,7 @@
 
 **选择：** 外部安装凭证与内容哈希结合。
 
-**最终规则：** 凭证保存在 `~/.agents/.kocotree/`；凭证缺失时以 `skillName + contentHash` 恢复。匹配只能证明内容一致，不能证明最初的安装动作来源。
+**最终规则：** 凭证保存在 `~/.skills-manager/`；凭证缺失时以 `skillName + contentHash` 恢复。匹配只能证明内容一致，不能证明最初的安装动作来源。
 
 ### 12.4 同名冲突
 

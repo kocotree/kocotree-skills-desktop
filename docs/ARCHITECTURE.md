@@ -130,7 +130,8 @@ flowchart TB
 | 在线 Skill、版本和平台信息 | 在线服务 | 服务端 |
 | 下载凭证 | 在线服务 | 客户端短期内存 |
 | 下载缓存 | 安装流程 | 系统临时目录 |
-| 生效 Skill 目录 | 本地安装流程 | `~/.agents/skills/<skillName>` |
+| Skill 私有本体 | 本地安装流程 | `~/.skills-manager/skills/<skillName>` |
+| Agent 生效入口 | 本地启停流程 | `~/.claude/skills/<skillName>` 或 `~/.codex/skills/<skillName>` |
 | 登录身份和令牌 | 身份适配器 | 由认证接入方定义 |
 
 ## 6. 核心接口
@@ -201,7 +202,7 @@ interface InstallationService {
 2. 客户端获取短期下载凭证。
 3. Tauri 安装器下载 ZIP 并校验 `packageSha256`。
 4. 安全解析 ZIP，校验结构、大小、路径和 `SKILL.md` 名称。
-5. 将内容写入 `~/.agents/skills` 下的临时目录。
+5. 将内容写入 `~/.skills-manager/skills` 下的临时目录。
 6. 确认最终目标目录不存在。
 7. 将临时内容移动到最终目录。
 8. 使用唯一事件编号上报安装成功。
