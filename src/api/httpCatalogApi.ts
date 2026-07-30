@@ -5,6 +5,7 @@ import type {
   SkillDetailDto,
   SkillFileContentDto,
   SkillPageDto,
+  SkillVersionDetailDto,
   TagDto,
   VersionPageDto,
 } from "./contracts";
@@ -60,6 +61,15 @@ export class HttpCatalogApi {
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+
+  getSkillVersion(
+    skillId: string,
+    versionId: string,
+  ): Promise<SkillVersionDetailDto> {
+    return this.http.request<SkillVersionDetailDto>(
+      `/api/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}`,
     );
   }
 

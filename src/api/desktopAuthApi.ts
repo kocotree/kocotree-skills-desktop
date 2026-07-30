@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -31,13 +31,19 @@ interface PendingLogin {
 
 /** Tauri 桌面端飞书 OAuth 身份适配器。 */
 export class DesktopAuthApi {
-  private token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  private token =
+    typeof sessionStorage === "undefined"
+      ? null
+      : sessionStorage.getItem(TOKEN_STORAGE_KEY);
   private initializePromise: Promise<void> | null = null;
   private currentUserPromise: Promise<UserDto | null> | null = null;
   private pendingLogin: PendingLogin | null = null;
   private readonly processedCodes = new Set<string>();
 
   private initialize(): Promise<void> {
+    if (!isTauri()) {
+      return Promise.resolve();
+    }
     if (!this.initializePromise) {
       this.initializePromise = this.initializeDeepLinks();
     }
@@ -198,6 +204,12 @@ export class DesktopAuthApi {
   }
 
   async signIn(): Promise<UserDto> {
+    if (!isTauri()) {
+      throw new SkillApiError(
+        "DESKTOP_RUNTIME_REQUIRED",
+        "真实飞书登录仅支持 Kocotree Skills 桌面客户端",
+      );
+    }
     await this.initialize();
     if (this.pendingLogin) {
       return this.pendingLogin.promise;
@@ -272,6 +284,8 @@ export class DesktopAuthApi {
 
   private clearToken(): void {
     this.token = null;
-    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    }
   }
 }

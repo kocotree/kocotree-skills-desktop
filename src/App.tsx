@@ -515,9 +515,7 @@ function App() {
   const sidebarUserAreaRef = useRef<HTMLDivElement>(null);
   const protectedActionRef = useRef<(() => void) | null>(null);
   const [installedSkillIds, setInstalledSkillIds] = useState(
-    () => new Set(usesRealInstaller
-      ? []
-      : ["0c9c2f8d-3e84-4c0c-8a15-d41d87fd1001", "0c9c2f8d-3e84-4c0c-8a15-d41d87fd1002"]),
+    () => new Set<string>(),
   );
   const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
   const [installFeedback, setInstallFeedback] = useState<InstallFeedbackState | null>(null);
@@ -527,6 +525,13 @@ function App() {
   const [uninstallingSkillId, setUninstallingSkillId] = useState<string | null>(null);
 
   const refreshLocalSkills = useCallback(async () => {
+    if (!usesRealInstaller) {
+      setLocalSkills([]);
+      setInstalledSkillIds(new Set());
+      setLocalSkillsError("");
+      setLocalSkillsLoading(false);
+      return;
+    }
     setLocalSkillsLoading(true);
     setLocalSkillsError("");
     try {
@@ -695,6 +700,10 @@ function App() {
    * @returns 无返回值。
    */
   async function installSkillVersion(skill: SkillSummaryDto, version: SkillVersionDto, force: boolean): Promise<void> {
+    if (!usesRealInstaller) {
+      Toast.error("本地安装仅支持 Kocotree Skills 桌面客户端");
+      return;
+    }
     setInstalling(true);
     setInstallingSkillId(skill.id);
     Toast.info(`正在准备 ${skill.displayName} v${version.version}`);

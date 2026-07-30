@@ -2,6 +2,9 @@ import {
   SkillApiError,
   type DownloadTicketDto,
   type InstallationEventDto,
+  type InstallationResolutionDto,
+  type InstallationStatusDto,
+  type ResolveInstallationDto,
 } from "./contracts";
 import type { AuthenticatedHttpClient } from "./httpClient";
 
@@ -28,6 +31,20 @@ async function wait(milliseconds: number): Promise<void> {
 export class HttpInstallationApi {
   constructor(private readonly http: AuthenticatedHttpClient) {}
 
+  getInstallationStatus(
+    skillId: string,
+    versionId?: string,
+  ): Promise<InstallationStatusDto> {
+    const params = new URLSearchParams();
+    if (versionId) {
+      params.set("versionId", versionId);
+    }
+    const query = params.toString();
+    return this.http.request<InstallationStatusDto>(
+      `/api/skills/${encodeURIComponent(skillId)}/installation-status${query ? `?${query}` : ""}`,
+    );
+  }
+
   getDownloadTicket(
     skillId: string,
     versionId: string,
@@ -36,6 +53,18 @@ export class HttpInstallationApi {
       `/api/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/download-tickets`,
       {
         method: "POST",
+      },
+    );
+  }
+
+  resolveInstallation(
+    input: ResolveInstallationDto,
+  ): Promise<InstallationResolutionDto> {
+    return this.http.request<InstallationResolutionDto>(
+      "/api/installations/resolve",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
       },
     );
   }
