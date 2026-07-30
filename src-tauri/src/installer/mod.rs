@@ -21,6 +21,14 @@ const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
 const MANAGER_STATE_FILE: &str = ".kocotree-skills-desktop.json";
 const MANAGED_COPY_METADATA_FILE: &str = ".kocotree-managed-copy.json";
 
+fn private_skills_root(home: &Path) -> PathBuf {
+    home.join(".skills-manager").join("skills")
+}
+
+fn shared_skills_root(home: &Path) -> PathBuf {
+    home.join(".agents").join("skills")
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstallSkillInput {
@@ -52,6 +60,141 @@ struct InstalledSkillMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct InstallSkillResult {
     pub installed_path: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInstallationStatus {
+    pub claude: bool,
+}
+
+fn command_exists_in_directory(directory: &Path, command: &str) -> bool {
+    #[cfg(windows)]
+    {
+        ["", ".exe", ".cmd", ".bat", ".ps1"]
+            .iter()
+            .any(|suffix| directory.join(format!("{command}{suffix}")).is_file())
+    }
+    #[cfg(not(windows))]
+    {
+        directory.join(command).is_file()
+    }
+}
+
+fn command_exists_on_path(command: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path)
+            .any(|directory| command_exists_in_directory(&directory, command))
+    })
+}
+
+fn nvm_has_command(home: &Path, command: &str) -> bool {
+    let versions_root = home.join(".nvm").join("versions").join("node");
+    fs::read_dir(versions_root).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|entry| command_exists_in_directory(&entry.path().join("bin"), command))
+    })
+}
+
+#[cfg(windows)]
+fn windows_nvm_has_command(command: &str) -> bool {
+    let mut roots = ["NVM_SYMLINK", "NVM_HOME"]
+        .iter()
+        .filter_map(|key| std::env::var_os(key).map(PathBuf::from))
+        .collect::<Vec<_>>();
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        roots.push(PathBuf::from(app_data).join("nvm"));
+    }
+
+    roots.iter().any(|root| {
+        command_exists_in_directory(root, command)
+            || fs::read_dir(root).is_ok_and(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .any(|entry| command_exists_in_directory(&entry.path(), command))
+            })
+    })
+}
+
+#[cfg(windows)]
+fn windows_claude_command_directories(home: &Path) -> Vec<PathBuf> {
+    #[allow(unused_mut)]
+    let mut directories = vec![
+        home.join(".local").join("bin"),
+        home.join(".claude").join("local"),
+        home.join(".npm-global").join("bin"),
+        home.join(".bun").join("bin"),
+        home.join(".volta").join("bin"),
+    ];
+
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        let app_data = PathBuf::from(app_data);
+        directories.push(app_data.join("npm"));
+        directories.push(app_data.join("pnpm"));
+    }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let local_app_data = PathBuf::from(local_app_data);
+        directories.push(local_app_data.join("Microsoft").join("WindowsApps"));
+        directories.push(local_app_data.join("pnpm"));
+        directories.push(local_app_data.join("Volta").join("bin"));
+        directories.push(local_app_data.join("Programs").join("claude"));
+        directories.push(
+            local_app_data
+                .join("Programs")
+                .join("Claude Code")
+                .join("bin"),
+        );
+    }
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        directories.push(PathBuf::from(program_files).join("nodejs"));
+    }
+    if let Some(prefix) = std::env::var_os("npm_config_prefix") {
+        directories.push(PathBuf::from(prefix));
+    }
+    for key in ["NVM_HOME", "NVM_SYMLINK", "FNM_MULTISHELL_PATH"] {
+        if let Some(path) = std::env::var_os(key) {
+            directories.push(PathBuf::from(path));
+        }
+    }
+
+    directories
+}
+
+fn claude_code_is_installed(home: &Path) -> bool {
+    if command_exists_on_path("claude") || nvm_has_command(home, "claude") {
+        return true;
+    }
+
+    let mut directories = vec![
+        home.join(".local").join("bin"),
+        home.join(".claude").join("local"),
+        home.join(".npm-global").join("bin"),
+        home.join(".bun").join("bin"),
+        home.join(".local").join("share").join("pnpm"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/homebrew/bin"),
+    ];
+    #[cfg(windows)]
+    {
+        if windows_nvm_has_command("claude") {
+            return true;
+        }
+        directories.extend(windows_claude_command_directories(home));
+    }
+
+    directories
+        .iter()
+        .any(|directory| command_exists_in_directory(directory, "claude"))
+}
+
+#[tauri::command]
+pub fn get_agent_installation_status() -> AgentInstallationStatus {
+    let claude = dirs::home_dir()
+        .as_deref()
+        .is_some_and(claude_code_is_installed);
+    AgentInstallationStatus { claude }
 }
 
 #[derive(Debug, Serialize)]
@@ -735,7 +878,8 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
         let home = dirs::home_dir().ok_or_else(|| {
             InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
         })?;
-        let skills_root = home.join(".agents").join("skills");
+        migrate_shared_skills_to_private_store(&home)?;
+        let skills_root = private_skills_root(&home);
         install_package_bytes(&input, &package_bytes, &skills_root)
     }
     .await;
@@ -919,16 +1063,227 @@ fn save_local_skill_manager_state(
     fs::write(state_path, content).map_err(|error| io_error("保存 Skill 管理状态", error))
 }
 
+/**
+ * 将旧版共享扫描目录中的 Skill 本体迁移到私有仓库。
+ *
+ * `.agents/skills` 会被 Codex 等 Agent 直接扫描，不能作为可独立启停的本体目录。
+ * 迁移时只移动实体 Skill 目录，并重建迁移前已经存在的受管 Agent 连接。
+ */
+fn migrate_shared_skills_to_private_store(home: &Path) -> Result<(), InstallError> {
+    let shared_root = shared_skills_root(home);
+    let entries = match fs::read_dir(&shared_root) {
+        Ok(entries) => entries
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| io_error("读取旧版共享 Skill", error))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(io_error("读取旧版共享 Skill 目录", error)),
+    };
+    let private_root = private_skills_root(home);
+    let mut state = load_local_skill_manager_state(home)?;
+    let mut state_changed = false;
+    let mut migrations = Vec::new();
+
+    for entry in entries {
+        let directory_name = entry.file_name();
+        if directory_name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let source = entry.path();
+        let metadata = fs::symlink_metadata(&source)
+            .map_err(|error| io_error("检查旧版 Skill 本体", error))?;
+        let link_kind = managed_directory_link_kind(&source, &metadata)
+            .map_err(|error| io_error("检查旧版 Skill 本体类型", error))?;
+        if link_kind.is_some() {
+            if source.join("SKILL.md").is_file() {
+                return Err(InstallError::with_details(
+                    "LOCAL_SKILL_MIGRATION_UNSAFE",
+                    "旧版共享目录中的 Skill 是链接，无法安全迁移",
+                    serde_json::json!({ "path": source }),
+                ));
+            }
+            continue;
+        }
+        if !metadata.is_dir() || !source.join("SKILL.md").is_file() {
+            continue;
+        }
+
+        let skill_md = fs::read_to_string(source.join("SKILL.md"))
+            .map_err(|error| io_error("读取旧版 Skill 定义", error))?;
+        let skill_name = parse_skill_name(&skill_md)?;
+        if directory_name.to_string_lossy() != skill_name {
+            return Err(InstallError::with_details(
+                "LOCAL_SKILL_MIGRATION_NAME_MISMATCH",
+                "旧版 Skill 目录名与 SKILL.md 中的名称不一致，未执行迁移",
+                serde_json::json!({
+                    "path": source,
+                    "skillName": skill_name,
+                }),
+            ));
+        }
+        let target = private_root.join(&directory_name);
+        if fs::symlink_metadata(&target).is_ok() {
+            return Err(InstallError::with_details(
+                "LOCAL_SKILL_MIGRATION_CONFLICT",
+                "私有仓库中已存在同名 Skill，未覆盖旧版共享目录",
+                serde_json::json!({
+                    "sourcePath": source,
+                    "targetPath": target,
+                }),
+            ));
+        }
+        migrations.push((source, target, directory_name, skill_name));
+    }
+
+    for (source, target, directory_name, skill_name) in migrations {
+        let canonical_source = source
+            .canonicalize()
+            .map_err(|error| io_error("定位旧版 Skill 本体", error))?;
+        let mut active_links = Vec::new();
+        let mut active_copies = Vec::new();
+        for agent in ["claude", "codex"] {
+            let agent_target = preferred_agent_skills_root(home, agent)?.join(&directory_name);
+            let Ok(target_metadata) = fs::symlink_metadata(&agent_target) else {
+                continue;
+            };
+            let target_link_kind = managed_directory_link_kind(&agent_target, &target_metadata)
+                .map_err(|error| io_error("检查 Agent Skill 连接", error))?;
+            if let Some(target_link_kind) = target_link_kind {
+                if agent_target
+                    .canonicalize()
+                    .is_ok_and(|path| path == canonical_source)
+                {
+                    active_links.push((agent.to_string(), agent_target, target_link_kind));
+                }
+                continue;
+            }
+            let connection_key = managed_connection_key(agent, &skill_name);
+            if target_metadata.is_dir()
+                && state
+                    .connections
+                    .get(&connection_key)
+                    .is_some_and(|connection| {
+                        connection.mode == ManagedConnectionMode::Copy
+                            && PathBuf::from(&connection.source_path)
+                                .canonicalize()
+                                .is_ok_and(|path| path == canonical_source)
+                            && managed_copy_points_to(&agent_target, &canonical_source)
+                    })
+            {
+                active_copies.push((agent.to_string(), agent_target));
+            }
+        }
+
+        fs::create_dir_all(&private_root)
+            .map_err(|error| io_error("创建 Skill 私有仓库", error))?;
+        fs::rename(&source, &target).map_err(|error| io_error("迁移 Skill 本体", error))?;
+        let canonical_target = target
+            .canonicalize()
+            .map_err(|error| io_error("定位迁移后的 Skill 本体", error))?;
+
+        for (agent, agent_target, target_link_kind) in active_links {
+            remove_managed_directory_link(&agent_target, target_link_kind)
+                .map_err(|error| io_error("移除旧版 Agent Skill 连接", error))?;
+            let mode = create_managed_directory_link(&canonical_target, &agent_target)
+                .map_err(|error| io_error("重建 Agent Skill 连接", error))?;
+            let connection_key = managed_connection_key(&agent, &skill_name);
+            if mode == ManagedConnectionMode::Copy {
+                let source_hash = hash_skill_directory(&canonical_target)
+                    .map_err(|error| io_error("计算 Skill 摘要", error))?;
+                state.connections.insert(
+                    connection_key,
+                    ManagedConnectionState {
+                        source_path: canonical_target.to_string_lossy().into_owned(),
+                        target_path: agent_target.to_string_lossy().into_owned(),
+                        mode,
+                        source_hash,
+                    },
+                );
+                state_changed = true;
+            } else {
+                state_changed |= state.connections.remove(&connection_key).is_some();
+            }
+            let assignments = state.assignments.entry(agent).or_default();
+            if !assignments.iter().any(|name| name == &skill_name) {
+                assignments.push(skill_name.clone());
+                assignments.sort();
+                state_changed = true;
+            }
+        }
+        for (agent, agent_target) in active_copies {
+            copy_skill_directory(&canonical_target, &agent_target)
+                .map_err(|error| io_error("迁移 Agent Skill 副本", error))?;
+            let connection_key = managed_connection_key(&agent, &skill_name);
+            let source_hash = hash_skill_directory(&canonical_target)
+                .map_err(|error| io_error("计算 Skill 摘要", error))?;
+            state.connections.insert(
+                connection_key,
+                ManagedConnectionState {
+                    source_path: canonical_target.to_string_lossy().into_owned(),
+                    target_path: agent_target.to_string_lossy().into_owned(),
+                    mode: ManagedConnectionMode::Copy,
+                    source_hash,
+                },
+            );
+            let assignments = state.assignments.entry(agent).or_default();
+            if !assignments.iter().any(|name| name == &skill_name) {
+                assignments.push(skill_name.clone());
+                assignments.sort();
+            }
+            state_changed = true;
+        }
+        let active_agents = ["claude", "codex"]
+            .into_iter()
+            .filter(|agent| {
+                let target =
+                    preferred_agent_skills_root(home, agent).map(|root| root.join(&directory_name));
+                target.is_ok_and(|target| {
+                    fs::symlink_metadata(&target).is_ok()
+                        && target.join("SKILL.md").is_file()
+                        && (target
+                            .canonicalize()
+                            .is_ok_and(|path| path == canonical_target)
+                            || managed_copy_points_to(&target, &canonical_target))
+                })
+            })
+            .collect::<Vec<_>>();
+        for agent in ["claude", "codex"] {
+            if active_agents.contains(&agent) {
+                continue;
+            }
+            if let Some(assignments) = state.assignments.get_mut(agent) {
+                let previous_length = assignments.len();
+                assignments.retain(|name| name != &skill_name);
+                state_changed |= assignments.len() != previous_length;
+            }
+            state_changed |= state
+                .connections
+                .remove(&managed_connection_key(agent, &skill_name))
+                .is_some();
+        }
+        state_changed |= state.legacy_sources.remove(&skill_name).is_some();
+        info!(
+            "已将 Skill 本体迁移到私有仓库：skill_name={}, target={}",
+            skill_name,
+            target.display()
+        );
+    }
+
+    state
+        .assignments
+        .retain(|_, assignments| !assignments.is_empty());
+    if state_changed {
+        save_local_skill_manager_state(home, &state)?;
+    }
+    Ok(())
+}
+
 #[cfg(any(windows, test))]
 fn refresh_managed_copies(home: &Path) -> Result<(), InstallError> {
     let mut state = load_local_skill_manager_state(home)?;
-    let allowed_source_roots = [
-        home.join(".agents").join("skills"),
-        home.join(".skills-manager").join("skills"),
-    ]
-    .into_iter()
-    .filter_map(|root| root.canonicalize().ok())
-    .collect::<Vec<_>>();
+    let allowed_source_roots = [private_skills_root(home)]
+        .into_iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .collect::<Vec<_>>();
     let mut state_changed = false;
 
     for (key, connection) in &mut state.connections {
@@ -1003,6 +1358,7 @@ fn refresh_managed_copies(home: &Path) -> Result<(), InstallError> {
 }
 
 fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    migrate_shared_skills_to_private_store(home)?;
     #[cfg(any(windows, test))]
     if let Err(error) = refresh_managed_copies(home) {
         warn!(
@@ -1011,8 +1367,8 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
         );
     }
     let roots = [
-        ("MANAGER", home.join(".skills-manager").join("skills")),
-        ("AGENTS", home.join(".agents").join("skills")),
+        ("MANAGER", private_skills_root(home)),
+        ("AGENTS", shared_skills_root(home)),
         ("CLAUDE", home.join(".claude").join("skills")),
         ("CODEX", home.join(".codex").join("skills")),
     ];
@@ -1116,11 +1472,11 @@ fn preferred_agent_skills_root(home: &Path, agent: &str) -> Result<PathBuf, Inst
     }
 }
 
-fn verified_legacy_manager_source(
+fn verified_legacy_shared_source(
     home: &Path,
     skill_name: &str,
 ) -> Result<Option<PathBuf>, InstallError> {
-    let legacy_source = home.join(".skills-manager").join("skills").join(skill_name);
+    let legacy_source = shared_skills_root(home).join(skill_name);
     let metadata = match fs::symlink_metadata(&legacy_source) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -1282,27 +1638,36 @@ fn set_local_skill_enabled_at_home(
     home: &Path,
     input: SetLocalSkillEnabledInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    let source_path = PathBuf::from(&input.source_path);
+    migrate_shared_skills_to_private_store(home)?;
+    if input.enabled && input.agent == "claude" && !claude_code_is_installed(home) {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_AGENT_NOT_INSTALLED",
+            "未检测到 Claude Code，安装后才能开启 Skill",
+        ));
+    }
+    let requested_source_path = PathBuf::from(&input.source_path);
+    let source_path = if requested_source_path.exists() {
+        requested_source_path
+    } else {
+        private_skills_root(home).join(&input.skill_name)
+    };
     let canonical_source = source_path.canonicalize().map_err(|error| {
         InstallError::new(
             "LOCAL_SKILL_SOURCE_MISSING",
             format!("Skill 本体不存在：{error}"),
         )
     })?;
-    let allowed_source_roots = [
-        home.join(".agents").join("skills"),
-        home.join(".skills-manager").join("skills"),
-    ]
-    .into_iter()
-    .filter_map(|root| root.canonicalize().ok())
-    .collect::<Vec<_>>();
+    let allowed_source_roots = [private_skills_root(home)]
+        .into_iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .collect::<Vec<_>>();
     let source_is_direct_child = allowed_source_roots
         .iter()
         .any(|root| canonical_source.parent() == Some(root.as_path()));
     if !source_is_direct_child || !canonical_source.join("SKILL.md").is_file() {
         return Err(InstallError::new(
             "LOCAL_SKILL_SOURCE_UNMANAGED",
-            "只能控制用户目录下 .agents/skills 或兼容仓库中的实体 Skill",
+            "只能控制 Skill 私有仓库中的实体 Skill",
         ));
     }
     let skill_md = fs::read_to_string(canonical_source.join("SKILL.md"))
@@ -1325,7 +1690,7 @@ fn set_local_skill_enabled_at_home(
     let connection_key = managed_connection_key(&input.agent, &input.skill_name);
     let mut manager_state = load_local_skill_manager_state(home)?;
     let mut manager_state_changed = false;
-    let legacy_manager_source = verified_legacy_manager_source(home, &input.skill_name)?;
+    let legacy_manager_source = verified_legacy_shared_source(home, &input.skill_name)?;
     let mut legacy_links_to_replace = Vec::new();
     #[cfg(any(windows, test))]
     let stored_connection = manager_state.connections.get(&connection_key).cloned();
@@ -1491,14 +1856,29 @@ fn set_local_skill_enabled_at_home(
         manager_state_changed |= manager_state.connections.remove(&connection_key).is_some();
     }
 
-    let assigned_skills = manager_state
-        .assignments
-        .entry(input.agent.clone())
-        .or_default();
-    if !assigned_skills.iter().any(|name| name == &input.skill_name) {
-        assigned_skills.push(input.skill_name);
-        assigned_skills.sort();
-        manager_state_changed = true;
+    if input.enabled {
+        let assigned_skills = manager_state
+            .assignments
+            .entry(input.agent.clone())
+            .or_default();
+        if !assigned_skills.iter().any(|name| name == &input.skill_name) {
+            assigned_skills.push(input.skill_name);
+            assigned_skills.sort();
+            manager_state_changed = true;
+        }
+    } else {
+        let remove_empty_assignment =
+            if let Some(assigned_skills) = manager_state.assignments.get_mut(&input.agent) {
+                let previous_length = assigned_skills.len();
+                assigned_skills.retain(|name| name != &input.skill_name);
+                manager_state_changed |= assigned_skills.len() != previous_length;
+                assigned_skills.is_empty()
+            } else {
+                false
+            };
+        if remove_empty_assignment {
+            manager_state.assignments.remove(&input.agent);
+        }
     }
     if manager_state_changed {
         save_local_skill_manager_state(home, &manager_state)?;
@@ -1559,6 +1939,7 @@ fn remove_local_skill_at_home(
     home: &Path,
     input: RemoveLocalSkillInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    migrate_shared_skills_to_private_store(home)?;
     if !is_valid_skill_name(&input.skill_name) {
         return Err(InstallError::new(
             "INVALID_SKILL_NAME",
@@ -1566,7 +1947,7 @@ fn remove_local_skill_at_home(
         ));
     }
 
-    let source = home.join(".agents").join("skills").join(&input.skill_name);
+    let source = private_skills_root(home).join(&input.skill_name);
     let mut source_owned = false;
     let mut canonical_source = None;
     match fs::symlink_metadata(&source) {
@@ -1576,14 +1957,14 @@ fn remove_local_skill_at_home(
             if link_kind.is_some() || !metadata.is_dir() {
                 return Err(InstallError::with_details(
                     "LOCAL_UNINSTALL_SOURCE_UNSAFE",
-                    "全部 Agents 工作区中的同名项不是可安全删除的实体目录",
+                    "Skill 私有仓库中的同名项不是可安全删除的实体目录",
                     serde_json::json!({ "path": source }),
                 ));
             }
             if !owned_install_metadata_matches(&source, &input)? {
                 return Err(InstallError::with_details(
                     "LOCAL_UNINSTALL_NOT_MANAGED",
-                    "全部 Agents 工作区中的 Skill 不是由平台安装，未执行删除",
+                    "Skill 私有仓库中的 Skill 不是由平台安装，未执行删除",
                     serde_json::json!({ "path": source }),
                 ));
             }
@@ -1599,7 +1980,7 @@ fn remove_local_skill_at_home(
     }
 
     let mut manager_state = load_local_skill_manager_state(home)?;
-    let legacy_manager_source = verified_legacy_manager_source(home, &input.skill_name)?;
+    let legacy_manager_source = verified_legacy_shared_source(home, &input.skill_name)?;
     let mut found_legacy_connection = false;
     let mut removal_targets = Vec::<(PathBuf, LocalRemovalKind)>::new();
     for agent in ["claude", "codex"] {
@@ -1742,7 +2123,7 @@ fn remove_local_skill_on_disk(
     remove_local_skill_at_home(&home, input)
 }
 
-/** 只读扫描全部 Agents 工作区、兼容仓库以及 Claude Code/Codex 目录。 */
+/** 迁移旧版共享本体，并扫描私有仓库以及 Claude Code/Codex 生效目录。 */
 #[tauri::command]
 pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
     tauri::async_runtime::spawn_blocking(scan_local_skills_from_disk)
@@ -1755,7 +2136,7 @@ pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> 
         })?
 }
 
-/** 通过创建或移除受管目录连接，开启或关闭指定 Agent 的 Skill。 */
+/** 通过创建或移除 Agent 专属目录连接，开启或彻底关闭指定 Agent 的 Skill。 */
 #[tauri::command]
 pub async fn set_local_skill_enabled(
     input: SetLocalSkillEnabledInput,
@@ -1926,7 +2307,7 @@ mod tests {
     fn uninstalls_platform_skill_and_managed_agent_connections() {
         let home = tempfile::tempdir().unwrap();
         let bytes = create_package("test-skill", None);
-        let skills_root = home.path().join(".agents").join("skills");
+        let skills_root = private_skills_root(home.path());
         install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
         let source = skills_root.join("test-skill");
 
@@ -1980,7 +2361,7 @@ mod tests {
     fn uninstall_stops_before_deleting_an_independent_agent_directory() {
         let home = tempfile::tempdir().unwrap();
         let bytes = create_package("test-skill", None);
-        let skills_root = home.path().join(".agents").join("skills");
+        let skills_root = private_skills_root(home.path());
         install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
         let source = skills_root.join("test-skill");
         let independent = home.path().join(".codex").join("skills").join("test-skill");
@@ -2010,30 +2391,19 @@ mod tests {
     }
 
     #[test]
-    fn enabling_replaces_a_verified_legacy_manager_link() {
+    fn enabling_migrates_a_shared_skill_and_rebuilds_its_agent_link() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
-        let legacy_source = home
-            .path()
-            .join(".skills-manager")
-            .join("skills")
-            .join("test-skill");
+        let source = shared_skills_root(home.path()).join("test-skill");
+        let private_source = private_skills_root(home.path()).join("test-skill");
         let codex_link = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
-        fs::create_dir_all(&legacy_source).unwrap();
-        for path in [&source, &legacy_source] {
-            fs::write(
-                path.join("SKILL.md"),
-                "---\nname: test-skill\ndescription: test\n---\n",
-            )
-            .unwrap();
-        }
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: test\n---\n",
+        )
+        .unwrap();
         fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
-        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
+        create_managed_directory_link(&source, &codex_link).unwrap();
 
         set_local_skill_enabled_at_home(
             home.path(),
@@ -2046,57 +2416,48 @@ mod tests {
         )
         .unwrap();
 
+        assert!(!source.exists());
+        assert!(private_source.join("SKILL.md").is_file());
         assert_eq!(
             codex_link.canonicalize().unwrap(),
-            source.canonicalize().unwrap()
+            private_source.canonicalize().unwrap()
         );
-        assert!(legacy_source.join("SKILL.md").is_file());
         let state = load_local_skill_manager_state(home.path()).unwrap();
-        assert_eq!(
-            PathBuf::from(state.legacy_sources.get("test-skill").unwrap()),
-            legacy_source.canonicalize().unwrap()
-        );
+        assert!(state
+            .assignments
+            .get("codex")
+            .is_some_and(|skills| skills.iter().any(|name| name == "test-skill")));
+        assert!(!state.legacy_sources.contains_key("test-skill"));
     }
 
     #[test]
-    fn removing_a_legacy_codex_link_preserves_both_skill_sources() {
+    fn disabling_after_migration_preserves_the_private_skill() {
         let home = tempfile::tempdir().unwrap();
-        let workspace_source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
-        let legacy_source = home
-            .path()
-            .join(".skills-manager")
-            .join("skills")
-            .join("test-skill");
+        let shared_source = shared_skills_root(home.path()).join("test-skill");
+        let private_source = private_skills_root(home.path()).join("test-skill");
         let codex_link = home.path().join(".codex").join("skills").join("test-skill");
-        fs::create_dir_all(&workspace_source).unwrap();
-        fs::create_dir_all(&legacy_source).unwrap();
-        for path in [&workspace_source, &legacy_source] {
-            fs::write(
-                path.join("SKILL.md"),
-                "---\nname: test-skill\ndescription: test\n---\n",
-            )
-            .unwrap();
-        }
+        fs::create_dir_all(&shared_source).unwrap();
+        fs::write(
+            shared_source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: test\n---\n",
+        )
+        .unwrap();
         fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
-        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
+        create_managed_directory_link(&shared_source, &codex_link).unwrap();
 
         let records = set_local_skill_enabled_at_home(
             home.path(),
             SetLocalSkillEnabledInput {
                 skill_name: "test-skill".to_string(),
-                source_path: legacy_source.to_string_lossy().into_owned(),
+                source_path: shared_source.to_string_lossy().into_owned(),
                 agent: "codex".to_string(),
                 enabled: false,
             },
         )
         .unwrap();
 
-        assert!(workspace_source.join("SKILL.md").is_file());
-        assert!(legacy_source.join("SKILL.md").is_file());
+        assert!(!shared_source.exists());
+        assert!(private_source.join("SKILL.md").is_file());
         assert!(matches!(
             fs::symlink_metadata(&codex_link),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound
@@ -2109,11 +2470,7 @@ mod tests {
     #[test]
     fn enabling_still_refuses_a_link_to_an_unknown_location() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         let unknown_source = home.path().join("other").join("test-skill");
         let codex_link = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
@@ -2147,102 +2504,34 @@ mod tests {
     }
 
     #[test]
-    fn uninstall_removes_verified_legacy_links_and_manager_copy() {
+    fn migration_refuses_to_overwrite_a_private_skill() {
         let home = tempfile::tempdir().unwrap();
-        let bytes = create_package("test-skill", None);
-        let skills_root = home.path().join(".agents").join("skills");
-        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
-        let source = skills_root.join("test-skill");
-        let legacy_source = home
-            .path()
-            .join(".skills-manager")
-            .join("skills")
-            .join("test-skill");
-        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
-        fs::create_dir_all(&legacy_source).unwrap();
+        let shared_source = shared_skills_root(home.path()).join("test-skill");
+        let private_source = private_skills_root(home.path()).join("test-skill");
+        fs::create_dir_all(&shared_source).unwrap();
+        fs::create_dir_all(&private_source).unwrap();
         fs::write(
-            legacy_source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: legacy\n---\n",
+            shared_source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: shared\n---\n",
         )
         .unwrap();
-        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
-        create_managed_directory_link(&legacy_source, &codex_link).unwrap();
-        set_local_skill_enabled_at_home(
-            home.path(),
-            SetLocalSkillEnabledInput {
-                skill_name: "test-skill".to_string(),
-                source_path: source.to_string_lossy().into_owned(),
-                agent: "codex".to_string(),
-                enabled: true,
-            },
+        fs::write(
+            private_source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: private\n---\n",
         )
         .unwrap();
 
-        remove_local_skill_at_home(
-            home.path(),
-            RemoveLocalSkillInput {
-                skill_id: "skill-test".to_string(),
-                skill_name: "test-skill".to_string(),
-            },
-        )
-        .unwrap();
+        let error = migrate_shared_skills_to_private_store(home.path()).unwrap_err();
 
-        assert!(!source.exists());
-        assert!(!codex_link.exists());
-        assert!(!legacy_source.exists());
+        assert_eq!(error.code, "LOCAL_SKILL_MIGRATION_CONFLICT");
+        assert!(shared_source.join("SKILL.md").is_file());
+        assert!(private_source.join("SKILL.md").is_file());
     }
 
     #[test]
-    fn uninstall_preserves_an_unassigned_legacy_manager_directory() {
+    fn uninstall_refuses_an_unmanaged_private_skill() {
         let home = tempfile::tempdir().unwrap();
-        let bytes = create_package("test-skill", None);
-        let skills_root = home.path().join(".agents").join("skills");
-        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
-        let legacy_source = home
-            .path()
-            .join(".skills-manager")
-            .join("skills")
-            .join("test-skill");
-        fs::create_dir_all(&legacy_source).unwrap();
-        fs::write(
-            legacy_source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: independent legacy copy\n---\n",
-        )
-        .unwrap();
-        set_local_skill_enabled_at_home(
-            home.path(),
-            SetLocalSkillEnabledInput {
-                skill_name: "test-skill".to_string(),
-                source_path: skills_root
-                    .join("test-skill")
-                    .to_string_lossy()
-                    .into_owned(),
-                agent: "claude".to_string(),
-                enabled: true,
-            },
-        )
-        .unwrap();
-
-        remove_local_skill_at_home(
-            home.path(),
-            RemoveLocalSkillInput {
-                skill_id: "skill-test".to_string(),
-                skill_name: "test-skill".to_string(),
-            },
-        )
-        .unwrap();
-
-        assert!(legacy_source.join("SKILL.md").is_file());
-    }
-
-    #[test]
-    fn uninstall_refuses_an_unmanaged_agents_directory() {
-        let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(
             source.join("SKILL.md"),
@@ -2266,11 +2555,7 @@ mod tests {
     #[test]
     fn codex_toggle_only_changes_the_managed_connection() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(
             source.join("SKILL.md"),
@@ -2341,11 +2626,7 @@ mod tests {
     #[test]
     fn managed_copy_is_grouped_with_its_source_and_removed_safely() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         let target = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(
@@ -2406,11 +2687,7 @@ mod tests {
     #[test]
     fn scanning_refreshes_a_managed_copy_when_the_source_changes() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         let target = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(
@@ -2462,11 +2739,7 @@ mod tests {
     #[test]
     fn disabling_never_removes_an_unmarked_directory_claimed_by_stale_state() {
         let home = tempfile::tempdir().unwrap();
-        let source = home
-            .path()
-            .join(".agents")
-            .join("skills")
-            .join("test-skill");
+        let source = private_skills_root(home.path()).join("test-skill");
         let target = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(

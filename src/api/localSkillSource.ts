@@ -95,18 +95,18 @@ export function groupLocalSkills(
   }
 
   const groupedRecords = [...groups.values()];
-  const workspaceGroupsBySkillName = new Map(
+  const managerGroupsBySkillName = new Map(
     groupedRecords
-      .filter((group) => group.workspaceRecord)
-      .map((group) => [group.workspaceRecord!.skillName, group]),
+      .filter((group) => group.managerRecord)
+      .map((group) => [group.managerRecord!.skillName, group]),
   );
   const mergedLegacyGroups = new Set<LocalSkillGroup>();
   for (const legacyGroup of groupedRecords) {
-    if (!legacyGroup.managerRecord || legacyGroup.workspaceRecord) continue;
-    const workspaceGroup = workspaceGroupsBySkillName.get(
-      legacyGroup.managerRecord.skillName,
+    if (!legacyGroup.workspaceRecord || legacyGroup.managerRecord) continue;
+    const managerGroup = managerGroupsBySkillName.get(
+      legacyGroup.workspaceRecord.skillName,
     );
-    if (!workspaceGroup || workspaceGroup.managerRecord) continue;
+    if (!managerGroup || managerGroup.workspaceRecord) continue;
     const legacyAgentRecords = (["claude", "codex"] as const)
       .map((agent) => [agent, legacyGroup.agentRecords[agent]] as const)
       .filter(
@@ -118,19 +118,19 @@ export function groupLocalSkills(
         ] =>
           Boolean(entry[1])
           && isManagedConnectionRecord(entry[1]!)
-          && resolvedKey(entry[1]!) === resolvedKey(legacyGroup.managerRecord!),
+          && resolvedKey(entry[1]!) === resolvedKey(legacyGroup.workspaceRecord!),
       );
     if (
       legacyAgentRecords.length === 0
       || legacyAgentRecords.some(
-        ([agent]) => Boolean(workspaceGroup.agentRecords[agent]),
+        ([agent]) => Boolean(managerGroup.agentRecords[agent]),
       )
     ) {
       continue;
     }
-    workspaceGroup.managerRecord = legacyGroup.managerRecord;
+    managerGroup.workspaceRecord = legacyGroup.workspaceRecord;
     for (const [agent, record] of legacyAgentRecords) {
-      workspaceGroup.agentRecords[agent] = record;
+      managerGroup.agentRecords[agent] = record;
     }
     mergedLegacyGroups.add(legacyGroup);
   }
@@ -145,17 +145,15 @@ export function groupLocalSkills(
     );
 }
 
-/**
- * 返回可由平台安全卸载的本地 Skill，并优先选取全部 Agents 工作区中的本体记录。
- */
+/** 返回可由平台安全卸载的本地 Skill，并优先选取私有仓库中的本体记录。 */
 export function getUninstallableSkillRecords(
   records: LocalSkillRecord[],
 ): Map<string, LocalSkillRecord> {
   const locationPriority: Record<LocalSkillLocation, number> = {
-    AGENTS: 0,
+    MANAGER: 0,
     CLAUDE: 1,
     CODEX: 2,
-    MANAGER: 3,
+    AGENTS: 3,
   };
   const candidates = records
     .filter(
@@ -180,18 +178,15 @@ export function getUninstallableSkillRecords(
   return recordsBySkillId;
 }
 
-/**
- * 返回可作为 Agent 连接本体的 Skill。优先使用全部 Agents 工作区，
- * 旧版统一仓库仅作为兼容来源保留。
- */
+/** 返回私有仓库中可作为 Agent 生效入口来源的 Skill 本体。 */
 export function getLocalSkillSourceRecord(
   group: LocalSkillGroup,
 ): LocalSkillRecord | null {
-  if (group.workspaceRecord?.entryKind === "DIRECTORY") {
-    return group.workspaceRecord;
+  if (group.managerRecord?.entryKind === "DIRECTORY") {
+    return group.managerRecord;
   }
-  return group.managerRecord?.entryKind === "DIRECTORY"
-    ? group.managerRecord
+  return group.workspaceRecord?.entryKind === "DIRECTORY"
+    ? group.workspaceRecord
     : null;
 }
 
@@ -215,7 +210,7 @@ function isLegacyManagedLink(
     group.workspaceRecord
       && group.managerRecord
       && isManagedConnectionRecord(record)
-      && resolvedKey(record) === resolvedKey(group.managerRecord),
+      && resolvedKey(record) === resolvedKey(group.workspaceRecord),
   );
 }
 
@@ -224,7 +219,7 @@ export function getLocalSkillActivationState(
   agent: LocalSkillAgent,
 ): LocalSkillActivationState {
   if (agent === "agents") {
-    return group.workspaceRecord ? "enabled" : "disabled";
+    return getLocalSkillSourceRecord(group) ? "enabled" : "disabled";
   }
   const directRecords = [group.agentRecords[agent]].filter(
     (record): record is LocalSkillRecord => Boolean(record),
@@ -282,5 +277,5 @@ export function canControlLocalSkill(group: LocalSkillGroup): boolean {
 export function filterWorkspaceSkillGroups(
   groups: LocalSkillGroup[],
 ): LocalSkillGroup[] {
-  return groups.filter((group) => group.workspaceRecord !== null);
+  return groups.filter((group) => getLocalSkillSourceRecord(group) !== null);
 }

@@ -23,6 +23,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             auth_callback::begin_desktop_auth_callback,
+            installer::get_agent_installation_status,
             installer::install_skill,
             installer::scan_local_skills,
             installer::set_local_skill_enabled,

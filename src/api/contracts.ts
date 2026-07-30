@@ -97,6 +97,11 @@ export type LocalSkillEntryKind =
 
 export type LocalSkillAgent = "agents" | "claude" | "codex";
 
+/** 当前设备上可供 Kocotree 投放 Skill 的 Agent 安装状态。 */
+export interface AgentInstallationStatus {
+  claude: boolean;
+}
+
 /** 客户端扫描和合并展示用的本地 Skill 记录。 */
 export interface LocalSkillRecord {
   id: string;
@@ -154,6 +159,7 @@ export interface SkillInstaller {
  * 返回值：本地扫描和安装操作的异步结果。
  */
 export interface LocalSkillService extends SkillInstaller {
+  getAgentInstallationStatus(): Promise<AgentInstallationStatus>;
   scanSkills(): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;

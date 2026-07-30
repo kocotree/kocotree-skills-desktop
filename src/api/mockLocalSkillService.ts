@@ -1,5 +1,6 @@
 import {
   SkillApiError,
+  type AgentInstallationStatus,
   type LocalInstallRequest,
   type LocalInstallResult,
   type LocalSkillAgent,
@@ -122,14 +123,6 @@ const initialRecords: LocalSkillRecord[] = [
   },
 ];
 
-const managedSkillNames = new Set([
-  "code-review",
-  "personal-helper",
-  "legacy-helper",
-  "reserved-name-demo",
-  "withdrawn-version-demo",
-]);
-
 const AGENT_LOCATIONS: Record<LocalSkillAgent, LocalSkillLocation> = {
   agents: "AGENTS",
   claude: "CLAUDE",
@@ -137,6 +130,7 @@ const AGENT_LOCATIONS: Record<LocalSkillAgent, LocalSkillLocation> = {
 };
 
 function inferMockLocation(path: string): LocalSkillLocation {
+  if (path.includes("/.skills-manager/skills/")) return "MANAGER";
   if (path.includes("/.claude/skills/")) return "CLAUDE";
   if (path.includes("/.codex/skills/")) return "CODEX";
   return "AGENTS";
@@ -154,36 +148,27 @@ function managerPath(skillName: string): string {
 }
 
 const initialMockRecords: LocalSkillRecord[] = [
+  ...initialRecords.map((record) => ({
+    ...record,
+    id: `manager-${record.skillName}`,
+    installPath: managerPath(record.skillName),
+    location: "MANAGER" as const,
+    entryKind: "DIRECTORY" as const,
+    resolvedPath: managerPath(record.skillName),
+    assignedAgents: inferMockLocation(record.installPath) === "AGENTS"
+      ? []
+      : [inferMockAgent(record.installPath)],
+  })),
   ...initialRecords
-    .filter((record) => managedSkillNames.has(record.skillName))
+    .filter((record) =>
+      ["CLAUDE", "CODEX"].includes(inferMockLocation(record.installPath))
+    )
     .map((record) => ({
       ...record,
-      id: `manager-${record.skillName}`,
-      installPath: managerPath(record.skillName),
-      location: "MANAGER" as const,
-      entryKind: "DIRECTORY" as const,
-      resolvedPath: managerPath(record.skillName),
-      assignedAgents: [inferMockAgent(record.installPath)],
-    })),
-  ...initialRecords.map((record) => {
-    const managed = managedSkillNames.has(record.skillName);
-    return {
-      ...record,
       location: inferMockLocation(record.installPath),
-      entryKind: managed ? "SYMLINK" as const : "DIRECTORY" as const,
-      resolvedPath: managed
-        ? managerPath(record.skillName)
-        : record.installPath,
-    };
-  }),
-  {
-    ...initialRecords[0],
-    id: "agents-code-review",
-    installPath: "~/.agents/skills/code-review",
-    location: "AGENTS",
-    entryKind: "DIRECTORY",
-    resolvedPath: "~/.agents/skills/code-review",
-  },
+      entryKind: "SYMLINK" as const,
+      resolvedPath: managerPath(record.skillName),
+    })),
 ];
 
 /** 浏览器开发阶段使用的本地 Skill 内存模拟服务。 */
@@ -197,6 +182,11 @@ export class MockLocalSkillService implements LocalSkillService {
 
   private async wait(): Promise<void> {
     await new Promise((resolve) => globalThis.setTimeout(resolve, this.delayMs));
+  }
+
+  async getAgentInstallationStatus(): Promise<AgentInstallationStatus> {
+    await this.wait();
+    return { claude: true };
   }
 
   async scanSkills(): Promise<LocalSkillRecord[]> {
@@ -216,14 +206,14 @@ export class MockLocalSkillService implements LocalSkillService {
     }
     const sourceRecord = this.records.find(
       (record) =>
-        (record.location === "AGENTS" || record.location === "MANAGER")
+        record.location === "MANAGER"
         && record.entryKind === "DIRECTORY"
         && record.installPath === input.sourcePath,
     );
     if (!sourceRecord) {
       throw new SkillApiError(
         "LOCAL_SKILL_SOURCE_UNMANAGED",
-        "只能控制全部 Agents 工作区或兼容仓库中的实体 Skill",
+        "只能控制私有仓库中的实体 Skill",
       );
     }
     const locations: LocalSkillLocation[] = [AGENT_LOCATIONS[input.agent]];
@@ -244,10 +234,7 @@ export class MockLocalSkillService implements LocalSkillService {
         )
         || (
           record.resolvedPath !== sourceRecord.resolvedPath
-          && !(
-            sourceRecord.location === "AGENTS"
-            && record.resolvedPath === managerPath(input.skillName)
-          )
+          && record.resolvedPath !== managerPath(input.skillName)
         ),
     );
     if (conflictingRecord) {
@@ -286,8 +273,12 @@ export class MockLocalSkillService implements LocalSkillService {
     }
 
     const assignedAgents = sourceRecord.assignedAgents ?? [];
-    if (!assignedAgents.includes(input.agent)) {
+    if (input.enabled && !assignedAgents.includes(input.agent)) {
       sourceRecord.assignedAgents = [...assignedAgents, input.agent];
+    } else if (!input.enabled && assignedAgents.includes(input.agent)) {
+      sourceRecord.assignedAgents = assignedAgents.filter(
+        (agent) => agent !== input.agent,
+      );
     }
 
     return structuredClone(this.records);
@@ -303,7 +294,7 @@ export class MockLocalSkillService implements LocalSkillService {
     const scenario = mockInstallScenarios[input.skill.id];
     const conflict = this.records.find(
       (item) =>
-        item.location !== "MANAGER"
+        item.location === "MANAGER"
         && item.skillName === input.version.skillName,
     );
     if (conflict && !input.force && (conflict.skillId !== input.skill.id || conflict.status !== "PLATFORM_INSTALLED")) {
@@ -320,10 +311,14 @@ export class MockLocalSkillService implements LocalSkillService {
       version: input.version.version,
       skillName: input.version.skillName,
       displayName: input.skill.displayName,
-      installPath: `~/.agents/skills/${input.version.skillName}`,
+      installPath: managerPath(input.version.skillName),
       contentHash: input.version.contentHash,
       installedAt: new Date().toISOString(),
       status: "PLATFORM_INSTALLED",
+      location: "MANAGER",
+      entryKind: "DIRECTORY",
+      resolvedPath: managerPath(input.version.skillName),
+      assignedAgents: [],
     };
     if (conflict) Object.assign(conflict, record);
     else this.records.push(record);
@@ -331,7 +326,7 @@ export class MockLocalSkillService implements LocalSkillService {
     return {
       record: structuredClone(record),
       replacedSkillName: conflict && input.force ? conflict.skillName : null,
-      backupPath: conflict && input.force ? `~/.agents/.kocotree/backups/${conflict.skillName}-${Date.now()}` : null,
+      backupPath: conflict && input.force ? `~/.skills-manager/backups/${conflict.skillName}-${Date.now()}` : null,
       notices: [...(scenario?.completionNotices ?? [])],
     };
   }

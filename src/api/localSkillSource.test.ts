@@ -21,21 +21,21 @@ function record(
     version: null,
     skillName: "research",
     displayName: "Research",
-    installPath: "/Users/test/.agents/skills/research",
+    installPath: "/Users/test/.skills-manager/skills/research",
     contentHash: "sha256:test",
     installedAt: null,
     status: "LOCAL_UNKNOWN",
-    location: "AGENTS",
+    location: "MANAGER",
     entryKind: "DIRECTORY",
-    resolvedPath: "/Users/test/.agents/skills/research",
+    resolvedPath: "/Users/test/.skills-manager/skills/research",
     ...overrides,
   };
 }
 
-describe("全部 Agents 工作区", () => {
-  it("将 .agents 实体目录作为本体，但不把它误判为 Codex 已连接", () => {
+describe("私有 Skill 仓库", () => {
+  it("将私有仓库实体目录作为本体，但不把它误判为 Codex 已开启", () => {
     const groups = groupLocalSkills([
-      record({ id: "agents-source" }),
+      record({ id: "manager-source" }),
       record({
         id: "claude-link",
         installPath: "/Users/test/.claude/skills/research",
@@ -46,7 +46,7 @@ describe("全部 Agents 工作区", () => {
 
     expect(groups).toHaveLength(1);
     expect(filterWorkspaceSkillGroups(groups)).toHaveLength(1);
-    expect(getLocalSkillSourceRecord(groups[0])?.location).toBe("AGENTS");
+    expect(getLocalSkillSourceRecord(groups[0])?.location).toBe("MANAGER");
     expect(getLocalSkillActivationState(groups[0], "claude")).toBe("enabled");
     expect(getLocalSkillActivationState(groups[0], "codex")).toBe("disabled");
     expect(filterLocalSkillGroups(groups, "claude")).toHaveLength(1);
@@ -57,7 +57,7 @@ describe("全部 Agents 工作区", () => {
   it("历史上开启过但当前已关闭的 Skill 不再显示在 Agent 页面", () => {
     const groups = groupLocalSkills([
       record({
-        id: "agents-source",
+        id: "manager-source",
         assignedAgents: ["claude", "codex"],
       }),
     ]);
@@ -80,15 +80,15 @@ describe("全部 Agents 工作区", () => {
         id: "writer-source",
         skillName: "article-writer",
         displayName: "Article Writer",
-        installPath: "/Users/test/.agents/skills/article-writer",
-        resolvedPath: "/Users/test/.agents/skills/article-writer",
+        installPath: "/Users/test/.skills-manager/skills/article-writer",
+        resolvedPath: "/Users/test/.skills-manager/skills/article-writer",
       }),
       record({
         id: "writer-claude-link",
         skillName: "article-writer",
         displayName: "Article Writer",
         installPath: "/Users/test/.claude/skills/article-writer",
-        resolvedPath: "/Users/test/.agents/skills/article-writer",
+        resolvedPath: "/Users/test/.skills-manager/skills/article-writer",
         location: "CLAUDE",
         entryKind: "SYMLINK",
       }),
@@ -105,10 +105,10 @@ describe("全部 Agents 工作区", () => {
   });
 
   it("将 Windows Junction 识别为受管 Agent 连接", () => {
-    const sourcePath = "C:\\Users\\test\\.agents\\skills\\research";
+    const sourcePath = "C:\\Users\\test\\.skills-manager\\skills\\research";
     const groups = groupLocalSkills([
       record({
-        id: "agents-source-windows",
+        id: "manager-source-windows",
         installPath: sourcePath,
         resolvedPath: sourcePath,
       }),
@@ -127,10 +127,10 @@ describe("全部 Agents 工作区", () => {
   });
 
   it("将 Windows 复制降级目录识别为受管 Agent 连接", () => {
-    const sourcePath = "C:\\Users\\test\\.agents\\skills\\research";
+    const sourcePath = "C:\\Users\\test\\.skills-manager\\skills\\research";
     const groups = groupLocalSkills([
       record({
-        id: "agents-source-windows",
+        id: "manager-source-windows",
         installPath: sourcePath,
         resolvedPath: sourcePath,
       }),
@@ -148,14 +148,15 @@ describe("全部 Agents 工作区", () => {
     expect(filterLocalSkillGroups(groups, "codex")).toHaveLength(1);
   });
 
-  it("将指向兼容仓库的同名连接合并到工作区并标记为旧连接", () => {
-    const workspacePath = "/Users/test/.agents/skills/research";
+  it("将指向旧版共享目录的连接标记为旧连接", () => {
+    const sharedPath = "/Users/test/.agents/skills/research";
     const managerPath = "/Users/test/.skills-manager/skills/research";
     const groups = groupLocalSkills([
       record({
-        id: "agents-source",
-        installPath: workspacePath,
-        resolvedPath: workspacePath,
+        id: "shared-source",
+        installPath: sharedPath,
+        resolvedPath: sharedPath,
+        location: "AGENTS",
       }),
       record({
         id: "manager-source",
@@ -166,25 +167,25 @@ describe("全部 Agents 工作区", () => {
       record({
         id: "legacy-codex-link",
         installPath: "/Users/test/.codex/skills/research",
-        resolvedPath: managerPath,
+        resolvedPath: sharedPath,
         location: "CODEX",
         entryKind: "SYMLINK",
       }),
     ]);
 
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.workspaceRecord?.id).toBe("agents-source");
+    expect(groups[0]?.workspaceRecord?.id).toBe("shared-source");
     expect(groups[0]?.managerRecord?.id).toBe("manager-source");
     expect(groups[0]?.agentRecords.codex?.id).toBe("legacy-codex-link");
     expect(getLocalSkillActivationState(groups[0]!, "codex")).toBe("legacy");
   });
 
-  it("通过 Mock 服务为 .agents 本体创建和移除 Codex 连接", async () => {
+  it("通过 Mock 服务为私有本体创建和移除 Codex 入口", async () => {
     const service = new MockLocalSkillService(0);
     const initial = await service.scanSkills();
     const source = initial.find(
       (item) =>
-        item.location === "AGENTS"
+        item.location === "MANAGER"
         && item.entryKind === "DIRECTORY"
         && item.skillName === "local-conflict-demo",
     )!;
@@ -221,33 +222,33 @@ describe("全部 Agents 工作区", () => {
       disabled.some(
         (item) =>
           item.skillName === source.skillName
-          && item.location === "AGENTS",
+          && item.location === "MANAGER",
       ),
     ).toBe(true);
   });
 
-  it("通过 Mock 服务将 Codex 旧连接迁移到 .agents 本体", async () => {
+  it("通过 Mock 服务关闭 Codex 时保留私有本体", async () => {
     const service = new MockLocalSkillService(0);
     const initialGroups = groupLocalSkills(await service.scanSkills());
     const initialGroup = initialGroups.find(
-      (group) => group.workspaceRecord?.skillName === "code-review",
+      (group) => group.managerRecord?.skillName === "code-review",
     )!;
 
-    expect(getLocalSkillActivationState(initialGroup, "codex")).toBe("legacy");
+    expect(getLocalSkillActivationState(initialGroup, "codex")).toBe("enabled");
 
-    const migrated = await service.setSkillEnabled({
-      skillName: initialGroup.workspaceRecord!.skillName,
-      sourcePath: initialGroup.workspaceRecord!.installPath,
+    const disabled = await service.setSkillEnabled({
+      skillName: initialGroup.managerRecord!.skillName,
+      sourcePath: initialGroup.managerRecord!.installPath,
       agent: "codex",
-      enabled: true,
+      enabled: false,
     });
-    const migratedGroup = groupLocalSkills(migrated).find(
-      (group) => group.workspaceRecord?.skillName === "code-review",
+    const disabledGroup = groupLocalSkills(disabled).find(
+      (group) => group.managerRecord?.skillName === "code-review",
     )!;
 
-    expect(getLocalSkillActivationState(migratedGroup, "codex")).toBe("enabled");
+    expect(getLocalSkillActivationState(disabledGroup, "codex")).toBe("disabled");
     expect(
-      migrated.some(
+      disabled.some(
         (record) =>
           record.location === "MANAGER"
           && record.skillName === "code-review",
@@ -255,43 +256,40 @@ describe("全部 Agents 工作区", () => {
     ).toBe(true);
   });
 
-  it("通过 Mock 服务移除 Codex 旧连接时保留工作区和兼容仓库本体", async () => {
+  it("通过 Mock 服务重新开启 Codex 时复用私有本体", async () => {
     const service = new MockLocalSkillService(0);
     const initialGroups = groupLocalSkills(await service.scanSkills());
     const initialGroup = initialGroups.find(
-      (group) => group.workspaceRecord?.skillName === "code-review",
+      (group) => group.managerRecord?.skillName === "code-review",
     )!;
 
-    expect(getLocalSkillActivationState(initialGroup, "codex")).toBe("legacy");
-
-    const removed = await service.setSkillEnabled({
+    await service.setSkillEnabled({
       skillName: initialGroup.managerRecord!.skillName,
       sourcePath: initialGroup.managerRecord!.installPath,
       agent: "codex",
       enabled: false,
     });
-    const removedGroups = groupLocalSkills(removed);
-    const workspaceGroup = removedGroups.find(
-      (group) => group.workspaceRecord?.skillName === "code-review",
+
+    const enabled = await service.setSkillEnabled({
+      skillName: initialGroup.managerRecord!.skillName,
+      sourcePath: initialGroup.managerRecord!.installPath,
+      agent: "codex",
+      enabled: true,
+    });
+    const enabledGroup = groupLocalSkills(enabled).find(
+      (group) => group.managerRecord?.skillName === "code-review",
     )!;
 
-    expect(getLocalSkillActivationState(workspaceGroup, "codex")).toBe("disabled");
+    expect(getLocalSkillActivationState(enabledGroup, "codex")).toBe("enabled");
     expect(
-      removed.some(
+      enabled.some(
         (record) =>
           record.location === "CODEX"
           && record.skillName === "code-review",
       ),
-    ).toBe(false);
-    expect(
-      removed.some(
-        (record) =>
-          record.location === "AGENTS"
-          && record.skillName === "code-review",
-      ),
     ).toBe(true);
     expect(
-      removed.some(
+      enabled.some(
         (record) =>
           record.location === "MANAGER"
           && record.skillName === "code-review",
@@ -317,7 +315,7 @@ describe("全部 Agents 工作区", () => {
     ).toBe(false);
   });
 
-  it("卸载记录优先选择全部 Agents 本体并排除未知来源", () => {
+  it("卸载记录优先选择私有仓库本体并排除未知来源", () => {
     const platformSkillId = "platform-skill";
     const records = [
       record({
@@ -328,10 +326,10 @@ describe("全部 Agents 工作区", () => {
         entryKind: "SYMLINK",
       }),
       record({
-        id: "agents-source",
+        id: "manager-source",
         skillId: platformSkillId,
         status: "PLATFORM_MODIFIED",
-        location: "AGENTS",
+        location: "MANAGER",
         entryKind: "DIRECTORY",
       }),
       record({
@@ -343,7 +341,7 @@ describe("全部 Agents 工作区", () => {
 
     const uninstallable = getUninstallableSkillRecords(records);
 
-    expect(uninstallable.get(platformSkillId)?.id).toBe("agents-source");
+    expect(uninstallable.get(platformSkillId)?.id).toBe("manager-source");
     expect(uninstallable.has("unknown")).toBe(false);
   });
 

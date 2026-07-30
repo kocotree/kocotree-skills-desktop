@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   SkillApiError,
+  type AgentInstallationStatus,
   type LocalInstallRequest,
   type LocalInstallResult,
   type LocalSkillRecord,
@@ -38,6 +39,22 @@ function parseCommandError(reason: unknown): InstallSkillCommandError | null {
 
 /** Tauri 桌面环境使用的真实 Skill 安装器。 */
 export class TauriInstaller implements LocalSkillService {
+  /** 检测当前设备是否安装了需要单独投放 Skill 的 Agent。 */
+  async getAgentInstallationStatus(): Promise<AgentInstallationStatus> {
+    try {
+      return await invoke<AgentInstallationStatus>(
+        "get_agent_installation_status",
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "AGENT_INSTALLATION_DETECTION_FAILED",
+        commandError?.message ?? "Agent 安装状态检测失败",
+        commandError?.details,
+      );
+    }
+  }
+
   /**
    * 功能说明：调用 Rust 命令下载、校验并写入指定平台版本。
    * @param input - 目标 Skill、版本和下载凭证。
@@ -83,7 +100,7 @@ export class TauriInstaller implements LocalSkillService {
           contentHash: input.version.contentHash,
           installedAt,
           status: "PLATFORM_INSTALLED",
-          location: "AGENTS",
+          location: "MANAGER",
           entryKind: "DIRECTORY",
           resolvedPath: result.installedPath,
         },
@@ -106,7 +123,7 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  /** 读取全部 Agents 工作区、兼容仓库以及 Claude Code/Codex 目录。 */
+  /** 读取 Skill 私有仓库以及 Claude Code/Codex 生效目录。 */
   async scanSkills(): Promise<LocalSkillRecord[]> {
     try {
       return await invoke<LocalSkillRecord[]>("scan_local_skills");
