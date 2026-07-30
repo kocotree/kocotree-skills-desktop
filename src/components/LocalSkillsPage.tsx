@@ -34,15 +34,15 @@ const SOURCE_DETAILS: Record<
 > = {
   claude: {
     title: "Claude Code Skills",
-    description: "读取用户目录/.claude/skills；移除后会删除受管连接和对应卡片",
+    description: "读取用户目录/.claude/skills；关闭后会删除生效入口和对应卡片",
     emptyTitle: "Claude Code 还没有管理 Skill",
-    emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
+    emptyHint: "点击“添加 Skill”从私有 Skill 仓库中选择",
   },
   codex: {
     title: "Codex Skills",
-    description: "读取用户目录/.codex/skills；移除后会删除受管连接和对应卡片",
+    description: "读取用户目录/.codex/skills；关闭后会删除生效入口和对应卡片",
     emptyTitle: "Codex 还没有管理 Skill",
-    emptyHint: "点击“添加 Skill”从全部 Agents 工作区中选择",
+    emptyHint: "点击“添加 Skill”从私有 Skill 仓库中选择",
   },
 };
 
@@ -81,14 +81,14 @@ function activationDescription(
     return "Skill 是独立安装目录或指向其他位置的链接，为避免数据丢失不能通过开关关闭";
   }
   if (state === "legacy") {
-    return `检测到指向旧版兼容仓库的连接；点击后迁移到全部 Agents 工作区本体`;
+    return "检测到旧版共享目录连接；点击后迁移到私有 Skill 本体";
   }
   if (!canControlLocalSkill(group)) {
-    return "该 Skill 不在可控制的全部 Agents 工作区或兼容仓库中";
+    return "该 Skill 不在可控制的私有仓库中";
   }
   return state === "enabled"
-    ? `关闭后只移除 ${AGENT_DETAILS[agent].label} 的连接，Skill 本体仍会保留`
-    : `开启后将为 ${AGENT_DETAILS[agent].label} 创建受管连接`;
+    ? `关闭后会移除扫描入口；已运行的 ${AGENT_DETAILS[agent].label} 会话需新建任务或重启后刷新`
+    : `开启后将为 ${AGENT_DETAILS[agent].label} 创建生效入口`;
 }
 
 function sourceLabels(
@@ -119,11 +119,12 @@ async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 /**
- * 功能说明：展示指定 Agent 的本地 Skill，并从全部 Agents 工作区添加受管连接。
+ * 功能说明：展示指定 Agent 的本地 Skill，并从私有仓库创建生效入口。
  */
 export function LocalSkillsPage({
   filter,
   skills,
+  agentInstalled,
   loading,
   error,
   onRefresh,
@@ -131,6 +132,7 @@ export function LocalSkillsPage({
 }: {
   filter: LocalSkillFilter;
   skills: LocalSkillRecord[];
+  agentInstalled: boolean;
   loading: boolean;
   error: string;
   onRefresh: () => void;
@@ -203,7 +205,9 @@ export function LocalSkillsPage({
       Toast.success(
         state === "legacy"
           ? `${AGENT_DETAILS[filter].label} 的旧连接已迁移`
-          : `${AGENT_DETAILS[filter].label} 已${enabled ? "开启" : "关闭"} ${sourceRecord.displayName}`,
+          : enabled
+            ? `${AGENT_DETAILS[filter].label} 已开启 ${sourceRecord.displayName}`
+            : `${AGENT_DETAILS[filter].label} 已关闭 ${sourceRecord.displayName}；已运行会话需新建任务或重启`,
       );
     } catch (reason) {
       console.error("[KocotreeSkills] 更新本地 Skill 状态失败", reason);
@@ -220,7 +224,7 @@ export function LocalSkillsPage({
   async function removeSkill(group: LocalSkillGroup): Promise<void> {
     const state = getLocalSkillActivationState(group, filter);
     const sourceRecord = state === "legacy"
-      ? group.managerRecord
+      ? group.workspaceRecord
       : getLocalSkillSourceRecord(group);
     if (
       !sourceRecord
@@ -242,11 +246,11 @@ export function LocalSkillsPage({
         `已从 ${AGENT_DETAILS[filter].label} 移除 ${sourceRecord.displayName}，Skill 本体仍保留`,
       );
     } catch (reason) {
-      console.error("[KocotreeSkills] 移除 Agent Skill 连接失败", reason);
+      console.error("[KocotreeSkills] 移除 Agent Skill 入口失败", reason);
       Toast.error(
         reason instanceof SkillApiError
           ? reason.message
-          : "移除 Agent Skill 连接失败",
+          : "移除 Agent Skill 入口失败",
       );
     } finally {
       setPendingControl("");
@@ -264,7 +268,11 @@ export function LocalSkillsPage({
       <header className="page-heading">
         <div>
           <h1>{details.title}</h1>
-          <p>{details.description}</p>
+          <p>
+            {agentInstalled
+              ? details.description
+              : `未检测到 ${AGENT_DETAILS[filter].label}，安装后才能开启 Skill`}
+          </p>
         </div>
       </header>
 
@@ -290,6 +298,7 @@ export function LocalSkillsPage({
             size="small"
             theme="solid"
             type="primary"
+            disabled={!agentInstalled}
             onClick={() => setAddVisible(true)}
           >
             添加 Skill
@@ -321,7 +330,8 @@ export function LocalSkillsPage({
             const state = getLocalSkillActivationState(group, filter);
             const controlKey = `${group.id}:${filter}`;
             const pending = pendingControl === controlKey;
-            const interactive = canControlLocalSkill(group)
+            const interactive = agentInstalled
+              && canControlLocalSkill(group)
               && ["enabled", "disabled", "legacy"].includes(state);
             return (
               <article className="my-skill-card local" key={group.id}>
@@ -433,7 +443,7 @@ export function LocalSkillsPage({
               <span>
                 {query.trim() ? "换一个名称继续搜索" : details.emptyHint}
               </span>
-              {!query.trim() && (
+              {!query.trim() && agentInstalled && (
                 <Button
                   size="small"
                   theme="solid"
@@ -464,7 +474,7 @@ export function LocalSkillsPage({
         closeOnEsc={!pendingControl}
         footer={
           <div className="local-skill-add-footer">
-            <span>还有 {availableGroups.length} 个工作区 Skill 可添加</span>
+            <span>还有 {availableGroups.length} 个私有 Skill 可开启</span>
             <Button onClick={closeAddModal} disabled={Boolean(pendingControl)}>
               完成
             </Button>
@@ -473,15 +483,15 @@ export function LocalSkillsPage({
       >
         <div className="local-skill-add-content">
           <p>
-            开启后只会创建受管连接，Skill 本体仍保留在
-            {" "}用户目录/.agents/skills；旧版统一仓库中的 Skill 也可继续添加。
+            开启后会在该 Agent 的扫描目录创建生效入口；关闭后入口会被完全移除，
+            Skill 本体仍保留在用户目录/.skills-manager/skills。
           </p>
           <input
             className="local-skill-add-search"
             type="search"
             value={addQuery}
             placeholder="搜索 Skill 名称"
-            aria-label="搜索全部 Agents 工作区 Skill"
+            aria-label="搜索私有 Skill 仓库"
             onChange={(event) => setAddQuery(event.target.value)}
           />
           <div className="local-skill-add-list">
@@ -515,7 +525,7 @@ export function LocalSkillsPage({
                 <span>
                   {normalizedAddQuery
                     ? "换一个名称继续搜索"
-                    : "工作区中的 Skill 已全部加入管理"}
+                    : "私有仓库中的 Skill 已全部开启或被同名项占用"}
                 </span>
               </div>
             )}

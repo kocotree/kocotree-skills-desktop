@@ -9,9 +9,9 @@ import {
   SkillApiError,
   countActiveLocalSkills,
   filterWorkspaceSkillGroups,
-  getLocalSkillLocation,
   getUninstallableSkillRecords,
   groupLocalSkills,
+  type AgentInstallationStatus,
   type LocalSkillFilter,
   type LocalSkillRecord,
   type SetLocalSkillEnabledInput,
@@ -70,8 +70,7 @@ function installedSkillIdsFromRecords(
 ): Set<string> {
   return new Set(
     records.flatMap((record) =>
-      getLocalSkillLocation(record) !== "MANAGER"
-      && record.skillId
+      record.skillId
         ? [record.skillId]
         : [],
     ),
@@ -510,6 +509,8 @@ function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [localSkills, setLocalSkills] = useState<LocalSkillRecord[]>([]);
+  const [agentInstallationStatus, setAgentInstallationStatus] =
+    useState<AgentInstallationStatus | null>(null);
   const [localSkillsLoading, setLocalSkillsLoading] = useState(true);
   const [localSkillsError, setLocalSkillsError] = useState("");
   const sidebarUserAreaRef = useRef<HTMLDivElement>(null);
@@ -535,8 +536,12 @@ function App() {
     setLocalSkillsLoading(true);
     setLocalSkillsError("");
     try {
-      const items = await localSkillService.scanSkills();
+      const [items, installationStatus] = await Promise.all([
+        localSkillService.scanSkills(),
+        localSkillService.getAgentInstallationStatus(),
+      ]);
       setLocalSkills(items);
+      setAgentInstallationStatus(installationStatus);
       setInstalledSkillIds(installedSkillIdsFromRecords(items));
     } catch (reason) {
       console.error("[KocotreeSkills] 本地 Skill 扫描失败", reason);
@@ -714,7 +719,7 @@ function App() {
         skillId: skill.id,
         versionId: version.id,
         packageSha256: ticket.packageSha256,
-        target: "~/.agents/skills",
+        target: "~/.skills-manager/skills",
       });
       const localResult = await installer.install({ skill: detail, version, ticket, force });
       await skillApi.recordInstallation({
@@ -736,8 +741,8 @@ function App() {
       if (localResult.notices.length > 0) {
         setInstallFeedback({
           tone: "warning",
-          title: "Skill 已安装，Claude 尚未接入",
-          summary: "通用 Skill 目录安装成功，Codex 可以继续使用。",
+          title: "Skill 已安装，Agent 尚未开启",
+          summary: "Skill 本体已进入私有仓库，需要分别开启 Claude Code 或 Codex 才能使用。",
           details: localResult.notices,
         });
       } else {
@@ -895,6 +900,7 @@ function App() {
     claude: countActiveLocalSkills(localSkillGroups, "claude"),
     codex: countActiveLocalSkills(localSkillGroups, "codex"),
   };
+  const claudeInstalled = agentInstallationStatus?.claude ?? true;
 
   return (
     <div className="app-shell">
@@ -971,15 +977,22 @@ function App() {
             <button
               className={`local-nav-child ${activePage === "local-claude" ? "active" : ""}`}
               type="button"
-              aria-label={`Claude Code，${localSkillCounts.claude} 个 Skill`}
-              title="Claude Code"
+              aria-label={
+                claudeInstalled
+                  ? `Claude Code，${localSkillCounts.claude} 个 Skill`
+                  : "Claude Code，未安装"
+              }
+              title={claudeInstalled ? "Claude Code" : "Claude Code 未安装"}
+              disabled={!claudeInstalled}
               onClick={() => setActivePage("local-claude")}
             >
               <i className="local-nav-icon local-nav-icon-claude">
                 <AppIcon name="claude" size={15} />
               </i>
               <span className="sidebar-nav-label">Claude Code</span>
-              <span className="local-nav-count">{localSkillCounts.claude}</span>
+              <span className="local-nav-count">
+                {claudeInstalled ? localSkillCounts.claude : "未安装"}
+              </span>
             </button>
             <button
               className={`local-nav-child ${activePage === "local-codex" ? "active" : ""}`}
@@ -1060,6 +1073,7 @@ function App() {
         ) : activePage === "local-all" ? (
           <AllAgentsSkillsPage
             skills={localSkills}
+            claudeInstalled={claudeInstalled}
             loading={localSkillsLoading}
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
@@ -1069,6 +1083,7 @@ function App() {
           <LocalSkillsPage
             filter={localFilter}
             skills={localSkills}
+            agentInstalled={localFilter !== "claude" || claudeInstalled}
             loading={localSkillsLoading}
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}

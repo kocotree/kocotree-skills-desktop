@@ -59,10 +59,10 @@ export function UninstallConfirmModal({
           <div className="uninstall-targets">
             <strong>将从此设备删除：</strong>
             <ul>
-              <li><code>{`~/.agents/skills/${skillName}`}</code></li>
+              <li><code>{`~/.skills-manager/skills/${skillName}`}</code><span>私有 Skill 本体</span></li>
               <li><code>{`~/.codex/skills/${skillName}`}</code><span>受管连接或副本</span></li>
               <li><code>{`~/.claude/skills/${skillName}`}</code><span>受管连接或副本</span></li>
-              <li><code>{`~/.skills-manager/skills/${skillName}`}</code><span>确认属于旧连接时清理</span></li>
+              <li><code>{`~/.agents/skills/${skillName}`}</code><span>仅在检测到旧版残留时清理</span></li>
             </ul>
           </div>
 

@@ -253,6 +253,13 @@ textarea:focus-visible,
   margin-left: 13px;
 }
 
+.sidebar-local-nav button:disabled {
+  background: transparent;
+  color: #a0a59f;
+  cursor: default;
+  opacity: 0.72;
+}
+
 .sidebar-local-nav .local-nav-child::before {
   position: absolute;
   top: -4px;
@@ -2638,6 +2645,11 @@ button.my-skill-card:hover {
   background: #f8f9f7;
 }
 
+.skill-agent-control.agent-not-installed {
+  background: #f3f4f2;
+  opacity: 0.68;
+}
+
 .skill-agent-name {
   display: flex;
   min-width: 0;
@@ -2649,6 +2661,16 @@ button.my-skill-card:hover {
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.agent-installation-badge {
+  margin-left: auto;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: #e5e7e4;
+  color: #7d837c;
+  font-size: 9px;
+  font-weight: 600;
 }
 
 .skill-agent-control-claude .skill-agent-name {

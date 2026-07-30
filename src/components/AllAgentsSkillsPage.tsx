@@ -41,8 +41,8 @@ const STATUS_LABELS: Record<LocalSkillStatus, string> = {
 };
 
 const ACTIVATION_LABELS: Record<LocalSkillActivationState, string> = {
-  enabled: "已连接",
-  disabled: "未连接",
+  enabled: "已开启",
+  disabled: "已关闭",
   legacy: "旧连接",
   unmanaged: "存在冲突",
 };
@@ -51,20 +51,24 @@ function activationDescription(
   group: LocalSkillGroup,
   agent: LocalSkillFilter,
   state: LocalSkillActivationState,
+  installed: boolean,
 ): string {
   const label = agent === "claude" ? "Claude Code" : "Codex";
+  if (!installed) {
+    return `未检测到 ${label}，安装后才能开启 Skill`;
+  }
   if (state === "unmanaged") {
     return `${label} 中存在独立安装目录或其他连接，软件不会覆盖它`;
   }
   if (state === "legacy") {
-    return `检测到指向旧版兼容仓库的连接；点击后迁移到用户目录/.agents/skills 本体`;
+    return "检测到旧版共享目录连接；点击后迁移到私有 Skill 本体";
   }
   if (!canControlLocalSkill(group)) {
-    return "该工作区条目不是实体目录，不能作为 Agent 连接的本体";
+    return "该条目不是私有仓库中的实体 Skill，不能通过开关控制";
   }
   return state === "enabled"
-    ? `关闭后只移除 ${label} 的连接，不会删除用户目录/.agents/skills 中的本体`
-    : `开启后在 ${agent === "claude" ? "用户目录/.claude/skills" : "用户目录/.codex/skills"} 创建受管连接`;
+    ? `关闭后会从 ${label} 的扫描目录移除入口；已运行会话需新建任务或重启后刷新`
+    : `开启后在 ${agent === "claude" ? "用户目录/.claude/skills" : "用户目录/.codex/skills"} 创建生效入口`;
 }
 
 async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
@@ -81,16 +85,18 @@ async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 /**
- * 功能说明：以用户目录/.agents/skills 为本体工作区，并集中控制 Claude/Codex 连接。
+ * 功能说明：以私有仓库为 Skill 本体，并独立控制 Claude/Codex 是否可发现。
  */
 export function AllAgentsSkillsPage({
   skills,
+  claudeInstalled,
   loading,
   error,
   onRefresh,
   onSetEnabled,
 }: {
   skills: LocalSkillRecord[];
+  claudeInstalled: boolean;
   loading: boolean;
   error: string;
   onRefresh: () => void;
@@ -102,7 +108,7 @@ export function AllAgentsSkillsPage({
   const groups = filterWorkspaceSkillGroups(groupLocalSkills(skills));
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleGroups = groups.filter((group) => {
-    const record = group.workspaceRecord!;
+    const record = getLocalSkillSourceRecord(group)!;
     return !normalizedQuery
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
       || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
@@ -149,14 +155,16 @@ export function AllAgentsSkillsPage({
       Toast.success(
         state === "legacy"
           ? `${sourceRecord.displayName} 的旧连接已迁移到 ${agentLabel}`
-          : `${sourceRecord.displayName} 已${enabled ? "连接到" : "断开"} ${agentLabel}`,
+          : enabled
+            ? `${sourceRecord.displayName} 已在 ${agentLabel} 开启`
+            : `${sourceRecord.displayName} 已在 ${agentLabel} 关闭；已运行会话需新建任务或重启`,
       );
     } catch (reason) {
-      console.error("[KocotreeSkills] 更新工作区连接失败", reason);
+      console.error("[KocotreeSkills] 更新 Agent Skill 状态失败", reason);
       Toast.error(
         reason instanceof SkillApiError
           ? reason.message
-          : "更新连接失败",
+          : "更新 Agent Skill 状态失败",
       );
     } finally {
       setPendingControl("");
@@ -169,8 +177,8 @@ export function AllAgentsSkillsPage({
         <div>
           <h1>全部 Agents</h1>
           <p>
-            用户目录/.agents/skills 是 Skill 本体工作区；在这里控制 Claude
-            Code 与 Codex 的连接
+            Skill 本体保存在私有仓库；只有开启后 Claude Code 或 Codex
+            才能扫描到
           </p>
         </div>
       </header>
@@ -179,7 +187,8 @@ export function AllAgentsSkillsPage({
         <span>
           共 <strong>{groups.length}</strong> 个 Skill
           <span className="workspace-connection-summary">
-            Claude {connectedCounts.claude} · Codex {connectedCounts.codex}
+            Claude {claudeInstalled ? connectedCounts.claude : "未安装"} · Codex{" "}
+            {connectedCounts.codex}
           </span>
         </span>
         <div className="local-skills-toolbar-actions">
@@ -188,7 +197,7 @@ export function AllAgentsSkillsPage({
             <input
               type="search"
               value={query}
-              placeholder="搜索工作区 Skill"
+              placeholder="搜索私有 Skill"
               aria-label="搜索全部 Agents Skill"
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -205,11 +214,11 @@ export function AllAgentsSkillsPage({
       {loading ? (
         <section className="empty-state">
           <Spin />
-          <strong>正在扫描全部 Agents 工作区</strong>
+          <strong>正在扫描私有 Skill 仓库</strong>
         </section>
       ) : error ? (
         <section className="empty-state">
-          <strong>暂时无法读取全部 Agents 工作区</strong>
+          <strong>暂时无法读取私有 Skill 仓库</strong>
           <span>{error}</span>
           <Button size="small" onClick={onRefresh}>
             重试
@@ -219,7 +228,7 @@ export function AllAgentsSkillsPage({
         <>
           <section className="my-skills-list local-skills-list agents-workspace-list">
           {paginatedGroups.map((group) => {
-            const record = group.workspaceRecord!;
+            const record = getLocalSkillSourceRecord(group)!;
             return (
               <article className="my-skill-card local workspace-skill-card" key={group.id}>
                 <button
@@ -244,19 +253,32 @@ export function AllAgentsSkillsPage({
                 <div className="skill-agent-controls workspace-agent-controls">
                   {AGENTS.map((agent) => {
                     const state = getLocalSkillActivationState(group, agent.id);
+                    const installed =
+                      agent.id !== "claude" || claudeInstalled;
                     const controlKey = `${group.id}:${agent.id}`;
                     const pending = pendingControl === controlKey;
-                    const interactive = canControlLocalSkill(group)
+                    const interactive = installed
+                      && canControlLocalSkill(group)
                       && ["enabled", "disabled", "legacy"].includes(state);
                     return (
                       <div
-                        className={`skill-agent-control skill-agent-control-${agent.id}`}
-                        title={activationDescription(group, agent.id, state)}
+                        className={`skill-agent-control skill-agent-control-${agent.id}${installed ? "" : " agent-not-installed"}`}
+                        title={activationDescription(
+                          group,
+                          agent.id,
+                          state,
+                          installed,
+                        )}
                         key={agent.id}
                       >
                         <span className="skill-agent-name">
                           <AppIcon name={agent.icon} size={14} />
                           {agent.label}
+                          {!installed && (
+                            <span className="agent-installation-badge">
+                              未安装
+                            </span>
+                          )}
                         </span>
                         <button
                           className={`skill-agent-toggle state-${state}`}
@@ -271,7 +293,11 @@ export function AllAgentsSkillsPage({
                             <span className="skill-agent-toggle-knob" />
                           </span>
                           <span className="skill-agent-state">
-                            {pending ? "处理中" : ACTIVATION_LABELS[state]}
+                            {pending
+                              ? "处理中"
+                              : installed
+                                ? ACTIVATION_LABELS[state]
+                                : "未安装"}
                           </span>
                         </button>
                       </div>
@@ -282,13 +308,13 @@ export function AllAgentsSkillsPage({
                 <div className="my-skill-card-footer">
                   <div className="my-skill-statuses">
                     <span className="agent-source agent-source-agents">
-                      用户目录/.agents/skills
+                      私有仓库/.skills-manager/skills
                     </span>
                     <span
                       className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
                     >
                       {record.entryKind !== "DIRECTORY"
-                        ? "工作区连接"
+                        ? "受管入口"
                         : STATUS_LABELS[record.status]}
                     </span>
                     {record.version && (
@@ -309,13 +335,13 @@ export function AllAgentsSkillsPage({
             <div className="empty-state my-skills-empty">
               <strong>
                 {normalizedQuery
-                  ? "没有匹配的工作区 Skill"
-                  : "全部 Agents 工作区还是空的"}
+                  ? "没有匹配的私有 Skill"
+                  : "私有 Skill 仓库还是空的"}
               </strong>
               <span>
                 {normalizedQuery
                   ? "换一个名称继续搜索"
-                  : "将 Skill 放入用户目录/.agents/skills 后重新扫描"}
+                  : "从技能市场安装 Skill 后，可在这里分别开启 Claude Code 或 Codex"}
               </span>
             </div>
           )}
