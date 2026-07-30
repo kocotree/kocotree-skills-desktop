@@ -12,6 +12,8 @@
 本文档只讨论在线平台接口。ZIP 下载后的校验、解压和写入
 `~/.agents/skills/<skillName>` 属于 Tauri/Rust 本地安装能力，不迁移到后端。
 
+> 2026-07-29：根据 ADR-0006，归档、恢复、版本撤回和所有权转移已从目标产品契约移除。本文档中的历史后端状态字段仅用于兼容旧数据，不再代表待建设功能。
+
 ## 2. 对照范围与权威来源
 
 ### 2.1 Desktop 前端
@@ -42,8 +44,8 @@
 | --- | --- |
 | 可以直接复用底层实现 | 飞书 OAuth、设备授权、Bearer Token 校验、PostgreSQL、Prisma、OSS、ZIP 打包、签名下载、SHA-256、文件预览 |
 | 需要新增 HTTP 适配或调整返回结构 | 当前用户、Skill 列表、Tag、Skill 详情、创建 Skill、最新版文件树、最新版文件内容、最新版下载 |
-| 后端已有数据基础，但缺少完整接口 | 历史版本、按版本读取文件、发布新版本、归档和恢复、版本撤回、安装计数 |
-| 必须新增数据模型和业务实现 | 所有权转移、协作者规则、通知、幂等安装事件、安装来源恢复、用户角色与部门同步 |
+| 后端已有数据基础，但缺少完整接口 | 历史版本、按版本读取文件、发布新版本、安装计数 |
+| 必须新增数据模型和业务实现 | 协作者规则、通知、幂等安装事件、安装来源恢复、用户角色与部门同步 |
 
 建议不要让 desktop 长期兼容旧响应结构。最终应让后端遵守
 `kocotree-skills-desktop/docs/openapi.yaml`，desktop 只维护一个
@@ -85,14 +87,12 @@
 | `SkillApi` 方法 | 目标 HTTP 接口 | 用途 |
 | --- | --- | --- |
 | `getCurrentUser` | `GET /api/users/me` | 获取登录用户 |
-| `listMySkills` | `GET /api/users/me/skills` | 获取拥有、协作或已归档的 Skill |
+| `listMySkills` | `GET /api/users/me/skills` | 获取拥有或协作的 Skill |
 | `listTags` | `GET /api/tags` | 查询 Tag |
 | `listSkills` | `GET /api/skills` | 浏览和搜索公开 Skill |
 | `getSkill` | `GET /api/skills/{skillId}` | 获取详情、Owner、协作者和当前版本 |
 | `createSkill` | `POST /api/skills` | 上传 ZIP 并创建首个版本 |
 | `updateSkillMetadata` | `PATCH /api/skills/{skillId}` | 修改展示名称、简介和 Tag |
-| `archiveSkill` | `POST /api/skills/{skillId}/archive` | 归档 Skill |
-| `restoreSkill` | `POST /api/skills/{skillId}/restore` | 恢复 Skill |
 
 ### 5.3 版本和文件接口
 
@@ -101,7 +101,6 @@
 | `listSkillVersions` | `GET /api/skills/{skillId}/versions` | 分页查询全部版本 |
 | `getSkillVersion` | `GET /api/skills/{skillId}/versions/{versionId}` | 获取版本和原始 `SKILL.md` |
 | `publishSkillVersion` | `POST /api/skills/{skillId}/versions` | 上传 ZIP 并发布新版本 |
-| `withdrawSkillVersion` | `POST /api/skills/{skillId}/versions/{versionId}/withdraw` | 撤回非首版版本 |
 | `listVersionFiles` | `GET /api/skills/{skillId}/versions/{versionId}/files` | 获取指定版本文件树 |
 | `getVersionFileContent` | `GET /api/skills/{skillId}/versions/{versionId}/files/content?path=...` | 预览指定版本文本文件 |
 
@@ -111,19 +110,10 @@
 | --- | --- | --- |
 | `getDownloadTicket` | `POST /api/skills/{skillId}/versions/{versionId}/download-tickets` | 获取指定版本的短期下载地址和哈希 |
 | `recordInstallation` | `POST /api/installations/events` | 幂等上报安装成功事件 |
-| `getInstallationStatus` | `GET /api/skills/{skillId}/installation-status` | 查询归档、冲突或版本撤回状态 |
+| `getInstallationStatus` | `GET /api/skills/{skillId}/installation-status` | 查询名称冲突或历史状态兼容信息 |
 | `resolveInstallation` | `POST /api/installations/resolve` | 使用 `skillName + contentHash` 恢复平台关联 |
 
-### 5.5 所有权转移接口
-
-| `SkillApi` 方法 | 目标 HTTP 接口 |
-| --- | --- |
-| `createOwnershipTransfer` | `POST /api/skills/{skillId}/ownership-transfers` |
-| `acceptOwnershipTransfer` | `POST /api/ownership-transfers/{transferId}/accept` |
-| `rejectOwnershipTransfer` | `POST /api/ownership-transfers/{transferId}/reject` |
-| `cancelOwnershipTransfer` | `POST /api/ownership-transfers/{transferId}/cancel` |
-
-### 5.6 通知接口
+### 5.5 通知接口
 
 | `SkillApi` 方法 | 目标 HTTP 接口 |
 | --- | --- |
@@ -198,7 +188,7 @@
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
 | `GET /api/users/me` | `GET /api/me` | B | 修改路径、外层和 User DTO |
-| `GET /api/users/me/skills?relation=...` | 可用 `GET /api/skills?createdBy=...` 查询创建者 | C | `OWNED` 可部分复用；`COLLABORATED`、`ARCHIVED` 和权限过滤必须新增 |
+| `GET /api/users/me/skills?relation=...` | 可用 `GET /api/skills?createdBy=...` 查询创建者 | C | `OWNED` 可部分复用；`COLLABORATED` 和权限过滤必须新增 |
 
 现有 `User` 数据表有 `status`、姓名、邮箱和飞书标识，但没有 desktop DTO 中的
 `role`、`departmentPath` 和 `syncedAt`。这些字段需要增加，或明确调整 desktop 契约。
@@ -242,14 +232,14 @@
 | `displayName` | 无独立字段 | 需要新增字段或暂时使用 `name` |
 | `skillDescription` | `description` | 可暂时映射 |
 | `displayDescription` | 无独立字段 | 需要新增 |
-| `status: ACTIVE/ARCHIVED/NAME_CONFLICT` | `DRAFT/PUBLISHED/ARCHIVED` | 枚举语义需要迁移 |
+| `status: ACTIVE/ARCHIVED/NAME_CONFLICT` | `DRAFT/PUBLISHED/ARCHIVED` | `ARCHIVED` 只作历史兼容，其他枚举语义需要迁移 |
 | `owner` | `uploadedBy` | 可部分映射；Owner 语义需要明确 |
 | `tags: Tag[]` | `tags: string[]` | 需要返回 Tag ID 和名称 |
 | `currentVersion` | `latestVersion` | 可复用版本关系，但版本 DTO 字段不完整 |
 | `installCount` | `installCount` | 直接映射 |
 | `derivedFrom` | 无 | 新增 |
 | `updatedBy` | 无 | 新增或从最新版本创建者推导 |
-| 归档和冲突原因 | 无 | 新增 |
+| 历史归档和名称冲突原因 | 无 | 归档字段只作兼容；名称冲突原因需要新增 |
 
 ### 7.5 Skill 详情
 
@@ -273,7 +263,7 @@
 - 派生来源链。
 - 完整 `currentVersion` DTO。
 - `contentHash`。
-- 归档原因、名称冲突原因和更新者。
+- 名称冲突原因和更新者。
 
 因此可以复用查询和组装服务，但不能直接把旧响应交给 React 页面。
 
@@ -318,7 +308,6 @@ desktop 领域规则。服务端仍应重新解析 ZIP，并以服务端计算�
 | `GET /api/skills/{skillId}/versions` | 无 | C | `SkillVersion` 表已有，可新增查询接口 |
 | `GET /api/skills/{skillId}/versions/{versionId}` | 无 | C | 版本、文件和 `readmeMd` 已有基础 |
 | `POST /api/skills/{skillId}/versions` | 无 | C | OSS 和包处理可复用；需新增版本发布事务 |
-| `POST .../{versionId}/withdraw` | 无 | C | 状态字段已有，但旧枚举是 `REVOKED`，需要统一为 `WITHDRAWN` 语义 |
 
 发布新版本需要新增：
 
@@ -401,33 +390,22 @@ desktop 领域规则。服务端仍应重新解析 ZIP，并以服务端计算�
 不能让客户端直接调用“安装次数 +1”，否则重试会重复计数。建议新增安装事件表，并对
 `eventId` 建唯一索引，在同一事务中写事件和增加 `installCount`。
 
-### 7.12 归档、恢复和删除
+### 7.12 永久删除
 
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
-| 归档 | `DELETE /api/skills/{idOrSlug}` | D | 硬删除不能作为归档使用 |
-| 恢复 | 无 | D | 需要新增 |
-| 删除 | desktop 当前没有该能力 | 旧后端已有 | 不应暴露给普通 desktop 流程 |
+| Owner 永久删除 | `DELETE /api/skills/{idOrSlug}` | B | 保留硬删除语义，补齐 Owner 校验、关联记录事务删除和 OSS 清理结果 |
 
-desktop 的归档需要保留：
-
-- Skill 和所有版本。
-- OSS 对象。
-- 本地已安装版本的在线状态查询能力。
-- 归档人、归档时间和原因。
-
-因此旧硬删除接口不能直接复用，建议限制为管理工具或后续下线。
+系统不提供归档或恢复。历史 `ARCHIVED` 数据只需保持只读兼容，后续通过独立迁移清理。
 
 ### 7.13 所有权和协作者
 
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
-| Owner | `Skill.createdBy` 可作为初始 Owner | C | 建议明确为 Owner 字段或所有权记录 |
+| Owner | `Skill.createdBy` 可作为固定 Owner | B | 当前直接以 `createdBy` 校验固定 Owner |
 | 协作者 | 无 | D | 需要关系表或可靠的版本发布者推导规则 |
-| 所有权转移 | 无 | D | 需要邀请表、状态机、过期和通知 |
 
-现有 `createdBy` 可以迁移为初始 Owner，但长期不能同时承担“创建者”和“当前 Owner”两个概念，
-因为所有权转移后两者不同。
+当前不提供所有权转移，因此 `createdBy` 可以同时作为固定 Owner；如未来重新引入转移，需要单独 ADR 和数据迁移。
 
 ### 7.14 通知
 
@@ -437,8 +415,7 @@ desktop 的归档需要保留：
 | 单条已读 | 无 | D | 新增 |
 | 全部已读 | 无 | D | 新增 |
 
-通知主要服务于所有权转移、版本撤回、归档等弱提醒。可以放在第二阶段，不阻塞
-“登录—浏览—下载—安装”的第一条闭环。
+通知用于新版本发布和展示信息修改等弱提醒。可以放在第二阶段，不阻塞“登录—浏览—下载—安装”的第一条闭环。
 
 ## 8. 公共协议差异
 
@@ -496,7 +473,7 @@ Authorization: Bearer <token>
 旧后端已经支持 Bearer Token，可以复用。但还需要：
 
 - 对写接口检查 scope，而不只是检查是否登录。
-- 设计发布、归档、撤回、Owner 和管理员权限。
+- 设计发布、永久删除、Owner 和管理员权限。
 - desktop 退出时吊销当前 Bearer Token。
 - 401 后清理本地失效 Token，并重新进入登录流程。
 
@@ -531,10 +508,9 @@ VITE_API_BASE_URL=https://skills-api.example.com
 | 模型 | 建议 |
 | --- | --- |
 | `User` | 增加 `role`、部门路径、飞书同步时间 |
-| `Skill` | 增加 `displayName`、`displayDescription`、`ownerId`、归档和名称冲突信息、`updatedBy` |
-| `SkillVersion` | 增加 `baseVersionId`、`contentHash`、撤回人/时间/原因；统一状态枚举 |
+| `Skill` | 增加 `displayName`、`displayDescription`、名称冲突信息、`updatedBy`；历史归档字段仅兼容旧数据 |
+| `SkillVersion` | 增加 `baseVersionId`、`contentHash`；历史撤回字段仅兼容旧数据 |
 | `SkillCollaborator` | 新增 Skill 与用户的协作者关系 |
-| `OwnershipTransfer` | 新增所有权邀请和状态机 |
 | `InstallationEvent` | 新增幂等安装事件 |
 | `Notification` | 新增通知及已读时间 |
 | `DerivedSkill` 或 Skill 自关联 | 保存直接派生来源 |
@@ -577,17 +553,16 @@ VITE_API_BASE_URL=https://skills-api.example.com
 4. 发布新版本。
 5. 修改展示信息。**已完成**
 6. 我的 Skill。
-7. 归档、恢复和版本撤回。
+7. Owner 永久删除。
 
 ### 阶段三：协作治理
 
 优先级 P2：
 
 1. 协作者。
-2. 所有权转移。
-3. 通知。
-4. 安装来源恢复和在线状态。
-5. 管理员治理和名称冲突处理。
+2. 通知。
+3. 安装来源恢复和在线状态。
+4. 管理员治理和名称冲突处理。
 
 ## 11. 第一阶段可采用的临时兼容策略
 
@@ -608,9 +583,8 @@ VITE_API_BASE_URL=https://skills-api.example.com
 - `contentHash`。
 - Owner、协作者和管理员权限。
 - 安装事件幂等。
-- 归档和撤回语义。
 - 历史版本下载。
-- 所有权转移和通知。
+- 通知。
 
 ## 12. 不建议的做法
 
@@ -618,8 +592,7 @@ VITE_API_BASE_URL=https://skills-api.example.com
 - 不建议让 React 组件直接判断旧后端字段。
 - 不建议把所有在线请求都放进 Rust；普通业务 HTTP 由 `HttpSkillApi` 处理，
   Rust 只负责需要本地权限的下载和安装。
-- 不建议为迎合旧接口而删除 desktop 的版本、安装事件和归档设计。
-- 不建议用硬删除模拟归档。
+- 不建议为迎合旧接口而删除 desktop 的版本和安装事件设计。
 - 不建议把 Bearer Token 明文长期保存在普通日志或 `localStorage`。
 - 不建议由客户端提供并决定包哈希、内容哈希或安装次数。
 
@@ -650,7 +623,7 @@ React 只负责页面状态和流程协调。
 
 - 认证、数据库、OSS、Skill 包处理和最新版查询具备较高复用价值。
 - 列表、详情、上传、下载和预览需要契约升级。
-- 版本治理、安装事件、归档、协作者、所有权和通知需要继续建设。
+- 版本治理、安装事件、协作者和通知需要继续建设。
 
 最稳妥的方向是：
 
