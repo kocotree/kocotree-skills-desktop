@@ -858,11 +858,11 @@ function App() {
 
   function handlePublished(skill: SkillSummaryDto): void {
     setBrowseRefreshKey((current) => current + 1);
+    setPublishedRefreshKey((current) => current + 1);
     setUploadTargetSkill(null);
     setUploadSessionKey((current) => current + 1);
     setActivePage("browse");
-    setSelectedSkillContext("browse");
-    setSelectedSkill(skill);
+    setSelectedSkill(null);
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
   }
 
