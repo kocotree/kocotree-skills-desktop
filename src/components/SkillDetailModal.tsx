@@ -211,8 +211,8 @@ export function SkillDetailModal({
   return (
     <>
     <Modal
-      className="skill-detail-modal"
-      title={detail?.displayName ?? skill?.displayName ?? "Skill 详情"}
+      className={`skill-detail-modal skill-detail-modal-${activeTabKey}`}
+      title="Skill 详情"
       visible={skill !== null}
       width={900}
       centered
@@ -265,16 +265,18 @@ export function SkillDetailModal({
             <span className="skill-logo skill-logo-green">{detail.skillName.slice(0, 2).toUpperCase()}</span>
             <div>
               <strong>{detail.displayName}</strong>
-              <code>{detail.skillName}</code>
+              <div className="detail-identity-meta">
+                <code>{detail.skillName}</code>
+                <div className="detail-tags">
+                  {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
+                </div>
+              </div>
             </div>
             {detail.status !== "ACTIVE" && (
               <span className={`detail-status detail-status-${detail.status.toLocaleLowerCase()}`}>
                 {detail.status === "ARCHIVED" ? "已归档" : "名称冲突"}
               </span>
             )}
-          </div>
-          <div className="detail-tags">
-            {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
           </div>
           {detail.status !== "ACTIVE" && (
             <div className="detail-availability-notice" role="status">
@@ -310,54 +312,55 @@ export function SkillDetailModal({
           <Tabs type="line" activeKey={activeTabKey} onChange={setActiveTabKey}>
             <TabPane tab="介绍" itemKey="overview">
               <section className="detail-section">
-                <h3>Skill 原始说明</h3>
                 <p>{detail.skillDescription}</p>
-                <dl className="detail-info-grid">
-                  <div><dt>最新版本</dt><dd><strong>v{detail.currentVersion.version}</strong></dd></div>
-                  <div><dt>安装次数</dt><dd><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></dd></div>
-                  <div><dt>创建时间</dt><dd>{formatDate(detail.createdAt)}</dd></div>
-                  <div><dt>更新时间</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
-                  <div className="detail-info-maintainers">
-                    <dt>维护成员</dt>
-                    <dd>
-                      <div className="maintainer-list">
-                        <span
-                          className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
-                          title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                        >
-                          {detail.owner.name.slice(0, 1)}
-                        </span>
-                        <strong className="owner-name">{detail.owner.name}</strong>
-                        <span className="owner-role">Owner</span>
-                        {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
-                        <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
-                          {sortedCollaborators.slice(0, 5).map((user) => (
-                            <Tooltip
-                              content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                              key={user.id}
+                <section className="detail-info-panel" aria-label="Skill 信息">
+                  <dl className="detail-key-metrics">
+                    <div><dt>最新版本</dt><dd>v{detail.currentVersion.version}</dd></div>
+                    <div><dt>安装次数</dt><dd>{detail.installCount.toLocaleString("zh-CN")}</dd></div>
+                    <div><dt>ZIP 大小</dt><dd>{formatFileSize(detail.currentVersion.packageSize)}</dd></div>
+                  </dl>
+                  <div className="detail-maintainers-row">
+                    <span>维护成员</span>
+                    <div className="maintainer-list">
+                      <span
+                        className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
+                        title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                      >
+                        {detail.owner.name.slice(0, 1)}
+                      </span>
+                      <strong className="owner-name">{detail.owner.name}</strong>
+                      <span className="owner-role">Owner</span>
+                      {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
+                      <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
+                        {sortedCollaborators.slice(0, 5).map((user) => (
+                          <Tooltip
+                            content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                            key={user.id}
+                          >
+                            <span
+                              className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
+                              role="img"
+                              aria-label={`协作者：${user.name}`}
                             >
-                              <span
-                                className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
-                                role="img"
-                                aria-label={`协作者：${user.name}`}
-                              >
-                                {user.name.slice(0, 1)}
-                              </span>
-                            </Tooltip>
-                          ))}
-                          {sortedCollaborators.length > 5 && (
-                            <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
-                              <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
-                            </Tooltip>
-                          )}
-                          {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
-                        </div>
+                              {user.name.slice(0, 1)}
+                            </span>
+                          </Tooltip>
+                        ))}
+                        {sortedCollaborators.length > 5 && (
+                          <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
+                            <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
+                          </Tooltip>
+                        )}
+                        {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
                       </div>
-                    </dd>
+                    </div>
                   </div>
-                  <div><dt>最近更新者</dt><dd>{detail.updatedBy.name}</dd></div>
-                  <div><dt>ZIP 大小</dt><dd>{formatFileSize(detail.currentVersion.packageSize)}</dd></div>
-                </dl>
+                  <dl className="detail-time-metadata">
+                    <div><dt>创建时间</dt><dd>{formatDate(detail.createdAt)}</dd></div>
+                    <div><dt>更新时间</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
+                    <div><dt>最近更新者</dt><dd>{detail.updatedBy.name}</dd></div>
+                  </dl>
+                </section>
               </section>
             </TabPane>
             <TabPane tab={`版本历史 ${versions.length}`} itemKey="versions">

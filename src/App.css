@@ -1608,21 +1608,31 @@ textarea:focus-visible,
 .skill-detail-modal .ui-modal {
   width: min(900px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
+  height: auto;
+  max-height: calc(100vh - 48px);
+}
+
+.skill-detail-modal-files .ui-modal {
   height: min(864px, calc(100vh - 48px));
 }
 
 .skill-detail-modal .ui-modal-body {
   height: auto;
   min-height: 0;
+  flex: 0 1 auto;
+  overflow: auto;
+  padding: 16px 22px 12px;
+}
+
+.skill-detail-modal-files .ui-modal-body {
   flex: 1;
   overflow: hidden;
-  padding: 16px 22px 12px;
 }
 
 .detail-loading,
 .detail-error {
   display: grid;
-  min-height: 100%;
+  min-height: 240px;
   place-items: center;
   align-content: center;
   gap: 8px;
@@ -1641,7 +1651,7 @@ textarea:focus-visible,
 
 .detail-body {
   display: flex;
-  height: 100%;
+  height: auto;
   min-height: 0;
   flex-direction: column;
   gap: 14px;
@@ -1650,8 +1660,16 @@ textarea:focus-visible,
 .detail-body > .ui-tabs {
   display: flex;
   min-height: 0;
-  flex: 1;
+  flex: 0 1 auto;
   flex-direction: column;
+}
+
+.skill-detail-modal-files .detail-body {
+  height: 100%;
+}
+
+.skill-detail-modal-files .detail-body > .ui-tabs {
+  flex: 1;
 }
 
 .detail-body > .ui-tabs > .ui-tabs-list {
@@ -1665,9 +1683,14 @@ textarea:focus-visible,
 
 .detail-body > .ui-tabs > .ui-tabs-content {
   min-height: 0;
+  flex: 0 1 auto;
+  overflow: visible;
+  padding: 14px 10px 0;
+}
+
+.skill-detail-modal-files .detail-body > .ui-tabs > .ui-tabs-content {
   flex: 1;
   overflow: hidden;
-  padding: 14px 10px 0;
 }
 
 .detail-identity {
@@ -1691,6 +1714,12 @@ textarea:focus-visible,
   font-size: 12px;
 }
 
+.detail-identity-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .detail-status {
   margin-left: auto;
   padding: 4px 9px;
@@ -1709,7 +1738,7 @@ textarea:focus-visible,
 .detail-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .detail-availability-notice {
@@ -1861,59 +1890,75 @@ textarea:focus-visible,
 }
 
 .detail-section {
-  padding-top: 12px;
-}
-
-.detail-section h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
+  padding-top: 8px;
 }
 
 .detail-section > p {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   color: #5f636d;
   line-height: 1.7;
 }
 
-.detail-info-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
+.detail-info-panel {
   overflow: hidden;
-  margin: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--border);
+  border: 1px solid #e4e8e5;
+  border-radius: 10px;
+  background: #f8faf8;
 }
 
-.detail-info-grid > div {
+.detail-key-metrics,
+.detail-time-metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.detail-key-metrics > div,
+.detail-time-metadata > div {
   display: grid;
   min-width: 0;
   gap: 4px;
-  padding: 12px;
-  background: #fff;
+  padding: 13px 16px;
 }
 
-.detail-info-grid dt {
+.detail-key-metrics > div + div,
+.detail-time-metadata > div + div {
+  border-left: 1px solid #e4e8e5;
+}
+
+.detail-key-metrics dt,
+.detail-time-metadata dt,
+.detail-maintainers-row > span {
   color: #8a8e97;
   font-size: 12px;
 }
 
-.detail-info-grid dd {
+.detail-key-metrics dd,
+.detail-time-metadata dd {
   margin: 0;
   font-size: 13px;
 }
 
-.detail-info-grid dd > strong {
-  font-size: 14px;
+.detail-key-metrics dd {
+  color: #262b28;
+  font-size: 16px;
+  font-weight: 700;
 }
 
-.detail-info-maintainers {
-  grid-column: span 2;
-}
-
-.detail-info-maintainers dd {
+.detail-maintainers-row {
+  display: grid;
   min-width: 0;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #e4e8e5;
+  border-bottom: 1px solid #e4e8e5;
+  background: #fff;
+}
+
+.detail-time-metadata {
+  background: #fbfcfb;
 }
 
 .version-list {
@@ -3231,8 +3276,10 @@ button.my-skill-card:hover {
     padding-left: 8px;
   }
 
-  .detail-info-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .detail-identity-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
   .file-browser {
