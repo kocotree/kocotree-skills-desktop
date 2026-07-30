@@ -76,6 +76,13 @@ function compareSemVer(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
+function comparePopularSkills(left: SkillDetailDto, right: SkillDetailDto): number {
+  return right.installCount - left.installCount
+    || Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+    || Date.parse(right.createdAt) - Date.parse(left.createdAt)
+    || right.id.localeCompare(left.id);
+}
+
 /**
  * 功能说明：提供与正式 HTTP 接口相同业务边界的内存模拟服务。
  * @param options - 模拟延迟和初始登录用户配置。
@@ -160,7 +167,7 @@ export class MockSkillApi implements SkillApi {
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
     let items = this.skills.filter((skill) => skill.status === "ACTIVE" && (!query.tagId || skill.tags.some((tag) => tag.id === query.tagId)) && [skill.skillName, skill.displayName, skill.skillDescription, skill.displayDescription, ...skill.tags.map((tag) => tag.name)].join(" ").toLocaleLowerCase().includes(keyword));
     items = [...items].sort((left, right) => {
-      if (query.sort === "INSTALLS_DESC") return right.installCount - left.installCount;
+      if (query.sort === "INSTALLS_DESC") return comparePopularSkills(left, right);
       if (query.sort === "CREATED_DESC") return Date.parse(right.createdAt) - Date.parse(left.createdAt);
       return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
     });

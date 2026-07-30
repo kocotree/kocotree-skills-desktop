@@ -47,6 +47,25 @@ describe("MockSkillApi", () => {
     expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
   });
 
+  it("热门排序依次按安装量、更新时间、创建时间和 ID 降序", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const result = await api.listSkills({ sort: "INSTALLS_DESC", pageSize: 100 });
+
+    for (let index = 1; index < result.items.length; index += 1) {
+      const previous = result.items[index - 1];
+      const current = result.items[index];
+      const comparison = previous.installCount !== current.installCount
+        ? previous.installCount - current.installCount
+        : previous.updatedAt !== current.updatedAt
+          ? Date.parse(previous.updatedAt) - Date.parse(current.updatedAt)
+          : previous.createdAt !== current.createdAt
+            ? Date.parse(previous.createdAt) - Date.parse(current.createdAt)
+            : previous.id.localeCompare(current.id);
+
+      expect(comparison).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it("为全部预置 Mock Skill 标记统一 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const mockTag = (await api.listTags()).find((item) => item.name === "Mock");

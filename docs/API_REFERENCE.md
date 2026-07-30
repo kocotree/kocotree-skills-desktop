@@ -206,6 +206,8 @@ GET /api/skills?query=review&tagId=tag_dev&sort=UPDATED_DESC&page=1&pageSize=20
 
 排序枚举：`UPDATED_DESC`、`CREATED_DESC`、`INSTALLS_DESC`。
 
+`INSTALLS_DESC` 按安装次数、更新时间、创建时间和 Skill ID 依次降序排列，确保安装次数相同时仍能稳定分页。
+
 公开列表不返回历史 `ARCHIVED` 数据或 `NAME_CONFLICT`。
 
 ### 7.2 Skill 详情

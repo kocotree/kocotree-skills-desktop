@@ -74,9 +74,14 @@ export const catalogRepository = {
           }
         : {}),
     };
-    const orderBy: Prisma.SkillOrderByWithRelationInput =
+    const orderBy: Prisma.SkillOrderByWithRelationInput | Prisma.SkillOrderByWithRelationInput[] =
       input.sort === "INSTALLS_DESC"
-        ? { installCount: "desc" }
+        ? [
+            { installCount: "desc" },
+            { updatedAt: "desc" },
+            { createdAt: "desc" },
+            { id: "desc" },
+          ]
         : input.sort === "CREATED_DESC"
           ? { createdAt: "desc" }
           : { updatedAt: "desc" };
