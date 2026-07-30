@@ -265,7 +265,7 @@ function BrowsePage({
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [tagId, setTagId] = useState("all");
-  const [sort, setSort] = useState<SortKey>("updated");
+  const [sort, setSort] = useState<SortKey>("popular");
   const [page, setPage] = useState(1);
   const [totalSkills, setTotalSkills] = useState(0);
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
@@ -391,6 +391,17 @@ function BrowsePage({
         <div className="filter-first-row">
           <div className="sort-tabs" role="group" aria-label="排序方式">
             <button
+              className={sort === "popular" ? "active" : ""}
+              type="button"
+              aria-pressed={sort === "popular"}
+              onClick={() => {
+                setSort("popular");
+                setPage(1);
+              }}
+            >
+              <AppIcon name="hot" size={16} />热门
+            </button>
+            <button
               className={sort === "updated" ? "active" : ""}
               type="button"
               aria-pressed={sort === "updated"}
@@ -411,17 +422,6 @@ function BrowsePage({
               }}
             >
               <AppIcon name="trend" size={16} />最近创建
-            </button>
-            <button
-              className={sort === "popular" ? "active" : ""}
-              type="button"
-              aria-pressed={sort === "popular"}
-              onClick={() => {
-                setSort("popular");
-                setPage(1);
-              }}
-            >
-              <AppIcon name="hot" size={16} />热门
             </button>
           </div>
 
