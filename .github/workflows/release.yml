@@ -1,0 +1,263 @@
+name: Deploy Backend and Release Desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  API_BASE_URL: https://skills-api.kktree.cn
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Verify tag and application versions
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const tagVersion = process.env.GITHUB_REF_NAME.replace(/^v/, "");
+          const packageVersion = JSON.parse(
+            fs.readFileSync("package.json", "utf8"),
+          ).version;
+          const tauriVersion = JSON.parse(
+            fs.readFileSync("src-tauri/tauri.conf.json", "utf8"),
+          ).version;
+          const cargoManifest = fs.readFileSync(
+            "src-tauri/Cargo.toml",
+            "utf8",
+          );
+          const cargoVersion = cargoManifest.match(
+            /^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/m,
+          )?.[1];
+          const versions = { tagVersion, packageVersion, tauriVersion, cargoVersion };
+          console.log(versions);
+          if (
+            !cargoVersion ||
+            [packageVersion, tauriVersion, cargoVersion].some(
+              (version) => version !== tagVersion,
+            )
+          ) {
+            throw new Error(
+              "Tag、package.json、tauri.conf.json 和 Cargo.toml 的版本必须一致",
+            );
+          }
+          NODE
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
+        run: pnpm build
+
+      - name: Install backend dependencies
+        run: pnpm --dir backend install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --dir backend prisma:generate
+
+      - name: Type-check backend
+        run: pnpm --dir backend build
+
+  build_backend:
+    name: Build backend image
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      image_name: ${{ steps.image.outputs.name }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set backend image name
+        id: image
+        shell: bash
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-backend" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.name }}:latest
+            ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+  deploy_backend:
+    name: Deploy backend
+    needs: build_backend
+    runs-on: ubuntu-latest
+    env:
+      BACKEND_IMAGE: ${{ needs.build_backend.outputs.image_name }}
+      BACKEND_IMAGE_TAG: ${{ github.ref_name }}
+      SERVICE_NAME: backend
+      HEALTHCHECK_URL: https://skills-api.kktree.cn/health
+
+    steps:
+      - name: Deploy tagged image on server
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+          REGISTRY: ${{ env.REGISTRY }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          BACKEND_IMAGE: ${{ env.BACKEND_IMAGE }}
+          BACKEND_IMAGE_TAG: ${{ env.BACKEND_IMAGE_TAG }}
+          SERVICE_NAME: ${{ env.SERVICE_NAME }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DEPLOY_DIR,REGISTRY,REGISTRY_USERNAME,REGISTRY_TOKEN,BACKEND_IMAGE,BACKEND_IMAGE_TAG,SERVICE_NAME
+          script: |
+            set -e
+
+            if [ -z "$DEPLOY_DIR" ]; then
+              echo "缺少 DEPLOY_DIR Secret"
+              exit 1
+            fi
+
+            cd "$DEPLOY_DIR"
+
+            if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_TOKEN" ]; then
+              echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+            fi
+
+            docker compose pull "$SERVICE_NAME"
+            docker compose up -d --no-deps "$SERVICE_NAME"
+            docker image prune -f
+
+      - name: Verify public backend health
+        run: |
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --retry 12 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            "$HEALTHCHECK_URL"
+
+  release_desktop:
+    name: Release desktop (${{ matrix.name }})
+    needs: deploy_backend
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            platform: windows-2022
+            rust_target: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis,msi
+          - name: macOS Apple Silicon
+            platform: macos-14
+            rust_target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
+          - name: macOS Intel
+            platform: macos-14
+            rust_target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles dmg
+
+    env:
+      VITE_API_BASE_URL: https://skills-api.kktree.cn
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.rust_target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test frontend
+        run: pnpm test
+
+      - name: Test desktop core
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and upload desktop bundles
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Kocotree Skills ${{ github.ref_name }}
+          releaseBody: |
+            Kocotree Skills ${{ github.ref_name }} internal release.
+
+            The Windows installers are currently unsigned. macOS builds use ad-hoc signing.
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }}

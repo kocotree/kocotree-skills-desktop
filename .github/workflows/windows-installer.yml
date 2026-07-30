@@ -1,19 +1,13 @@
-name: Windows Installer
+name: Windows Installer (Manual Snapshot)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - nangua
-    paths:
-      - ".github/workflows/windows-installer.yml"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "src/**"
-      - "src-tauri/**"
 
 permissions:
   contents: read
+
+env:
+  VITE_API_BASE_URL: https://skills-api.kktree.cn
 
 jobs:
   build:

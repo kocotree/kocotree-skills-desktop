@@ -1,0 +1,41 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/kocotree/kocotree-skills-desktop-backend}:${BACKEND_IMAGE_TAG:-latest}
+    container_name: kocotree-skills-backend
+    restart: always
+    init: true
+    env_file:
+      - .env
+    expose:
+      - "4000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: "traefik-network"
+      traefik.http.routers.kocotree-skills-api.rule: "Host(`skills-api.kktree.cn`)"
+      traefik.http.routers.kocotree-skills-api.entrypoints: "websecure"
+      traefik.http.routers.kocotree-skills-api.tls: "true"
+      traefik.http.routers.kocotree-skills-api.tls.certresolver: "myresolver"
+      traefik.http.services.kocotree-skills-api.loadbalancer.server.port: "4000"
+    networks:
+      - traefik-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  traefik-network:
+    external: true

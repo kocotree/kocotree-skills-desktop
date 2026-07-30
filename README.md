@@ -54,6 +54,9 @@ pnpm api:generate
 
 接口定义以 [`docs/openapi.yaml`](./docs/openapi.yaml) 为准，本地与在线领域边界见 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)，当前排期见 [`docs/DEVELOPMENT_PLAN.md`](./docs/DEVELOPMENT_PLAN.md)。
 
+生产环境的 Traefik、Docker Compose、GitHub Actions 和 Tag 发布配置见
+[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)。
+
 ## 推荐编辑器配置
 
 - [VS Code](https://code.visualstudio.com/)

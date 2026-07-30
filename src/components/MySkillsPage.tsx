@@ -235,7 +235,7 @@ export function MySkillsPage({
             <Button
               size="small"
               onClick={() =>
-                setRefreshKey((current) => current + 1)
+                setManualRefreshKey((current) => current + 1)
               }
             >
               重试
