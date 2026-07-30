@@ -1706,12 +1706,6 @@ textarea:focus-visible,
   color: #777c85;
 }
 
-.detail-description {
-  margin: 0;
-  color: #5f636d;
-  line-height: 1.7;
-}
-
 .detail-tags {
   display: flex;
   flex-wrap: wrap;
@@ -1735,38 +1729,6 @@ textarea:focus-visible,
 .detail-availability-notice span {
   font-size: 11px;
   line-height: 1.55;
-}
-
-.detail-stats {
-  display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(0, 0.85fr) minmax(0, 1.3fr);
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: #fafbfb;
-}
-
-.detail-stats > div {
-  display: grid;
-  gap: 5px;
-  padding: 13px 15px;
-}
-
-.detail-stats > div + div {
-  border-left: 1px solid var(--border);
-}
-
-.detail-stats > div > span,
-.detail-metadata dt {
-  color: #8a8e97;
-  font-size: 12px;
-}
-
-.detail-stats > div > strong {
-  font-size: 14px;
-}
-
-.detail-maintainers {
-  min-width: 0;
 }
 
 .maintainer-list,
@@ -1913,9 +1875,9 @@ textarea:focus-visible,
   line-height: 1.7;
 }
 
-.detail-metadata {
+.detail-info-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   margin: 0;
@@ -1924,16 +1886,34 @@ textarea:focus-visible,
   background: var(--border);
 }
 
-.detail-metadata div {
+.detail-info-grid > div {
   display: grid;
+  min-width: 0;
   gap: 4px;
   padding: 12px;
   background: #fff;
 }
 
-.detail-metadata dd {
+.detail-info-grid dt {
+  color: #8a8e97;
+  font-size: 12px;
+}
+
+.detail-info-grid dd {
   margin: 0;
   font-size: 13px;
+}
+
+.detail-info-grid dd > strong {
+  font-size: 14px;
+}
+
+.detail-info-maintainers {
+  grid-column: span 2;
+}
+
+.detail-info-maintainers dd {
+  min-width: 0;
 }
 
 .version-list {
@@ -3188,8 +3168,7 @@ button.my-skill-card:hover {
   }
 
   .form-grid,
-  .inspection-result dl,
-  .detail-metadata {
+  .inspection-result dl {
     grid-template-columns: 1fr;
   }
 
@@ -3252,13 +3231,8 @@ button.my-skill-card:hover {
     padding-left: 8px;
   }
 
-  .detail-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .detail-stats > div + div {
-    border-top: 1px solid var(--border);
-    border-left: 0;
+  .detail-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .file-browser {

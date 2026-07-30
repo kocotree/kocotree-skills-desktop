@@ -273,7 +273,6 @@ export function SkillDetailModal({
               </span>
             )}
           </div>
-          <p className="detail-description">{detail.displayDescription}</p>
           <div className="detail-tags">
             {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
           </div>
@@ -287,47 +286,6 @@ export function SkillDetailModal({
               </span>
             </div>
           )}
-          <div className="detail-stats">
-            <div><span>最新版本</span><strong>v{detail.currentVersion.version}</strong></div>
-            <div><span>安装次数</span><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></div>
-            <div className="detail-maintainers">
-              <span>维护成员</span>
-              <div className="maintainer-list">
-                <span
-                  className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
-                  title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                >
-                  {detail.owner.name.slice(0, 1)}
-                </span>
-                <strong className="owner-name">{detail.owner.name}</strong>
-                <span className="owner-role">Owner</span>
-                {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
-                <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
-                  {sortedCollaborators.slice(0, 5).map((user) => (
-                    <Tooltip
-                      content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                      key={user.id}
-                    >
-                      <span
-                        className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
-                        role="img"
-                        aria-label={`协作者：${user.name}`}
-                      >
-                        {user.name.slice(0, 1)}
-                      </span>
-                    </Tooltip>
-                  ))}
-                  {sortedCollaborators.length > 5 && (
-                    <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
-                      <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
-                    </Tooltip>
-                  )}
-                  {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {detail.derivedFrom && (
             detail.derivedFrom.linkable ? (
               <button
@@ -354,9 +312,49 @@ export function SkillDetailModal({
               <section className="detail-section">
                 <h3>Skill 原始说明</h3>
                 <p>{detail.skillDescription}</p>
-                <dl className="detail-metadata">
+                <dl className="detail-info-grid">
+                  <div><dt>最新版本</dt><dd><strong>v{detail.currentVersion.version}</strong></dd></div>
+                  <div><dt>安装次数</dt><dd><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></dd></div>
                   <div><dt>创建时间</dt><dd>{formatDate(detail.createdAt)}</dd></div>
-                  <div><dt>最近更新</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
+                  <div><dt>更新时间</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
+                  <div className="detail-info-maintainers">
+                    <dt>维护成员</dt>
+                    <dd>
+                      <div className="maintainer-list">
+                        <span
+                          className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
+                          title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                        >
+                          {detail.owner.name.slice(0, 1)}
+                        </span>
+                        <strong className="owner-name">{detail.owner.name}</strong>
+                        <span className="owner-role">Owner</span>
+                        {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
+                        <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
+                          {sortedCollaborators.slice(0, 5).map((user) => (
+                            <Tooltip
+                              content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                              key={user.id}
+                            >
+                              <span
+                                className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
+                                role="img"
+                                aria-label={`协作者：${user.name}`}
+                              >
+                                {user.name.slice(0, 1)}
+                              </span>
+                            </Tooltip>
+                          ))}
+                          {sortedCollaborators.length > 5 && (
+                            <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
+                              <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
+                            </Tooltip>
+                          )}
+                          {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
                   <div><dt>最近更新者</dt><dd>{detail.updatedBy.name}</dd></div>
                   <div><dt>ZIP 大小</dt><dd>{formatFileSize(detail.currentVersion.packageSize)}</dd></div>
                 </dl>
