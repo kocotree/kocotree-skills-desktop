@@ -223,6 +223,7 @@ export function SkillDetailModal({
             <>
               {detail.status === "ACTIVE" && (
                 <Button
+                  className="detail-install-button"
                   theme="solid"
                   type="primary"
                   disabled={detail.currentVersion.status !== "PUBLISHED"}

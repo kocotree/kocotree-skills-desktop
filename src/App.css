@@ -1567,10 +1567,15 @@ textarea:focus-visible,
 
 .detail-footer {
   display: flex;
+  width: 100%;
   min-height: 32px;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
+}
+
+.detail-install-button {
+  min-width: 0;
+  flex: 1;
 }
 
 .detail-footer-placeholder {
