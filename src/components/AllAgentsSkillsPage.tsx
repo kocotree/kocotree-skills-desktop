@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   canControlLocalSkill,
@@ -16,11 +16,6 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import {
-  getLocalSkillPageCount,
-  LocalSkillPagination,
-  paginateLocalSkills,
-} from "./LocalSkillPagination";
 import { Button, Spin, Toast } from "./ui";
 
 const AGENTS: Array<{
@@ -84,6 +79,13 @@ async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
   }
 }
 
+function installationTimestamp(group: LocalSkillGroup): number {
+  const installedAt = getLocalSkillSourceRecord(group)?.installedAt;
+  if (!installedAt) return Number.NEGATIVE_INFINITY;
+  const timestamp = Date.parse(installedAt);
+  return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
+}
+
 /**
  * 功能说明：以私有仓库为 Skill 本体，并独立控制 Claude/Codex 是否可发现。
  */
@@ -103,9 +105,15 @@ export function AllAgentsSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
 }) {
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
   const [pendingControl, setPendingControl] = useState("");
-  const groups = filterWorkspaceSkillGroups(groupLocalSkills(skills));
+  const groups = filterWorkspaceSkillGroups(groupLocalSkills(skills)).sort(
+    (left, right) =>
+      installationTimestamp(right) - installationTimestamp(left)
+      || left.primaryRecord.displayName.localeCompare(
+        right.primaryRecord.displayName,
+        "zh-CN",
+      ),
+  );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleGroups = groups.filter((group) => {
     const record = getLocalSkillSourceRecord(group)!;
@@ -113,8 +121,6 @@ export function AllAgentsSkillsPage({
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
       || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
   });
-  const pageCount = getLocalSkillPageCount(visibleGroups.length);
-  const paginatedGroups = paginateLocalSkills(visibleGroups, page);
   const connectedCounts = {
     claude: groups.filter(
       (group) => getLocalSkillActivationState(group, "claude") === "enabled",
@@ -123,10 +129,6 @@ export function AllAgentsSkillsPage({
       (group) => getLocalSkillActivationState(group, "codex") === "enabled",
     ).length,
   };
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
 
   async function toggleSkill(
     group: LocalSkillGroup,
@@ -199,10 +201,7 @@ export function AllAgentsSkillsPage({
               value={query}
               placeholder="搜索私有 Skill"
               aria-label="搜索全部 Agents Skill"
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </label>
           <Button size="small" loading={loading} onClick={onRefresh}>
@@ -227,7 +226,7 @@ export function AllAgentsSkillsPage({
       ) : (
         <>
           <section className="my-skills-list local-skills-list agents-workspace-list">
-          {paginatedGroups.map((group) => {
+          {visibleGroups.map((group) => {
             const record = getLocalSkillSourceRecord(group)!;
             return (
               <article className="my-skill-card local workspace-skill-card" key={group.id}>
@@ -346,11 +345,6 @@ export function AllAgentsSkillsPage({
             </div>
           )}
           </section>
-          <LocalSkillPagination
-            page={page}
-            total={visibleGroups.length}
-            onChange={setPage}
-          />
         </>
       )}
     </main>

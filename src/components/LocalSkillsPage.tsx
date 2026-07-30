@@ -16,11 +16,6 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import {
-  getLocalSkillPageCount,
-  LocalSkillPagination,
-  paginateLocalSkills,
-} from "./LocalSkillPagination";
 import { Button, Modal, Spin, Toast } from "./ui";
 
 const SOURCE_DETAILS: Record<
@@ -139,15 +134,12 @@ export function LocalSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
 }) {
   const [pendingControl, setPendingControl] = useState("");
-  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [addVisible, setAddVisible] = useState(false);
   const [addQuery, setAddQuery] = useState("");
   const groups = groupLocalSkills(skills);
   const activeGroups = filterLocalSkillGroups(groups, filter);
   const visibleGroups = filterLocalSkillGroups(groups, filter, query);
-  const pageCount = getLocalSkillPageCount(visibleGroups.length);
-  const paginatedGroups = paginateLocalSkills(visibleGroups, page);
   const details = SOURCE_DETAILS[filter];
   const enabledCount = activeGroups.length;
   const occupiedSkillNames = new Set(
@@ -174,13 +166,8 @@ export function LocalSkillsPage({
   });
 
   useEffect(() => {
-    setPage(1);
     setQuery("");
   }, [filter]);
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, pageCount));
-  }, [pageCount]);
 
   async function toggleSkill(group: LocalSkillGroup): Promise<void> {
     const sourceRecord = getLocalSkillSourceRecord(group);
@@ -221,42 +208,6 @@ export function LocalSkillsPage({
     }
   }
 
-  async function removeSkill(group: LocalSkillGroup): Promise<void> {
-    const state = getLocalSkillActivationState(group, filter);
-    const sourceRecord = state === "legacy"
-      ? group.workspaceRecord
-      : getLocalSkillSourceRecord(group);
-    if (
-      !sourceRecord
-      || !canControlLocalSkill(group)
-      || !["enabled", "legacy"].includes(state)
-    ) {
-      return;
-    }
-    const controlKey = `${group.id}:${filter}`;
-    setPendingControl(controlKey);
-    try {
-      await onSetEnabled({
-        skillName: sourceRecord.skillName,
-        sourcePath: sourceRecord.installPath,
-        agent: filter,
-        enabled: false,
-      });
-      Toast.success(
-        `已从 ${AGENT_DETAILS[filter].label} 移除 ${sourceRecord.displayName}，Skill 本体仍保留`,
-      );
-    } catch (reason) {
-      console.error("[KocotreeSkills] 移除 Agent Skill 入口失败", reason);
-      Toast.error(
-        reason instanceof SkillApiError
-          ? reason.message
-          : "移除 Agent Skill 入口失败",
-      );
-    } finally {
-      setPendingControl("");
-    }
-  }
-
   function closeAddModal(): void {
     if (pendingControl) return;
     setAddVisible(false);
@@ -288,10 +239,7 @@ export function LocalSkillsPage({
               value={query}
               placeholder={`搜索 ${AGENT_DETAILS[filter].label} Skill`}
               aria-label={`搜索 ${AGENT_DETAILS[filter].label} Skill`}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
+              onChange={(event) => setQuery(event.target.value)}
             />
           </label>
           <Button
@@ -325,7 +273,7 @@ export function LocalSkillsPage({
       ) : (
         <>
           <section className="my-skills-list local-skills-list">
-          {paginatedGroups.map((group) => {
+          {visibleGroups.map((group) => {
             const record = group.primaryRecord;
             const state = getLocalSkillActivationState(group, filter);
             const controlKey = `${group.id}:${filter}`;
@@ -409,19 +357,6 @@ export function LocalSkillsPage({
                     )}
                   </div>
                   <div className="my-skill-card-footer-actions">
-                    {["enabled", "legacy"].includes(state) && (
-                      <Button
-                        size="small"
-                        theme="light"
-                        type="danger"
-                        loading={pending}
-                        disabled={Boolean(pendingControl)}
-                        aria-label={`从 ${AGENT_DETAILS[filter].label} 移除 ${record.displayName}`}
-                        onClick={() => void removeSkill(group)}
-                      >
-                        移除
-                      </Button>
-                    )}
                     <Button
                       size="small"
                       onClick={() => void revealLocalSkill(record)}
@@ -456,11 +391,6 @@ export function LocalSkillsPage({
             </div>
           )}
           </section>
-          <LocalSkillPagination
-            page={page}
-            total={visibleGroups.length}
-            onChange={setPage}
-          />
         </>
       )}
 
