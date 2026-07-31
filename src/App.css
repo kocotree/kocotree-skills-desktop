@@ -1284,7 +1284,7 @@ textarea:focus-visible,
 
 .inspection-result {
   margin-top: 16px;
-  padding: 15px;
+  padding: 14px 16px;
   border: 1px solid var(--accent-border);
   border-radius: 10px;
   background: var(--accent-surface);
@@ -1293,39 +1293,55 @@ textarea:focus-visible,
 .inspection-heading {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
 }
 
-.inspection-result dl {
+.inspection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspection-status-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #dff5e7;
+  color: var(--accent);
+}
+
+.inspection-details {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 18px;
-  margin: 0;
+  gap: 10px;
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #dceee1;
 }
 
-.inspection-result dl > div {
+.inspection-detail {
   display: grid;
-  min-width: 0;
-  gap: 3px;
+  gap: 4px;
 }
 
-.inspection-result dt {
+.inspection-detail > span {
   color: #7d828a;
   font-size: 11px;
 }
 
-.inspection-result dd {
-  min-width: 0;
+.inspection-detail code,
+.inspection-detail p {
   margin: 0;
-  overflow: hidden;
   color: #34383f;
-  font-size: 12px;
-  line-height: 1.5;
-  text-overflow: ellipsis;
+  font-size: 12.5px;
+  line-height: 1.65;
 }
 
-.inspection-result code,
+.inspection-detail code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
 .mismatch-notice code {
   font-family: "SFMono-Regular", Consolas, monospace;
 }
@@ -3191,8 +3207,7 @@ button.my-skill-card:hover {
     grid-template-columns: 1fr;
   }
 
-  .form-grid,
-  .inspection-result dl {
+  .form-grid {
     grid-template-columns: 1fr;
   }
 

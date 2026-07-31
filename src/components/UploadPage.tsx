@@ -322,11 +322,22 @@ export function UploadPage({
 
         {inspection && (
           <section className="inspection-result" aria-label="Skill 包解析结果">
-            <div className="inspection-heading"><strong>本地解析成功</strong></div>
-            <dl>
-              <div><dt>Skill 名称</dt><dd><code>{inspection.skillName}</code></dd></div>
-              <div><dt>Skill 描述</dt><dd>{inspection.skillDescription}</dd></div>
-            </dl>
+            <div className="inspection-heading">
+              <span className="inspection-status">
+                <span className="inspection-status-icon"><AppIcon name="check" size={14} /></span>
+                <strong>本地解析成功</strong>
+              </span>
+            </div>
+            <div className="inspection-details">
+              <div className="inspection-detail">
+                <span>Skill 名称</span>
+                <code>{inspection.skillName}</code>
+              </div>
+              <div className="inspection-detail">
+                <span>Skill 描述</span>
+                <p>{inspection.skillDescription}</p>
+              </div>
+            </div>
             {inspection.warnings.map((warning) => <p className="inspection-warning" key={warning}>{warning}</p>)}
           </section>
         )}
