@@ -2558,11 +2558,59 @@ button.my-skill-card:hover {
 }
 
 .workspace-agent-controls {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
 }
 
 .workspace-skill-card {
+  min-height: 0;
+  gap: 8px;
+  padding: 12px 14px;
   border-top-color: #bcdccc;
+}
+
+.local-skills-list .workspace-skill-card {
+  min-height: 118px;
+}
+
+.workspace-agent-controls .skill-agent-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.workspace-agent-controls .skill-agent-control.agent-not-installed {
+  background: transparent;
+}
+
+.workspace-agent-controls .skill-agent-name {
+  gap: 4px;
+}
+
+.workspace-agent-controls .skill-agent-toggle {
+  gap: 0;
+}
+
+.workspace-agent-controls .skill-agent-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.workspace-agent-controls .agent-installation-badge {
+  display: none;
+}
+
+.workspace-skill-footer-actions {
+  gap: 10px;
 }
 
 .workspace-connection-summary {
@@ -3239,6 +3287,18 @@ button.my-skill-card:hover {
   .skill-agent-control {
     grid-template-columns: minmax(110px, 0.7fr) minmax(0, 1fr);
     align-items: center;
+  }
+
+  .workspace-skill-card .my-skill-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .workspace-skill-footer-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .domain-tabs,

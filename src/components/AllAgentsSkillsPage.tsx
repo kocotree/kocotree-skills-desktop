@@ -241,73 +241,12 @@ export function AllAgentsSkillsPage({
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
                       <code>{record.skillName}</code>
-                      <small title={record.installPath}>
-                        {record.installPath}
-                      </small>
                     </span>
                   </span>
                 </button>
 
-                <div className="skill-agent-controls workspace-agent-controls">
-                  {AGENTS.map((agent) => {
-                    const state = getLocalSkillActivationState(group, agent.id);
-                    const installed =
-                      agent.id !== "claude" || claudeInstalled;
-                    const controlKey = `${group.id}:${agent.id}`;
-                    const pending = pendingControl === controlKey;
-                    const interactive = installed
-                      && canControlLocalSkill(group)
-                      && ["enabled", "disabled", "legacy"].includes(state);
-                    return (
-                      <div
-                        className={`skill-agent-control skill-agent-control-${agent.id}${installed ? "" : " agent-not-installed"}`}
-                        title={activationDescription(
-                          group,
-                          agent.id,
-                          state,
-                          installed,
-                        )}
-                        key={agent.id}
-                      >
-                        <span className="skill-agent-name">
-                          <AppIcon name={agent.icon} size={14} />
-                          {agent.label}
-                          {!installed && (
-                            <span className="agent-installation-badge">
-                              未安装
-                            </span>
-                          )}
-                        </span>
-                        <button
-                          className={`skill-agent-toggle state-${state}`}
-                          type="button"
-                          role="switch"
-                          aria-checked={state === "enabled"}
-                          aria-label={`${record.displayName} ${agent.label}：${ACTIVATION_LABELS[state]}`}
-                          disabled={!interactive || Boolean(pendingControl)}
-                          onClick={() => void toggleSkill(group, agent.id)}
-                        >
-                          <span className="skill-agent-toggle-track">
-                            <span className="skill-agent-toggle-knob" />
-                          </span>
-                          <span className="skill-agent-state">
-                            {pending
-                              ? "处理中"
-                              : installed
-                                ? ACTIVATION_LABELS[state]
-                                : "未安装"}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
                 <div className="my-skill-card-footer">
                   <div className="my-skill-statuses">
-                    <span className="agent-source agent-source-agents">
-                      私有仓库/.skills-manager/skills
-                    </span>
                     <span
                       className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
                     >
@@ -319,12 +258,68 @@ export function AllAgentsSkillsPage({
                       <span className="my-skill-version">v{record.version}</span>
                     )}
                   </div>
-                  <Button
-                    size="small"
-                    onClick={() => void revealWorkspaceSkill(record)}
-                  >
-                    打开 Skill 位置
-                  </Button>
+                  <div className="my-skill-card-footer-actions workspace-skill-footer-actions">
+                    <div className="skill-agent-controls workspace-agent-controls">
+                      {AGENTS.map((agent) => {
+                        const state = getLocalSkillActivationState(group, agent.id);
+                        const installed =
+                          agent.id !== "claude" || claudeInstalled;
+                        const controlKey = `${group.id}:${agent.id}`;
+                        const pending = pendingControl === controlKey;
+                        const interactive = installed
+                          && canControlLocalSkill(group)
+                          && ["enabled", "disabled", "legacy"].includes(state);
+                        return (
+                          <div
+                            className={`skill-agent-control skill-agent-control-${agent.id}${installed ? "" : " agent-not-installed"}`}
+                            title={activationDescription(
+                              group,
+                              agent.id,
+                              state,
+                              installed,
+                            )}
+                            key={agent.id}
+                          >
+                            <span className="skill-agent-name">
+                              <AppIcon name={agent.icon} size={14} />
+                              {agent.label}
+                              {!installed && (
+                                <span className="agent-installation-badge">
+                                  未安装
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              className={`skill-agent-toggle state-${state}`}
+                              type="button"
+                              role="switch"
+                              aria-checked={state === "enabled"}
+                              aria-label={`${record.displayName} ${agent.label}：${ACTIVATION_LABELS[state]}`}
+                              disabled={!interactive || Boolean(pendingControl)}
+                              onClick={() => void toggleSkill(group, agent.id)}
+                            >
+                              <span className="skill-agent-toggle-track">
+                                <span className="skill-agent-toggle-knob" />
+                              </span>
+                              <span className="skill-agent-state">
+                                {pending
+                                  ? "处理中"
+                                  : installed
+                                    ? ACTIVATION_LABELS[state]
+                                    : "未安装"}
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      size="small"
+                      onClick={() => void revealWorkspaceSkill(record)}
+                    >
+                      打开 Skill 位置
+                    </Button>
+                  </div>
                 </div>
               </article>
             );
