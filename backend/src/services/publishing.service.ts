@@ -167,14 +167,6 @@ function normalizeTags(
       newTags.set(slug, { slug, name });
     }
   }
-  // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
-  // if (normalizedTagIds.length + newTags.size === 0) {
-  //   throw new PublishingError(
-  //     400,
-  //     "INVALID_REQUEST",
-  //     "请至少选择或创建 1 个 Tag",
-  //   );
-  // }
   if (normalizedTagIds.length + newTags.size > 5) {
     throw new PublishingError(
       400,

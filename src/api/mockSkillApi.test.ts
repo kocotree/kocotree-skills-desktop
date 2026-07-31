@@ -96,39 +96,49 @@ describe("MockSkillApi", () => {
     expect((await api.listVersionFiles(created.id, created.currentVersion.id)).some((item) => item.path === "SKILL.md")).toBe(true);
   });
 
-  it("创建 Skill 时必须选择或创建至少一个 Tag", async () => {
+  it("创建 Skill 时允许不选择 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
-    await expect(api.createSkill({
-      file: await createSkillZip("tag-required"),
-      displayName: "Tag 必填测试",
-      displayDescription: "验证发布时不能省略 Tag。",
-    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+    const created = await api.createSkill({
+      file: await createSkillZip("tag-optional"),
+      displayName: "Tag 可选测试",
+      displayDescription: "验证发布时可以不选择 Tag。",
+    });
+
+    expect(created.tags).toEqual([]);
   });
 
-  it("编辑展示信息时不能清空全部 Tag", async () => {
+  it("编辑展示信息时允许清空全部 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const user = await api.signIn();
     const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
-    await expect(api.updateSkillMetadata(target.id, {
+    expect(target.tags.length).toBeGreaterThan(0);
+
+    const updated = await api.updateSkillMetadata(target.id, {
       tagIds: [],
       newTagNames: [],
-    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+    });
+
+    expect(updated.tags).toEqual([]);
   });
 
-  it("发布新版本时不能清空全部 Tag，失败后不修改当前版本", async () => {
+  it("发布新版本时允许清空全部 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    await expect(api.publishSkillVersion(target.id, {
-      file: await createSkillZip(target.skillName, "", "tag required"),
+    expect(target.tags.length).toBeGreaterThan(0);
+
+    const updated = await api.publishSkillVersion(target.id, {
+      file: await createSkillZip(target.skillName, "", "tag optional"),
       baseVersionId: target.currentVersion.id,
       version: "9.0.0",
-      changelog: "验证 Tag 必填",
+      changelog: "验证 Tag 可选",
       tagIds: [],
       newTagNames: [],
-    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
-    expect((await api.getSkill(target.id)).currentVersion.id).toBe(target.currentVersion.id);
+    });
+
+    expect(updated.tags).toEqual([]);
+    expect(updated.currentVersion.version).toBe("9.0.0");
   });
 
   it("展示名称重复时要求用户明确确认", async () => {

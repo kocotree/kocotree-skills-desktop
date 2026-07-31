@@ -149,8 +149,6 @@ export class MockSkillApi implements SkillApi {
       }
       if (!selected.some((item) => item.id === tag.id)) selected.push(tag);
     }
-    // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
-    // if (selected.length === 0) throw new SkillApiError("INVALID_REQUEST", "请至少选择或创建 1 个 Tag");
     if (selected.length > 5) throw new SkillApiError("INVALID_REQUEST", "每个 Skill 最多选择 5 个 Tag");
     return selected;
   }

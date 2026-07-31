@@ -94,11 +94,6 @@ export function SkillMetadataModal({
 
   async function save(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!skill) return;
-    // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
-    // if (selectedTagIds.length + newTagNames.length === 0) {
-    //   setError("请至少选择或创建 1 个 Tag");
-    //   return;
-    // }
     setSaving(true);
     setError("");
     setNeedsDuplicateConfirmation(false);

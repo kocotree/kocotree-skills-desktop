@@ -206,11 +206,6 @@ export function UploadPage({
       setError("请先选择并成功解析 Skill ZIP 或文件夹");
       return;
     }
-    // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
-    // if (selectedTagIds.length + newTagNames.length === 0) {
-    //   setError("请至少选择或创建 1 个 Tag");
-    //   return;
-    // }
     setPublishing(true);
     setError("");
     setDuplicateConflicts([]);
