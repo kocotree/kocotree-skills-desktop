@@ -1670,15 +1670,6 @@ textarea:focus-visible,
   gap: 12px;
 }
 
-.detail-identity > div {
-  display: grid;
-  gap: 3px;
-}
-
-.detail-identity strong {
-  font-size: 19px;
-}
-
 .detail-identity code {
   color: #858993;
   font-family: "SFMono-Regular", Consolas, monospace;
@@ -1704,6 +1695,7 @@ textarea:focus-visible,
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-left: 10px;
 }
 
 .detail-availability-notice {
