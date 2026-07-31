@@ -57,8 +57,6 @@ interface UninstallPromptState {
   record: LocalSkillRecord;
 }
 
-const logoTones = ["dark", "blue", "orange", "violet", "green"] as const;
-
 function localFilterForPage(page: PageKey): LocalSkillFilter | null {
   if (page === "local-claude") return "claude";
   if (page === "local-codex") return "codex";
@@ -94,13 +92,6 @@ async function copyTextToClipboard(value: string): Promise<void> {
   if (!copied) {
     throw new Error("Clipboard copy failed");
   }
-}
-
-function getSkillShortCode(skill: SkillSummaryDto): string {
-  const words = skill.skillName.split("-").filter(Boolean);
-  return words.length > 1
-    ? words.slice(0, 2).map((word) => word[0]).join("").toLocaleUpperCase()
-    : skill.skillName.slice(0, 2).toLocaleUpperCase();
 }
 
 /**
@@ -140,7 +131,6 @@ function SkillCard({
   highlighted: boolean;
   cardRef?: (node: HTMLElement | null) => void;
 }) {
-  const tone = logoTones[skill.skillName.length % logoTones.length];
   return (
     <article
       className={highlighted ? "skill-card skill-card-highlighted" : "skill-card"}
@@ -156,9 +146,11 @@ function SkillCard({
             onOpen(skill);
           }}
         >
-          <span className={`skill-logo skill-logo-${tone}`}>
-            {getSkillShortCode(skill)}
-          </span>
+          <Tooltip content={`发布者：${skill.owner.name}`}>
+            <span className="skill-card-owner-avatar" role="img" aria-label={`发布者：${skill.owner.name}`}>
+              {skill.owner.avatarUrl ? <img src={skill.owner.avatarUrl} alt="" /> : skill.owner.name.slice(0, 1)}
+            </span>
+          </Tooltip>
           <span className="skill-card-copy">
             <Tooltip className="skill-text-tooltip" content={skill.displayName} onlyWhenTruncated>
               <strong className="skill-display-name">{skill.displayName}</strong>
@@ -166,27 +158,22 @@ function SkillCard({
             <Tooltip className="skill-text-tooltip" content={skill.skillName} onlyWhenTruncated>
               <code className="skill-internal-name">{skill.skillName}</code>
             </Tooltip>
-            {skill.tags.length > 0 && (
-              <span className="skill-card-tags" aria-label={`标签：${skill.tags.map((tag) => tag.name).join("、")}`}>
-                {skill.tags.slice(0, 2).map((tag) => <span key={tag.id}>{tag.name}</span>)}
-                {skill.tags.length > 2 && <span className="skill-card-tag-count">+{skill.tags.length - 2}</span>}
-              </span>
-            )}
             <span className="skill-description">{skill.displayDescription}</span>
           </span>
         </button>
       </div>
 
       <div className="skill-card-meta">
-        <Tooltip content={`Owner：${skill.owner.name}`}>
-          <span className="skill-card-owner-avatar" role="img" aria-label={`Owner：${skill.owner.name}`}>
-            {skill.owner.avatarUrl ? <img src={skill.owner.avatarUrl} alt="" /> : skill.owner.name.slice(0, 1)}
-          </span>
-        </Tooltip>
         <span className="download-count">
           <AppIcon name="download" size={14} />
           {skill.installCount.toLocaleString("zh-CN")}
         </span>
+        {skill.tags.length > 0 && (
+          <span className="skill-card-tags" aria-label={`标签：${skill.tags.map((tag) => tag.name).join("、")}`}>
+            {skill.tags.slice(0, 2).map((tag) => <span key={tag.id}>{tag.name}</span>)}
+            {skill.tags.length > 2 && <span className="skill-card-tag-count">+{skill.tags.length - 2}</span>}
+          </span>
+        )}
         <Tooltip
           className="skill-card-action-tooltip"
           content={uninstallable

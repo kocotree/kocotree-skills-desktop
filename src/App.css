@@ -896,7 +896,7 @@ textarea:focus-visible,
 
 .skill-card-topline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 
@@ -958,11 +958,12 @@ textarea:focus-visible,
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
-  margin: 3px 0 2px;
+  gap: 4px;
+  overflow: hidden;
 }
 
 .skill-card-tags > span {
+  flex: none;
   overflow: hidden;
   max-width: 88px;
   height: 20px;
@@ -980,25 +981,6 @@ textarea:focus-visible,
   background: var(--sidebar);
   color: var(--muted);
 }
-
-.skill-logo {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  place-items: center;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 750;
-  letter-spacing: -0.03em;
-}
-
-.skill-logo-dark { background: #17191d; }
-.skill-logo-blue { background: #4f8fea; }
-.skill-logo-orange { background: #dc8a4c; }
-.skill-logo-violet { background: #7659bd; }
-.skill-logo-green { background: var(--accent); }
 
 .install-button {
   display: inline-flex;
@@ -1025,23 +1007,17 @@ textarea:focus-visible,
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   margin-top: 12px;
-}
-
-.skill-card-owner-avatar,
-.download-count {
-  display: inline-flex;
-  align-items: center;
-  height: 25px;
-  border-radius: 6px;
-  font-size: 11px;
+  padding-left: 38px;
 }
 
 .skill-card-owner-avatar {
-  width: 24px;
-  height: 24px;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
   flex: none;
+  align-items: center;
   justify-content: center;
   overflow: hidden;
   border-radius: 50%;
@@ -1058,10 +1034,16 @@ textarea:focus-visible,
 }
 
 .download-count {
-  gap: 4px;
+  display: inline-flex;
+  height: 25px;
+  flex: none;
+  align-items: center;
+  gap: 5px;
   padding: 0 7px;
   border: 1px solid #e0e2e5;
+  border-radius: 6px;
   color: #7c8088;
+  font-size: 11px;
 }
 
 .install-button {
