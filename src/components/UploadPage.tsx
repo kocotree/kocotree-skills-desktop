@@ -301,8 +301,8 @@ export function UploadPage({
               }}
             />
             <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
-            <strong>{inspecting && selectedSourceType === "zip" ? "正在解析 ZIP…" : selectedSourceType === "zip" ? fileName : "选择 Skill ZIP"}</strong>
-            <small>{selectedSourceType === "zip" && !inspecting ? "重新点击可更换 ZIP" : "沿用现有 ZIP 上传流程"}</small>
+            <strong>{inspecting && selectedSourceType === "zip" ? "正在解析 ZIP…" : selectedSourceType === "zip" ? fileName : "选择本地 Skill 压缩包"}</strong>
+            {selectedSourceType === "zip" && !inspecting && <small>重新点击可更换 ZIP</small>}
           </label>
           <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "folder" ? " is-selected" : ""}`}>
             <input
@@ -316,8 +316,8 @@ export function UploadPage({
               }}
             />
             <span className="dropzone-icon"><AppIcon name="folder" size={25} /></span>
-            <strong>{inspecting && selectedSourceType === "folder" ? "正在打包文件夹…" : selectedSourceType === "folder" ? fileName : "选择 Skill 文件夹"}</strong>
-            <small>{selectedSourceType === "folder" && !inspecting ? "重新点击可更换文件夹" : "自动打包后复用 ZIP 上传"}</small>
+            <strong>{inspecting && selectedSourceType === "folder" ? "正在打包文件夹…" : selectedSourceType === "folder" ? fileName : "选择本地 Skill 文件夹"}</strong>
+            {selectedSourceType === "folder" && !inspecting && <small>重新点击可更换文件夹</small>}
           </label>
         </div>
 
