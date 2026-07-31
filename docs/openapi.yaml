@@ -852,7 +852,7 @@ components:
           type: string
     CreateSkillRequest:
       type: object
-      description: tagIds 与 newTagNames 至少提供一项，且合计至少 1 个、最多 5 个 Tag。
+      description: Tag 为可选项；tagIds 与 newTagNames 合计最多 5 个。
       required: [file, displayName, displayDescription]
       properties:
         file:
@@ -866,15 +866,19 @@ components:
           type: string
           minLength: 1
           maxLength: 1000
+        changelog:
+          type: string
+          maxLength: 2000
+          description: 首版说明；留空时默认为“首次发布”。
         tagIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string
@@ -916,13 +920,13 @@ components:
           maxLength: 1000
         tagIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string
@@ -930,7 +934,7 @@ components:
             maxLength: 50
         replaceTags:
           type: boolean
-          description: 完整替换现有 Tag 关联；替换后必须至少保留 1 个 Tag。
+          description: 完整替换现有 Tag 关联；允许清空全部 Tag。
         confirmDuplicateDisplayName:
           type: boolean
           default: false
@@ -953,13 +957,13 @@ components:
           maxLength: 1000
         tagIds:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string
         newTagNames:
           type: array
-          minItems: 1
+          minItems: 0
           maxItems: 5
           items:
             type: string

@@ -37,6 +37,7 @@ export interface CreateSkillDto {
   file: File;
   displayName: string;
   displayDescription: string;
+  changelog?: string;
   tagIds?: string[];
   newTagNames?: string[];
   forkedFromSkillId?: string;

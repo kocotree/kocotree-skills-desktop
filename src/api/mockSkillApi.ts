@@ -149,7 +149,8 @@ export class MockSkillApi implements SkillApi {
       }
       if (!selected.some((item) => item.id === tag.id)) selected.push(tag);
     }
-    if (selected.length === 0) throw new SkillApiError("INVALID_REQUEST", "请至少选择或创建 1 个 Tag");
+    // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
+    // if (selected.length === 0) throw new SkillApiError("INVALID_REQUEST", "请至少选择或创建 1 个 Tag");
     if (selected.length > 5) throw new SkillApiError("INVALID_REQUEST", "每个 Skill 最多选择 5 个 Tag");
     return selected;
   }
@@ -255,7 +256,7 @@ export class MockSkillApi implements SkillApi {
     const versionId = crypto.randomUUID();
     const version: SkillVersionDto = {
       id: versionId, skillId, version: "1.0.0", status: "PUBLISHED", skillName: parsed.inspection.skillName,
-      skillDescription: parsed.inspection.skillDescription, changelog: "首次发布", baseVersionId: null,
+      skillDescription: parsed.inspection.skillDescription, changelog: input.changelog?.trim() || "首次发布", baseVersionId: null,
       packageSize: parsed.inspection.packageSize, packageSha256: parsed.inspection.packageSha256, contentHash: parsed.inspection.contentHash,
       uploadedBy: user, publishedAt: now, withdrawnBy: null, withdrawnAt: null, withdrawalReason: null,
     };

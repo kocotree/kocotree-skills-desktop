@@ -94,10 +94,11 @@ export function SkillMetadataModal({
 
   async function save(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!skill) return;
-    if (selectedTagIds.length + newTagNames.length === 0) {
-      setError("请至少选择或创建 1 个 Tag");
-      return;
-    }
+    // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
+    // if (selectedTagIds.length + newTagNames.length === 0) {
+    //   setError("请至少选择或创建 1 个 Tag");
+    //   return;
+    // }
     setSaving(true);
     setError("");
     setNeedsDuplicateConfirmation(false);
@@ -133,8 +134,8 @@ export function SkillMetadataModal({
       <div className="metadata-form">
         {canEditMetadata && <label><span>展示名称</span><input value={displayName} maxLength={100} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>}
         <label><span>展示简介</span><TextArea value={displayDescription} maxCount={1000} autosize={{ minRows: 3, maxRows: 6 }} onChange={setDisplayDescription} /></label>
-        <fieldset className="tag-field" aria-required="true">
-          <legend>Tag（必选，最多 5 个）</legend>
+        <fieldset className="tag-field" aria-required="false">
+          <legend>Tag（可选，最多 5 个）</legend>
           <div>
             {tags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
             {newTagNames.map((name) => (

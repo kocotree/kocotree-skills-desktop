@@ -423,12 +423,14 @@ export interface components {
             content: string;
             sha256: string;
         };
-        /** @description tagIds 与 newTagNames 至少提供一项，且合计至少 1 个、最多 5 个 Tag。 */
+        /** @description Tag 为可选项；tagIds 与 newTagNames 合计最多 5 个。 */
         CreateSkillRequest: {
             /** Format: binary */
             file: string;
             displayName: string;
             displayDescription: string;
+            /** @description 首版说明；留空时默认为“首次发布”。 */
+            changelog?: string;
             tagIds?: string[];
             newTagNames?: string[];
             forkedFromSkillId?: string;
@@ -446,7 +448,7 @@ export interface components {
             displayDescription?: string;
             tagIds?: string[];
             newTagNames?: string[];
-            /** @description 完整替换现有 Tag 关联；替换后必须至少保留 1 个 Tag。 */
+            /** @description 完整替换现有 Tag 关联；允许清空全部 Tag。 */
             replaceTags?: boolean;
             /** @default false */
             confirmDuplicateDisplayName: boolean;

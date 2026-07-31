@@ -37,6 +37,7 @@ export class HttpPublishingApi {
       "displayDescription",
       input.displayDescription,
     );
+    appendOptional(formData, "changelog", input.changelog);
     appendValues(formData, "tagIds", input.tagIds);
     appendValues(formData, "newTagNames", input.newTagNames);
     appendOptional(

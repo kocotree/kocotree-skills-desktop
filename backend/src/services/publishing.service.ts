@@ -35,6 +35,7 @@ export type CreateSkillInput = {
   file: Buffer;
   displayName: string;
   displayDescription: string;
+  changelog?: string;
   tagIds: string[];
   newTagNames: string[];
   forkedFromSkillId?: string;
@@ -166,13 +167,14 @@ function normalizeTags(
       newTags.set(slug, { slug, name });
     }
   }
-  if (normalizedTagIds.length + newTags.size === 0) {
-    throw new PublishingError(
-      400,
-      "INVALID_REQUEST",
-      "请至少选择或创建 1 个 Tag",
-    );
-  }
+  // Tag 当前为可选项，保留原校验逻辑便于后续恢复。
+  // if (normalizedTagIds.length + newTags.size === 0) {
+  //   throw new PublishingError(
+  //     400,
+  //     "INVALID_REQUEST",
+  //     "请至少选择或创建 1 个 Tag",
+  //   );
+  // }
   if (normalizedTagIds.length + newTags.size > 5) {
     throw new PublishingError(
       400,
@@ -370,6 +372,9 @@ export const publishingService = {
       "展示简介",
       1_000,
     );
+    const changelog = input.changelog?.trim()
+      ? validateText(input.changelog, "更新说明", 2_000)
+      : "首次发布";
     const tags = normalizeTags(input.tagIds, input.newTagNames);
     const prepared = await prepareSkillPackage(input.file);
     await ensureSkillNameAvailable(prepared.skillName);
@@ -437,7 +442,7 @@ export const publishingService = {
             forkedFromVersionId: input.forkedFromVersionId,
           }),
           readmeMd: prepared.skillMd,
-          changelog: "首次发布",
+          changelog,
           createdBy: input.userId,
           entries: prepared.entries,
         },
