@@ -11,17 +11,18 @@ import {
   type UserDto,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import { SkillMetadataModal } from "./SkillMetadataModal";
 
 interface SkillDetailModalProps {
   skill: SkillSummaryDto | null;
   context: "browse" | "manage";
   installedSkillIds: Set<string>;
+  uninstallableSkillIds: Set<string>;
+  uninstallingSkillId: string | null;
   currentUser: UserDto | null;
   onClose: () => void;
   onInstall: (skill: SkillSummaryDto, version: SkillVersionDto) => void;
+  onUninstall: (skill: SkillSummaryDto) => void;
   onUploadVersion: (skill: SkillSummaryDto) => void;
-  onChanged: (skill: SkillDetailDto) => void;
   onOpenDerivedSource: (skillId: string) => void;
 }
 
@@ -76,11 +77,13 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
  * @param skill - 当前打开的 Skill 摘要，为 null 时关闭模态框。
  * @param context - 详情来源；浏览场景只允许安装，管理场景才显示管理操作。
  * @param installedSkillIds - 客户端已安装 Skill 编号集合。
+ * @param uninstallableSkillIds - 客户端可安全卸载的 Skill 编号集合。
+ * @param uninstallingSkillId - 当前正在卸载的 Skill 编号。
  * @param currentUser - 当前登录用户，匿名状态为 null。
  * @param onClose - 关闭详情模态框的回调。
  * @param onInstall - 安装指定历史版本的回调。
+ * @param onUninstall - 卸载当前 Skill 的回调。
  * @param onUploadVersion - 进入指定 Skill 新版本上传流程的回调。
- * @param onChanged - Skill 状态或展示信息变化后的回调。
  * @param onOpenDerivedSource - 返回浏览页并定位来源 Skill 的回调。
  * @returns Skill 详情模态框。
  */
@@ -88,11 +91,13 @@ export function SkillDetailModal({
   skill,
   context,
   installedSkillIds,
+  uninstallableSkillIds,
+  uninstallingSkillId,
   currentUser,
   onClose,
   onInstall,
+  onUninstall,
   onUploadVersion,
-  onChanged,
   onOpenDerivedSource,
 }: SkillDetailModalProps) {
   const [detail, setDetail] = useState<SkillDetailDto | null>(null);
@@ -107,7 +112,6 @@ export function SkillDetailModal({
   const [fileTreeLoading, setFileTreeLoading] = useState(false);
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [fileError, setFileError] = useState("");
-  const [metadataVisible, setMetadataVisible] = useState(false);
 
   useEffect(() => {
     if (!skill) {
@@ -222,18 +226,30 @@ export function SkillDetailModal({
           {detail ? (
             <>
               {detail.status === "ACTIVE" && (
-                <Button
-                  className="detail-install-button"
-                  theme="solid"
-                  type="primary"
-                  disabled={detail.currentVersion.status !== "PUBLISHED"}
-                  icon={installedSkillIds.has(detail.id) ? undefined : <AppIcon name="download" size={16} />}
-                  onClick={() => onInstall(detail, detail.currentVersion)}
-                >
-                  {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
-                </Button>
+                uninstallableSkillIds.has(detail.id) ? (
+                  <Button
+                    className="detail-install-button"
+                    type="danger"
+                    loading={uninstallingSkillId === detail.id}
+                    disabled={uninstallingSkillId !== null}
+                    onClick={() => onUninstall(detail)}
+                  >
+                    卸载
+                  </Button>
+                ) : (
+                  <Button
+                    className="detail-install-button"
+                    theme="solid"
+                    type="primary"
+                    disabled={detail.currentVersion.status !== "PUBLISHED"}
+                    icon={installedSkillIds.has(detail.id) ? undefined : <AppIcon name="download" size={16} />}
+                    onClick={() => onInstall(detail, detail.currentVersion)}
+                  >
+                    {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
+                  </Button>
+                )
               )}
-              {showManagementActions && (
+              {showManagementActions && detail.status === "ACTIVE" && (
                 <Dropdown
                   className="detail-more-menu"
                   contentClassName="detail-more-dropdown"
@@ -244,7 +260,6 @@ export function SkillDetailModal({
                       {detail.status === "ACTIVE" && (
                         <Dropdown.Item onClick={() => onUploadVersion(detail)}>上传新版本</Dropdown.Item>
                       )}
-                      <Dropdown.Item onClick={() => setMetadataVisible(true)}>编辑展示信息</Dropdown.Item>
                     </Dropdown.Menu>
                   )}
                 >
@@ -470,17 +485,6 @@ export function SkillDetailModal({
         </div>
       ) : null}
     </Modal>
-    <SkillMetadataModal
-      skill={detail}
-      currentUser={currentUser}
-      visible={metadataVisible}
-      onCancel={() => setMetadataVisible(false)}
-      onUpdated={(updated) => {
-        setMetadataVisible(false);
-        setDetail(updated);
-        onChanged(updated);
-      }}
-    />
     </>
   );
 }

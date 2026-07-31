@@ -58,11 +58,15 @@ export function MySkillsPage({
   currentUser,
   onLogin,
   onOpenSkill,
+  onEditSkill,
+  editingSkillId,
   refreshKey,
 }: {
   currentUser: UserDto | null;
   onLogin: () => void;
   onOpenSkill: (skill: SkillSummaryDto) => void;
+  onEditSkill: (skill: SkillSummaryDto) => void;
+  editingSkillId: string | null;
   refreshKey: number;
 }) {
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
@@ -285,13 +289,23 @@ export function MySkillsPage({
                       安装 {skill.installCount.toLocaleString("zh-CN")}
                     </span>
                   </div>
-                  <Button
-                    size="small"
-                    type="danger"
-                    onClick={() => beginDelete(skill)}
-                  >
-                    删除
-                  </Button>
+                  <div className="my-skill-card-footer-actions">
+                    <Button
+                      size="small"
+                      loading={editingSkillId === skill.id}
+                      disabled={editingSkillId !== null}
+                      onClick={() => onEditSkill(skill)}
+                    >
+                      编辑
+                    </Button>
+                    <Button
+                      size="small"
+                      type="danger"
+                      onClick={() => beginDelete(skill)}
+                    >
+                      删除
+                    </Button>
+                  </div>
                 </div>
               </article>
             ))}

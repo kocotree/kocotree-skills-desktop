@@ -15,6 +15,7 @@ import {
   type LocalSkillFilter,
   type LocalSkillRecord,
   type SetLocalSkillEnabledInput,
+  type SkillDetailDto,
   type SkillSummaryDto,
   type SkillVersionDto,
   type TagDto,
@@ -22,6 +23,7 @@ import {
 } from "./api";
 import { AppIcon } from "./components/AppIcon";
 import { SkillDetailModal } from "./components/SkillDetailModal";
+import { SkillMetadataModal } from "./components/SkillMetadataModal";
 import { UploadPage } from "./components/UploadPage";
 import { MySkillsPage } from "./components/MySkillsPage";
 import { LocalSkillsPage } from "./components/LocalSkillsPage";
@@ -509,6 +511,8 @@ function App() {
   const [uploadSessionKey, setUploadSessionKey] = useState(0);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
   const [publishedRefreshKey, setPublishedRefreshKey] = useState(0);
+  const [metadataSkill, setMetadataSkill] = useState<SkillDetailDto | null>(null);
+  const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [loginVisible, setLoginVisible] = useState(false);
@@ -586,6 +590,7 @@ function App() {
       setAuthResolved(true);
       setUnreadCount(0);
       setSelectedSkill(null);
+      setMetadataSkill(null);
       setLoginVisible(true);
     };
     window.addEventListener(AUTH_INVALIDATED_EVENT, handleInvalidated);
@@ -718,6 +723,8 @@ function App() {
       await skillApi.signOut();
       setCurrentUser(null);
       setUnreadCount(0);
+      setSelectedSkill(null);
+      setMetadataSkill(null);
       setActivePage("browse");
       Toast.success("已退出登录");
     } catch (reason) {
@@ -748,6 +755,23 @@ function App() {
     console.info("[KocotreeSkills] 准备管理 Skill", { skillId: skill.id });
     setSelectedSkillContext("manage");
     setSelectedSkill(skill);
+  }
+
+  async function handleEditManagedSkill(skill: SkillSummaryDto): Promise<void> {
+    setEditingSkillId(skill.id);
+    try {
+      const detail = await skillApi.getSkill(skill.id);
+      setMetadataSkill(detail);
+    } catch (reason) {
+      console.error("[KocotreeSkills] 编辑 Skill 信息加载失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "暂时无法读取 Skill 信息",
+      );
+    } finally {
+      setEditingSkillId(null);
+    }
   }
 
   /**
@@ -1133,6 +1157,8 @@ function App() {
             currentUser={currentUser}
             onLogin={() => setLoginVisible(true)}
             onOpenSkill={handleOpenManagedSkill}
+            onEditSkill={(skill) => void handleEditManagedSkill(skill)}
+            editingSkillId={editingSkillId}
             refreshKey={publishedRefreshKey}
           />
         ) : activePage === "local-all" ? (
@@ -1177,13 +1203,26 @@ function App() {
         skill={selectedSkill}
         context={selectedSkillContext}
         installedSkillIds={installedSkillIds}
+        uninstallableSkillIds={uninstallableSkillIds}
+        uninstallingSkillId={uninstallingSkillId}
         currentUser={currentUser}
         onClose={() => setSelectedSkill(null)}
         onInstall={handleInstallVersion}
+        onUninstall={prepareUninstall}
         onUploadVersion={handleUploadVersion}
         onOpenDerivedSource={handleOpenDerivedSource}
-        onChanged={(skill) => {
-          setSelectedSkill(skill);
+      />
+
+      <SkillMetadataModal
+        skill={metadataSkill}
+        currentUser={currentUser}
+        visible={metadataSkill !== null}
+        onCancel={() => setMetadataSkill(null)}
+        onUpdated={(skill) => {
+          setMetadataSkill(null);
+          setSelectedSkill((current) =>
+            current?.id === skill.id ? skill : current,
+          );
           setBrowseRefreshKey((current) => current + 1);
           setPublishedRefreshKey((current) => current + 1);
         }}
