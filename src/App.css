@@ -3151,20 +3151,6 @@ button.my-skill-card:hover {
   }
 }
 
-@media (min-width: 1400px) {
-  .agents-workspace-list,
-  .agent-skills-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 901px) and (max-width: 1399px) {
-  .agents-workspace-list,
-  .agent-skills-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
 @media (max-width: 720px) {
   .uninstall-confirm-message {
     white-space: normal;
