@@ -179,8 +179,7 @@ export function AllAgentsSkillsPage({
         <div>
           <h1>全部 Agents</h1>
           <p>
-            Skill 本体保存在私有仓库；只有开启后 Claude Code 或 Codex
-            才能扫描到
+            Skill 安装后默认关闭；打开下方 Claude Code 或 Codex 开关，即可在对应 Agent 中使用
           </p>
         </div>
       </header>
