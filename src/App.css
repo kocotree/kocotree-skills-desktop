@@ -2921,6 +2921,27 @@ button.my-skill-card:hover {
   gap: 12px;
 }
 
+.my-skill-uploader-avatar {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.my-skill-uploader-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .my-skill-main {
   display: grid;
   min-width: 0;

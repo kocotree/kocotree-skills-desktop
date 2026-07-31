@@ -254,10 +254,15 @@ export function MySkillsPage({
                   onClick={() => onOpenSkill(skill)}
                 >
                   <span className="my-skill-card-heading">
-                    <span className="skill-logo skill-logo-blue">
-                      {skill.skillName
-                        .slice(0, 2)
-                        .toUpperCase()}
+                    <span
+                      className="my-skill-uploader-avatar"
+                      role="img"
+                      aria-label={`最新上传人：${skill.currentVersion.uploadedBy.name}`}
+                      title={`最新上传人：${skill.currentVersion.uploadedBy.name}`}
+                    >
+                      {skill.currentVersion.uploadedBy.avatarUrl
+                        ? <img src={skill.currentVersion.uploadedBy.avatarUrl} alt="" />
+                        : skill.currentVersion.uploadedBy.name.trim().slice(0, 1) || "?"}
                     </span>
                     <span className="my-skill-main">
                       <strong>{skill.displayName}</strong>
