@@ -2307,6 +2307,9 @@ mod tests {
     #[test]
     fn uninstalls_platform_skill_and_managed_agent_connections() {
         let home = tempfile::tempdir().unwrap();
+        let claude_command = home.path().join(".local").join("bin").join("claude");
+        fs::create_dir_all(claude_command.parent().unwrap()).unwrap();
+        fs::write(claude_command, "").unwrap();
         let bytes = create_package("test-skill", None);
         let skills_root = private_skills_root(home.path());
         install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
