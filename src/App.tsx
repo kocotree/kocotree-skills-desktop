@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, Dropdown, Modal, Tooltip, Toast, ToastViewport } from "./components/ui";
+import { Button, Dropdown, Modal, Spin, Tooltip, Toast, ToastViewport } from "./components/ui";
 import {
   AUTH_INVALIDATED_EVENT,
   skillApi,
@@ -75,6 +75,25 @@ function installedSkillIdsFromRecords(
         : [],
     ),
   );
+}
+
+async function copyTextToClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) {
+    throw new Error("Clipboard copy failed");
+  }
 }
 
 function getSkillShortCode(skill: SkillSummaryDto): string {
@@ -506,7 +525,9 @@ function App() {
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [loginVisible, setLoginVisible] = useState(false);
-  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginWaiting, setLoginWaiting] = useState(false);
+  const [loginUrl, setLoginUrl] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [localSkills, setLocalSkills] = useState<LocalSkillRecord[]>([]);
   const [agentInstallationStatus, setAgentInstallationStatus] =
@@ -515,6 +536,7 @@ function App() {
   const [localSkillsError, setLocalSkillsError] = useState("");
   const sidebarUserAreaRef = useRef<HTMLDivElement>(null);
   const protectedActionRef = useRef<(() => void) | null>(null);
+  const loginAttemptRef = useRef(0);
   const [installedSkillIds, setInstalledSkillIds] = useState(
     () => new Set<string>(),
   );
@@ -630,10 +652,31 @@ function App() {
   }
 
   /** 打开系统浏览器完成飞书授权，并继续此前被拦截的操作。 */
-  async function handleSignIn(): Promise<void> {
-    setLoginLoading(true);
+  async function handleSignIn(
+    restart = false,
+    openBrowser = true,
+    copyWhenReady = false,
+  ): Promise<void> {
+    const requestId = ++loginAttemptRef.current;
+    if (restart) {
+      skillApi.cancelSignIn();
+    }
+    setLoginError("");
+    setLoginUrl(null);
+    setLoginWaiting(true);
     try {
-      const user = await skillApi.signIn();
+      const user = await skillApi.signIn({
+        openBrowser,
+        onAuthorizationUrl: (authorizationUrl) => {
+          if (loginAttemptRef.current === requestId) {
+            setLoginUrl(authorizationUrl);
+            if (copyWhenReady) {
+              void copyLoginLink(authorizationUrl);
+            }
+          }
+        },
+      });
+      if (loginAttemptRef.current !== requestId) return;
       setCurrentUser(user);
       setLoginVisible(false);
       Toast.success(`已以 ${user.name} 的身份登录`);
@@ -641,10 +684,45 @@ function App() {
       protectedActionRef.current = null;
       nextAction?.();
     } catch (reason) {
+      if (loginAttemptRef.current !== requestId) return;
       console.error("[KocotreeSkills] 飞书登录失败", reason);
-      Toast.error("登录失败，请稍后重试");
+      if (
+        !(reason instanceof SkillApiError) ||
+        reason.code !== "FEISHU_AUTH_CANCELLED"
+      ) {
+        const message =
+          reason instanceof SkillApiError
+            ? reason.message
+            : "登录失败，请稍后重试";
+        setLoginError(message);
+        setLoginUrl(null);
+        Toast.error(message);
+      }
     } finally {
-      setLoginLoading(false);
+      if (loginAttemptRef.current === requestId) {
+        setLoginWaiting(false);
+      }
+    }
+  }
+
+  function closeLogin(): void {
+    loginAttemptRef.current += 1;
+    skillApi.cancelSignIn();
+    setLoginWaiting(false);
+    setLoginUrl(null);
+    setLoginError("");
+    protectedActionRef.current = null;
+    setLoginVisible(false);
+  }
+
+  async function copyLoginLink(url = loginUrl): Promise<void> {
+    if (!url) return;
+    try {
+      await copyTextToClipboard(url);
+      Toast.success("登录链接已复制，可粘贴到任意浏览器打开");
+    } catch (reason) {
+      console.error("[KocotreeSkills] 复制登录链接失败", reason);
+      Toast.error("复制失败，请稍后重试");
     }
   }
 
@@ -1153,17 +1231,46 @@ function App() {
         className="login-modal"
         title="登录 Kocotree Skills"
         visible={loginVisible}
-        onCancel={() => { protectedActionRef.current = null; setLoginVisible(false); }}
+        onCancel={closeLogin}
         footer={null}
         centered
       >
         <div className="login-content">
           <span className="login-mark">飞</span>
           <div><strong>使用飞书继续</strong><p>安装、上传和发布版本时需要记录操作者身份。</p></div>
-          <Button theme="solid" type="primary" loading={loginLoading} block onClick={() => void handleSignIn()}>
-            打开飞书授权
-          </Button>
-          <small>将在系统浏览器中打开飞书，授权完成后自动返回应用。</small>
+          {loginError && (
+            <div className="login-error" role="alert">{loginError}</div>
+          )}
+          {loginWaiting ? (
+            <>
+              <div className="login-waiting" role="status">
+                <Spin size="small" />
+                <strong>正在等待飞书授权</strong>
+              </div>
+              <div className="login-actions">
+                <Button theme="solid" type="primary" block onClick={() => void handleSignIn(true)}>
+                  重新打开
+                </Button>
+                <Button block disabled={!loginUrl} onClick={() => void copyLoginLink()}>
+                  复制登录链接
+                </Button>
+                <Button block onClick={closeLogin}>
+                  取消登录
+                </Button>
+              </div>
+              <small>等待超过 5 分钟会自动结束；你可以随时重新打开或复制链接。</small>
+            </>
+          ) : (
+            <>
+              <Button theme="solid" type="primary" block onClick={() => void handleSignIn()}>
+                打开浏览器
+              </Button>
+              <Button block onClick={() => void handleSignIn(false, false, true)}>
+                复制登录链接
+              </Button>
+              <small>复制链接后，可以粘贴到你常用或已经登录飞书的浏览器中。</small>
+            </>
+          )}
         </div>
       </Modal>
       <ToastViewport />

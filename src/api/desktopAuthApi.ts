@@ -2,14 +2,18 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { SkillApiError, type UserDto } from "./contracts";
+import {
+  SkillApiError,
+  type SignInOptions,
+  type UserDto,
+} from "./contracts";
 import { apiUrl, readApiData } from "./httpClient";
 const CALLBACK_SCHEME = "kocotree-skills:";
 const CALLBACK_HOST = "auth";
 const CUSTOM_CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
 const TOKEN_STORAGE_KEY = "kocotree.desktop.session-token";
-const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const AUTH_STATUS_TIMEOUT_MS = 15_000;
 
 interface ExchangeResult {
@@ -23,10 +27,21 @@ interface DesktopAuthCallback {
 }
 
 interface PendingLogin {
+  attemptId: string;
+  authorizationUrl: string | null;
   promise: Promise<UserDto>;
   resolve: (user: UserDto) => void;
   reject: (reason: unknown) => void;
   timeoutId: number;
+}
+
+function createLoginAttemptId(): string {
+  const values = new Uint32Array(4);
+  globalThis.crypto.getRandomValues(values);
+  return Array.from(
+    values,
+    (value) => value.toString(16).padStart(8, "0"),
+  ).join("");
 }
 
 /** Tauri 桌面端飞书 OAuth 身份适配器。 */
@@ -39,6 +54,8 @@ export class DesktopAuthApi {
   private currentUserPromise: Promise<UserDto | null> | null = null;
   private pendingLogin: PendingLogin | null = null;
   private readonly processedCodes = new Set<string>();
+  private readonly cancelledAttempts = new Set<string>();
+  private readonly completedAttempts = new Set<string>();
 
   private initialize(): Promise<void> {
     if (!isTauri()) {
@@ -70,6 +87,22 @@ export class DesktopAuthApi {
         continue;
       }
 
+      const attemptId = url.searchParams.get("attempt");
+      if (
+        attemptId &&
+        (this.cancelledAttempts.has(attemptId) ||
+          this.completedAttempts.has(attemptId))
+      ) {
+        continue;
+      }
+      if (
+        attemptId &&
+        this.pendingLogin &&
+        attemptId !== this.pendingLogin.attemptId
+      ) {
+        continue;
+      }
+
       const error = url.searchParams.get("error");
       if (error) {
         this.rejectPending(
@@ -83,11 +116,34 @@ export class DesktopAuthApi {
         continue;
       }
       this.processedCodes.add(code);
+      const activeAttemptId =
+        attemptId || this.pendingLogin?.attemptId || null;
 
       try {
-        const user = await this.exchangeCode(code);
-        this.resolvePending(user);
+        const result = await this.exchangeCode(code);
+        if (
+          activeAttemptId &&
+          (this.cancelledAttempts.has(activeAttemptId) ||
+            (this.pendingLogin &&
+              activeAttemptId !== this.pendingLogin.attemptId))
+        ) {
+          continue;
+        }
+        this.token = result.token;
+        sessionStorage.setItem(TOKEN_STORAGE_KEY, result.token);
+        if (activeAttemptId) {
+          this.rememberAttempt(this.completedAttempts, activeAttemptId);
+        }
+        this.resolvePending(result.user);
       } catch (reason) {
+        if (
+          activeAttemptId &&
+          (this.cancelledAttempts.has(activeAttemptId) ||
+            (this.pendingLogin &&
+              activeAttemptId !== this.pendingLogin.attemptId))
+        ) {
+          continue;
+        }
         this.rejectPending(reason);
       }
     }
@@ -113,7 +169,7 @@ export class DesktopAuthApi {
     return isCustomProtocol || isDevelopmentLoopback ? url : null;
   }
 
-  private async exchangeCode(code: string): Promise<UserDto> {
+  private async exchangeCode(code: string): Promise<ExchangeResult> {
     const response = await fetch(apiUrl("/api/auth/desktop/exchange"), {
       method: "POST",
       headers: {
@@ -121,10 +177,7 @@ export class DesktopAuthApi {
       },
       body: JSON.stringify({ code }),
     });
-    const result = await readApiData<ExchangeResult>(response);
-    this.token = result.token;
-    sessionStorage.setItem(TOKEN_STORAGE_KEY, result.token);
-    return result.user;
+    return readApiData<ExchangeResult>(response);
   }
 
   private resolvePending(user: UserDto): void {
@@ -135,6 +188,24 @@ export class DesktopAuthApi {
   private rejectPending(reason: unknown): void {
     const pending = this.takePendingLogin();
     pending?.reject(reason);
+  }
+
+  private cancelPending(reason: unknown): void {
+    const attemptId = this.pendingLogin?.attemptId;
+    if (attemptId) {
+      this.rememberAttempt(this.cancelledAttempts, attemptId);
+    }
+    this.rejectPending(reason);
+  }
+
+  private rememberAttempt(attempts: Set<string>, attemptId: string): void {
+    attempts.add(attemptId);
+    if (attempts.size > 20) {
+      const oldestAttempt = attempts.values().next().value;
+      if (oldestAttempt) {
+        attempts.delete(oldestAttempt);
+      }
+    }
   }
 
   private takePendingLogin(): PendingLogin | null {
@@ -203,18 +274,21 @@ export class DesktopAuthApi {
     return readApiData<UserDto>(response);
   }
 
-  async signIn(): Promise<UserDto> {
+  async signIn(options: SignInOptions = {}): Promise<UserDto> {
     if (!isTauri()) {
       throw new SkillApiError(
         "DESKTOP_RUNTIME_REQUIRED",
         "真实飞书登录仅支持 Kocotree Skills 桌面客户端",
       );
     }
-    await this.initialize();
     if (this.pendingLogin) {
+      if (this.pendingLogin.authorizationUrl) {
+        options.onAuthorizationUrl?.(this.pendingLogin.authorizationUrl);
+      }
       return this.pendingLogin.promise;
     }
 
+    const attemptId = createLoginAttemptId();
     let resolveLogin!: (user: UserDto) => void;
     let rejectLogin!: (reason: unknown) => void;
     const promise = new Promise<UserDto>((resolve, reject) => {
@@ -222,14 +296,16 @@ export class DesktopAuthApi {
       rejectLogin = reject;
     });
     const timeoutId = window.setTimeout(() => {
-      this.rejectPending(
+      this.cancelPending(
         new SkillApiError(
           "FEISHU_AUTH_TIMEOUT",
-          "飞书授权等待超时，请重新登录",
+          "飞书授权已超时（5 分钟），请重新登录",
         ),
       );
     }, LOGIN_TIMEOUT_MS);
     this.pendingLogin = {
+      attemptId,
+      authorizationUrl: null,
       promise,
       resolve: resolveLogin,
       reject: rejectLogin,
@@ -237,6 +313,10 @@ export class DesktopAuthApi {
     };
 
     try {
+      await this.initialize();
+      if (this.pendingLogin?.attemptId !== attemptId) {
+        return promise;
+      }
       const loginUrl = new URL(apiUrl("/api/auth/feishu/login"));
       if (import.meta.env.DEV) {
         const callback = await invoke<DesktopAuthCallback>(
@@ -247,11 +327,26 @@ export class DesktopAuthApi {
           callback.callbackUrl,
         );
       }
-      await openUrl(loginUrl);
+      loginUrl.searchParams.set("desktopAttemptId", attemptId);
+      const authorizationUrl = loginUrl.toString();
+      if (this.pendingLogin?.attemptId !== attemptId) {
+        return promise;
+      }
+      this.pendingLogin.authorizationUrl = authorizationUrl;
+      options.onAuthorizationUrl?.(authorizationUrl);
+      if (options.openBrowser !== false) {
+        await openUrl(authorizationUrl);
+      }
     } catch (reason) {
       this.rejectPending(reason);
     }
     return promise;
+  }
+
+  cancelSignIn(): void {
+    this.cancelPending(
+      new SkillApiError("FEISHU_AUTH_CANCELLED", "已取消飞书登录"),
+    );
   }
 
   async signOut(): Promise<void> {

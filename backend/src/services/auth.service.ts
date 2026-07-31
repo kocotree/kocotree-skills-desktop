@@ -14,6 +14,7 @@ type OAuthState = {
   mode: "desktop";
   nonce: string;
   callbackUrl: string;
+  attemptId?: string;
   expiresAt: string;
 };
 
@@ -92,10 +93,14 @@ function resolveDesktopCallbackUrl(value?: string): string | null {
   return isLoopback ? url.toString() : null;
 }
 
+function isValidDesktopAttemptId(value?: string): boolean {
+  return value === undefined || /^[a-zA-Z0-9_-]{8,128}$/.test(value);
+}
+
 export const authService = {
-  prepareFeishuLogin(callbackUrl?: string) {
+  prepareFeishuLogin(callbackUrl?: string, attemptId?: string) {
     const resolvedCallbackUrl = resolveDesktopCallbackUrl(callbackUrl);
-    if (!resolvedCallbackUrl) {
+    if (!resolvedCallbackUrl || !isValidDesktopAttemptId(attemptId)) {
       return null;
     }
 
@@ -104,8 +109,20 @@ export const authService = {
         mode: "desktop",
         nonce: createRandomToken("desktop_oauth", 24),
         callbackUrl: resolvedCallbackUrl,
+        attemptId,
         expiresAt: expiresAfter(config.oauthStateTtlSeconds).toISOString(),
       }),
+    };
+  },
+
+  rejectFeishuLogin(state: string) {
+    const oauthState = decodeOAuthState(state);
+    if (!oauthState || !resolveDesktopCallbackUrl(oauthState.callbackUrl)) {
+      return null;
+    }
+    return {
+      callbackUrl: oauthState.callbackUrl,
+      attemptId: oauthState.attemptId,
     };
   },
 
@@ -134,6 +151,7 @@ export const authService = {
     return {
       code,
       callbackUrl: oauthState.callbackUrl,
+      attemptId: oauthState.attemptId,
     };
   },
 

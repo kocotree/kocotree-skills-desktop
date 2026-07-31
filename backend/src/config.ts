@@ -22,10 +22,10 @@ export const config = {
     desktopAuthCallbackUrl:
         process.env.DESKTOP_AUTH_CALLBACK_URL ||
         "kocotree-skills://auth/callback",
-    oauthStateTtlSeconds: readNumber("OAUTH_STATE_TTL_SECONDS", 600),
+    oauthStateTtlSeconds: readNumber("OAUTH_STATE_TTL_SECONDS", 300),
     desktopAuthCodeTtlSeconds: readNumber(
         "DESKTOP_AUTH_CODE_TTL_SECONDS",
-        120,
+        300,
     ),
     desktopTokenTtlSeconds: readNumber(
         "DESKTOP_TOKEN_TTL_SECONDS",

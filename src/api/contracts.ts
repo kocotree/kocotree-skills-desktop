@@ -75,6 +75,11 @@ export type ListMySkillsQuery = NonNullable<operations["listMySkills"]["paramete
 export type ListVersionsQuery = NonNullable<operations["listSkillVersions"]["parameters"]["query"]>;
 export type ListNotificationsQuery = NonNullable<operations["listNotifications"]["parameters"]["query"]>;
 
+export interface SignInOptions {
+  openBrowser?: boolean;
+  onAuthorizationUrl?: (url: string) => void;
+}
+
 /** 客户端本地安装状态，不属于服务端 Skill DTO。 */
 export type LocalSkillStatus =
   | "PLATFORM_INSTALLED"
@@ -190,7 +195,8 @@ export interface SkillApi {
   readNotification(notificationId: string): Promise<void>;
   readAllNotifications(): Promise<void>;
   getCurrentUser(): Promise<UserDto | null>;
-  signIn(): Promise<UserDto>;
+  signIn(options?: SignInOptions): Promise<UserDto>;
+  cancelSignIn(): void;
   signOut(): Promise<void>;
 }
 

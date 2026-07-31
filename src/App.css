@@ -2229,6 +2229,29 @@ textarea:focus-visible,
   width: 100%;
 }
 
+.login-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #59616d;
+}
+
+.login-actions {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.login-error {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff3f0;
+  color: #b64a4a;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .login-content small {
   color: #969aa2;
 }

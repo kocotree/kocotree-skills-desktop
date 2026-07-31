@@ -12,9 +12,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   app.get("/auth/feishu/login", async (request, reply) => {
     const query = request.query as {
       desktopCallbackUrl?: string;
+      desktopAttemptId?: string;
     };
     const prepared = authService.prepareFeishuLogin(
       query.desktopCallbackUrl,
+      query.desktopAttemptId,
     );
     if (!prepared) {
       return failure(
@@ -31,13 +33,45 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const query = request.query as {
       code?: string;
       state?: string;
+      error?: string;
+      error_description?: string;
     };
-    if (!query.code || !query.state) {
+    if (!query.state) {
       return failure(
         reply,
         400,
         "INVALID_OAUTH_CALLBACK",
-        "飞书授权回调缺少 code 或 state",
+        "飞书授权回调缺少 state",
+      );
+    }
+
+    if (query.error) {
+      const rejected = authService.rejectFeishuLogin(query.state);
+      if (!rejected) {
+        return failure(
+          reply,
+          400,
+          "INVALID_OAUTH_STATE",
+          "登录请求无效或已过期",
+        );
+      }
+      const callbackUrl = new URL(rejected.callbackUrl);
+      callbackUrl.searchParams.set(
+        "error",
+        query.error_description || "飞书授权未完成，请重新登录",
+      );
+      if (rejected.attemptId) {
+        callbackUrl.searchParams.set("attempt", rejected.attemptId);
+      }
+      return reply.redirect(callbackUrl.toString());
+    }
+
+    if (!query.code) {
+      return failure(
+        reply,
+        400,
+        "INVALID_OAUTH_CALLBACK",
+        "飞书授权回调缺少 code",
       );
     }
 
@@ -57,6 +91,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const callbackUrl = new URL(result.callbackUrl);
     callbackUrl.searchParams.set("code", result.code);
+    if (result.attemptId) {
+      callbackUrl.searchParams.set("attempt", result.attemptId);
+    }
     return reply.redirect(callbackUrl.toString());
   });
 

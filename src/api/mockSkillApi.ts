@@ -18,6 +18,7 @@ import {
   type SkillDetailDto,
   type SkillFileContentDto,
   type SkillPageDto,
+  type SignInOptions,
   type SkillVersionDetailDto,
   type SkillVersionDto,
   type TagDto,
@@ -455,6 +456,7 @@ export class MockSkillApi implements SkillApi {
   async readNotification(notificationId: string): Promise<void> { await this.wait(); this.requireUser(); const item = this.notifications.find((notification) => notification.id === notificationId); if (item) item.readAt = new Date().toISOString(); }
   async readAllNotifications(): Promise<void> { await this.wait(); this.requireUser(); const now = new Date().toISOString(); this.notifications.forEach((item) => { if (!item.readAt) item.readAt = now; }); }
   async getCurrentUser(): Promise<UserDto | null> { await this.wait(); return clone(this.currentUser); }
-  async signIn(): Promise<UserDto> { await this.wait(); this.currentUser = clone(mockUsers.current); console.info("[MockSkillApi] 模拟飞书登录完成", { userId: this.currentUser.id }); return clone(this.currentUser); }
+  async signIn(_options?: SignInOptions): Promise<UserDto> { await this.wait(); this.currentUser = clone(mockUsers.current); console.info("[MockSkillApi] 模拟飞书登录完成", { userId: this.currentUser.id }); return clone(this.currentUser); }
+  cancelSignIn(): void {}
   async signOut(): Promise<void> { await this.wait(); this.currentUser = null; console.info("[MockSkillApi] 模拟用户退出登录"); }
 }

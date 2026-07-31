@@ -8,6 +8,7 @@ import type {
   PublishSkillVersionDto,
   ResolveInstallationDto,
   SkillApi,
+  SignInOptions,
   UpdateSkillMetadataDto,
 } from "./contracts";
 import { DesktopAuthApi } from "./desktopAuthApi";
@@ -120,8 +121,12 @@ export class HttpSkillApi implements SkillApi {
     return this.auth.getCurrentUser();
   }
 
-  signIn() {
-    return this.auth.signIn();
+  signIn(options?: SignInOptions) {
+    return this.auth.signIn(options);
+  }
+
+  cancelSignIn() {
+    this.auth.cancelSignIn();
   }
 
   signOut() {

@@ -43,7 +43,7 @@ desktop
   → 返回 Bearer Token 和用户信息
 ```
 
-浏览器 URL 中只携带两分钟有效且只能使用一次的授权码，不携带长期 Bearer Token。
+浏览器 URL 中只携带五分钟有效且只能使用一次的授权码，不携带长期 Bearer Token。
 
 ## 数据库
 
@@ -65,7 +65,7 @@ pnpm prisma:generate
 
 - `client_type = desktop-auth-code`
 - `scopes = ["auth:exchange"]`
-- 默认两分钟过期
+- 默认五分钟过期
 - exchange 成功后立即标记为已撤销
 
 正式桌面 Token 使用 `client_type = desktop`。同一用户重新登录时会撤销其旧的 desktop
