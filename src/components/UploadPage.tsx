@@ -275,14 +275,18 @@ export function UploadPage({
       <header className="page-heading upload-heading">
         <div>
           <h1>{targetSkill ? "上传新版本" : "上传 Skill"}</h1>
-          <p>{targetSkill ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）` : "在本地解析 ZIP 或文件夹，并确认平台展示信息后发布"}</p>
+          <p>
+            {targetSkill
+              ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）`
+              : "将本地 Skill 上传到云端，与团队成员共享"}
+          </p>
         </div>
       </header>
 
       <form className="upload-panel" onSubmit={(event) => void handleSubmit(event)}>
         <div className="form-section-heading">
           <span className="section-number">1</span>
-          <div><h2>选择 Skill ZIP 或文件夹</h2><p>文件夹会在本地自动打包；根目录或单层外包装目录中必须包含 SKILL.md</p></div>
+          <div><h2>选择 Skill 压缩包或文件夹</h2></div>
         </div>
 
         <div className="upload-source-grid">
