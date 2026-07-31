@@ -235,9 +235,6 @@ export function AllAgentsSkillsPage({
                   onClick={() => void revealWorkspaceSkill(record)}
                 >
                   <span className="my-skill-card-heading">
-                    <span className="agent-skill-logo agent-skill-logo-agents">
-                      <AppIcon name="agents" size={19} />
-                    </span>
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
                       <code>{record.skillName}</code>

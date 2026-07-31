@@ -2528,12 +2528,6 @@ button.my-skill-card:hover {
   color: #596059;
 }
 
-.agent-skill-logo-agents {
-  border-color: #a9d8c5;
-  background: #eef8f3;
-  color: #147451;
-}
-
 .agent-skill-logo-claude {
   border-color: #d87958;
   background: #df815f;
@@ -2611,6 +2605,10 @@ button.my-skill-card:hover {
 
 .workspace-skill-footer-actions {
   gap: 10px;
+}
+
+.workspace-skill-card .my-skill-statuses {
+  padding-left: 0;
 }
 
 .workspace-connection-summary {
