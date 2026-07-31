@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Tooltip, Toast } from "./ui";
+import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Tooltip } from "./ui";
 import {
   skillApi,
   SkillApiError,
@@ -11,18 +11,18 @@ import {
   type UserDto,
 } from "../api";
 import { AppIcon } from "./AppIcon";
-import { ReasonActionModal } from "./ReasonActionModal";
-import { SkillMetadataModal } from "./SkillMetadataModal";
-import { OwnershipTransferModal } from "./OwnershipTransferModal";
 
 interface SkillDetailModalProps {
   skill: SkillSummaryDto | null;
+  context: "browse" | "manage";
   installedSkillIds: Set<string>;
+  uninstallableSkillIds: Set<string>;
+  uninstallingSkillId: string | null;
   currentUser: UserDto | null;
   onClose: () => void;
   onInstall: (skill: SkillSummaryDto, version: SkillVersionDto) => void;
+  onUninstall: (skill: SkillSummaryDto) => void;
   onUploadVersion: (skill: SkillSummaryDto) => void;
-  onChanged: (skill: SkillDetailDto) => void;
   onOpenDerivedSource: (skillId: string) => void;
 }
 
@@ -75,23 +75,29 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
 /**
  * 功能说明：展示 Skill 平台信息、版本历史、版本文件树和文本文件预览。
  * @param skill - 当前打开的 Skill 摘要，为 null 时关闭模态框。
+ * @param context - 详情来源；浏览场景只允许安装，管理场景才显示管理操作。
  * @param installedSkillIds - 客户端已安装 Skill 编号集合。
+ * @param uninstallableSkillIds - 客户端可安全卸载的 Skill 编号集合。
+ * @param uninstallingSkillId - 当前正在卸载的 Skill 编号。
  * @param currentUser - 当前登录用户，匿名状态为 null。
  * @param onClose - 关闭详情模态框的回调。
  * @param onInstall - 安装指定历史版本的回调。
+ * @param onUninstall - 卸载当前 Skill 的回调。
  * @param onUploadVersion - 进入指定 Skill 新版本上传流程的回调。
- * @param onChanged - Skill 状态或展示信息变化后的回调。
  * @param onOpenDerivedSource - 返回浏览页并定位来源 Skill 的回调。
  * @returns Skill 详情模态框。
  */
 export function SkillDetailModal({
   skill,
+  context,
   installedSkillIds,
+  uninstallableSkillIds,
+  uninstallingSkillId,
   currentUser,
   onClose,
   onInstall,
+  onUninstall,
   onUploadVersion,
-  onChanged,
   onOpenDerivedSource,
 }: SkillDetailModalProps) {
   const [detail, setDetail] = useState<SkillDetailDto | null>(null);
@@ -106,11 +112,6 @@ export function SkillDetailModal({
   const [fileTreeLoading, setFileTreeLoading] = useState(false);
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [fileError, setFileError] = useState("");
-  const [managementAction, setManagementAction] = useState<{ type: "archive" | "restore" | "withdraw"; version?: SkillVersionDto } | null>(null);
-  const [managementReason, setManagementReason] = useState("");
-  const [managementLoading, setManagementLoading] = useState(false);
-  const [metadataVisible, setMetadataVisible] = useState(false);
-  const [ownershipVisible, setOwnershipVisible] = useState(false);
 
   useEffect(() => {
     if (!skill) {
@@ -147,7 +148,7 @@ export function SkillDetailModal({
   }, [skill]);
 
   useEffect(() => {
-    if (!detail || !fileVersionId) return;
+    if (!detail || !fileVersionId || activeTabKey !== "files") return;
     let active = true;
     setFileTreeLoading(true);
     setFileError("");
@@ -173,10 +174,10 @@ export function SkillDetailModal({
     return () => {
       active = false;
     };
-  }, [detail, fileVersionId]);
+  }, [activeTabKey, detail, fileVersionId]);
 
   useEffect(() => {
-    if (!detail || !fileVersionId || !selectedFilePath) return;
+    if (!detail || !fileVersionId || !selectedFilePath || activeTabKey !== "files") return;
     const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath);
     setFileError("");
     if (!selectedFile?.previewable) {
@@ -203,45 +204,13 @@ export function SkillDetailModal({
     return () => {
       active = false;
     };
-  }, [detail, fileEntries, fileVersionId, selectedFilePath]);
+  }, [activeTabKey, detail, fileEntries, fileVersionId, selectedFilePath]);
 
   const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath) ?? null;
   const orderedFileEntries = orderFileEntries(fileEntries);
   const sortedCollaborators = [...(detail?.collaborators ?? [])].sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
-  const canManageSkill = Boolean(detail && currentUser && (currentUser.role === "ADMIN" || detail.owner.id === currentUser.id));
-  const canManageVersion = Boolean(detail && currentUser && (currentUser.role === "ADMIN" || detail.owner.id === currentUser.id || detail.collaborators.some((user) => user.id === currentUser.id)));
-
-  async function handleManagementConfirm(): Promise<void> {
-    if (!detail || !managementAction || !managementReason.trim()) return;
-    setManagementLoading(true);
-    try {
-      if (managementAction.type === "archive") {
-        const updated = await skillApi.archiveSkill(detail.id, { reason: managementReason.trim() });
-        setDetail(updated);
-        onChanged(updated);
-        Toast.success("Skill 已归档");
-      } else if (managementAction.type === "restore") {
-        const updated = await skillApi.restoreSkill(detail.id, { reason: managementReason.trim() });
-        setDetail(updated);
-        onChanged(updated);
-        Toast.success("Skill 已恢复");
-      } else if (managementAction.version) {
-        const updatedVersion = await skillApi.withdrawSkillVersion(detail.id, managementAction.version.id, { reason: managementReason.trim() });
-        setVersions((items) => items.map((item) => item.id === updatedVersion.id ? updatedVersion : item));
-        const updatedDetail = detail.currentVersion.id === updatedVersion.id ? { ...detail, currentVersion: updatedVersion } : detail;
-        setDetail(updatedDetail);
-        onChanged(updatedDetail);
-        Toast.success(`v${updatedVersion.version} 已撤回`);
-      }
-      setManagementAction(null);
-      setManagementReason("");
-    } catch (reason) {
-      console.error("[KocotreeSkills] Skill 管理操作失败", reason);
-      Toast.error(reason instanceof SkillApiError ? reason.message : "操作失败，请稍后重试");
-    } finally {
-      setManagementLoading(false);
-    }
-  }
+  const canManageSkill = Boolean(detail && currentUser && detail.owner.id === currentUser.id);
+  const showManagementActions = context === "manage" && canManageSkill;
 
   return (
     <>
@@ -257,20 +226,30 @@ export function SkillDetailModal({
           {detail ? (
             <>
               {detail.status === "ACTIVE" && (
-                <Button
-                  theme="solid"
-                  type="primary"
-                  disabled={detail.currentVersion.status !== "PUBLISHED"}
-                  icon={installedSkillIds.has(detail.id) ? undefined : <AppIcon name="download" size={16} />}
-                  onClick={() => onInstall(detail, detail.currentVersion)}
-                >
-                  {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
-                </Button>
+                uninstallableSkillIds.has(detail.id) ? (
+                  <Button
+                    className="detail-install-button"
+                    type="danger"
+                    loading={uninstallingSkillId === detail.id}
+                    disabled={uninstallingSkillId !== null}
+                    onClick={() => onUninstall(detail)}
+                  >
+                    卸载
+                  </Button>
+                ) : (
+                  <Button
+                    className="detail-install-button"
+                    theme="solid"
+                    type="primary"
+                    disabled={detail.currentVersion.status !== "PUBLISHED"}
+                    icon={installedSkillIds.has(detail.id) ? undefined : <AppIcon name="download" size={16} />}
+                    onClick={() => onInstall(detail, detail.currentVersion)}
+                  >
+                    {installedSkillIds.has(detail.id) ? "重新安装最新版" : "安装最新版"}
+                  </Button>
+                )
               )}
-              {canManageSkill && detail.status === "ARCHIVED" && (
-                <Button theme="solid" type="primary" loading={managementLoading} onClick={() => { setManagementReason(""); setManagementAction({ type: "restore" }); }}>恢复 Skill</Button>
-              )}
-              {(detail.status === "ACTIVE" || canManageVersion) && (
+              {showManagementActions && detail.status === "ACTIVE" && (
                 <Dropdown
                   className="detail-more-menu"
                   contentClassName="detail-more-dropdown"
@@ -280,15 +259,6 @@ export function SkillDetailModal({
                     <Dropdown.Menu>
                       {detail.status === "ACTIVE" && (
                         <Dropdown.Item onClick={() => onUploadVersion(detail)}>上传新版本</Dropdown.Item>
-                      )}
-                      {canManageVersion && (
-                        <Dropdown.Item onClick={() => setMetadataVisible(true)}>编辑展示信息</Dropdown.Item>
-                      )}
-                      {canManageSkill && detail.collaborators.some((user) => user.status === "ACTIVE") && (
-                        <Dropdown.Item onClick={() => setOwnershipVisible(true)}>转移所有权</Dropdown.Item>
-                      )}
-                      {canManageSkill && detail.status === "ACTIVE" && (
-                        <Dropdown.Item type="danger" onClick={() => { setManagementReason(""); setManagementAction({ type: "archive" }); }}>归档 Skill</Dropdown.Item>
                       )}
                     </Dropdown.Menu>
                   )}
@@ -307,19 +277,18 @@ export function SkillDetailModal({
         <div className="detail-error"><strong>暂时无法显示详情</strong><span>{error}</span></div>
       ) : detail ? (
         <div className="detail-body">
-          <div className="detail-identity">
-            <span className="skill-logo skill-logo-green">{detail.skillName.slice(0, 2).toUpperCase()}</span>
-            <div>
-              <strong>{detail.displayName}</strong>
-              <code>{detail.skillName}</code>
+          {(detail.displayName !== detail.skillName || detail.status !== "ACTIVE") && (
+            <div className="detail-identity">
+              {detail.displayName !== detail.skillName && (
+                <code>{detail.skillName}</code>
+              )}
+              {detail.status !== "ACTIVE" && (
+                <span className={`detail-status detail-status-${detail.status.toLocaleLowerCase()}`}>
+                  {detail.status === "ARCHIVED" ? "已归档" : "名称冲突"}
+                </span>
+              )}
             </div>
-            {detail.status !== "ACTIVE" && (
-              <span className={`detail-status detail-status-${detail.status.toLocaleLowerCase()}`}>
-                {detail.status === "ARCHIVED" ? "已归档" : "名称冲突"}
-              </span>
-            )}
-          </div>
-          <p className="detail-description">{detail.displayDescription}</p>
+          )}
           <div className="detail-tags">
             {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
           </div>
@@ -333,47 +302,6 @@ export function SkillDetailModal({
               </span>
             </div>
           )}
-          <div className="detail-stats">
-            <div><span>最新版本</span><strong>v{detail.currentVersion.version}</strong></div>
-            <div><span>安装次数</span><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></div>
-            <div className="detail-maintainers">
-              <span>维护成员</span>
-              <div className="maintainer-list">
-                <span
-                  className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
-                  title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                >
-                  {detail.owner.name.slice(0, 1)}
-                </span>
-                <strong className="owner-name">{detail.owner.name}</strong>
-                <span className="owner-role">Owner</span>
-                {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
-                <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
-                  {sortedCollaborators.slice(0, 5).map((user) => (
-                    <Tooltip
-                      content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                      key={user.id}
-                    >
-                      <span
-                        className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
-                        role="img"
-                        aria-label={`协作者：${user.name}`}
-                      >
-                        {user.name.slice(0, 1)}
-                      </span>
-                    </Tooltip>
-                  ))}
-                  {sortedCollaborators.length > 5 && (
-                    <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
-                      <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
-                    </Tooltip>
-                  )}
-                  {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {detail.derivedFrom && (
             detail.derivedFrom.linkable ? (
               <button
@@ -398,11 +326,51 @@ export function SkillDetailModal({
           <Tabs type="line" activeKey={activeTabKey} onChange={setActiveTabKey}>
             <TabPane tab="介绍" itemKey="overview">
               <section className="detail-section">
-                <h3>Skill 原始说明</h3>
+                <h3>Skill 技能描述</h3>
                 <p>{detail.skillDescription}</p>
-                <dl className="detail-metadata">
+                <dl className="detail-info-grid">
+                  <div><dt>最新版本</dt><dd><strong>v{detail.currentVersion.version}</strong></dd></div>
+                  <div><dt>安装次数</dt><dd><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></dd></div>
                   <div><dt>创建时间</dt><dd>{formatDate(detail.createdAt)}</dd></div>
-                  <div><dt>最近更新</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
+                  <div><dt>更新时间</dt><dd>{formatDate(detail.updatedAt)}</dd></div>
+                  <div className="detail-info-maintainers">
+                    <dt>维护成员</dt>
+                    <dd>
+                      <div className="maintainer-list">
+                        <span
+                          className={detail.owner.status === "DISABLED" ? "owner-avatar disabled" : "owner-avatar"}
+                          title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                        >
+                          {detail.owner.name.slice(0, 1)}
+                        </span>
+                        <strong className="owner-name">{detail.owner.name}</strong>
+                        <span className="owner-role">Owner</span>
+                        {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
+                        <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
+                          {sortedCollaborators.slice(0, 5).map((user) => (
+                            <Tooltip
+                              content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
+                              key={user.id}
+                            >
+                              <span
+                                className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
+                                role="img"
+                                aria-label={`协作者：${user.name}`}
+                              >
+                                {user.name.slice(0, 1)}
+                              </span>
+                            </Tooltip>
+                          ))}
+                          {sortedCollaborators.length > 5 && (
+                            <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
+                              <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
+                            </Tooltip>
+                          )}
+                          {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
+                        </div>
+                      </div>
+                    </dd>
+                  </div>
                   <div><dt>最近更新者</dt><dd>{detail.updatedBy.name}</dd></div>
                   <div><dt>ZIP 大小</dt><dd>{formatFileSize(detail.currentVersion.packageSize)}</dd></div>
                 </dl>
@@ -431,9 +399,6 @@ export function SkillDetailModal({
                       {version.status === "WITHDRAWN" && <span className="withdrawal-reason">撤回原因：{version.withdrawalReason}</span>}
                     </button>
                     <div className="version-actions">
-                      {canManageVersion && version.status === "PUBLISHED" && version.version !== "1.0.0" && (
-                        <Button size="small" type="danger" theme="borderless" onClick={() => { setManagementReason(""); setManagementAction({ type: "withdraw", version }); }}>撤回</Button>
-                      )}
                       <Button size="small" disabled={version.status === "WITHDRAWN" || detail.status !== "ACTIVE"} onClick={() => onInstall(detail, version)}>安装</Button>
                     </div>
                   </article>
@@ -520,38 +485,6 @@ export function SkillDetailModal({
         </div>
       ) : null}
     </Modal>
-    <ReasonActionModal
-      title={managementAction?.type === "withdraw" ? "撤回版本" : managementAction?.type === "restore" ? "恢复 Skill" : "归档 Skill"}
-      description={managementAction?.type === "withdraw"
-        ? "撤回后该版本将无法继续安装，本地已经安装的副本仍可使用。"
-        : managementAction?.type === "restore"
-          ? "恢复后 Skill 将重新出现在技能广场，并允许用户下载和安装。"
-          : "归档后 Skill 不再出现在技能广场，本地已经安装的副本仍可使用。"}
-      visible={managementAction !== null}
-      reason={managementReason}
-      loading={managementLoading}
-      confirmType={managementAction?.type === "restore" ? "primary" : "danger"}
-      onReasonChange={setManagementReason}
-      onCancel={() => { setManagementAction(null); setManagementReason(""); }}
-      onConfirm={() => void handleManagementConfirm()}
-    />
-    <SkillMetadataModal
-      skill={detail}
-      currentUser={currentUser}
-      visible={metadataVisible}
-      onCancel={() => setMetadataVisible(false)}
-      onUpdated={(updated) => {
-        setMetadataVisible(false);
-        setDetail(updated);
-        onChanged(updated);
-      }}
-    />
-    <OwnershipTransferModal
-      skill={detail}
-      visible={ownershipVisible}
-      onCancel={() => setOwnershipVisible(false)}
-      onCreated={() => setOwnershipVisible(false)}
-    />
     </>
   );
 }

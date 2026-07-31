@@ -82,12 +82,13 @@ export interface paths {
         };
         /**
          * 获取 Skill 详情
-         * @description 归档 Skill 仅对其 Owner、协作者和管理员返回完整详情。
+         * @description 历史归档数据仅作只读兼容；当前产品不再创建归档状态。
          */
         get: operations["getSkill"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** 永久删除当前用户拥有的 Skill */
+        delete: operations["deleteSkill"];
         options?: never;
         head?: never;
         /** 修改平台展示信息 */
@@ -163,57 +164,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/skills/{skillId}/versions/{versionId}/withdraw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 撤回版本 */
-        post: operations["withdrawSkillVersion"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/skills/{skillId}/archive": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 归档 Skill */
-        post: operations["archiveSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/skills/{skillId}/restore": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 恢复 Skill */
-        post: operations["restoreSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/skills/{skillId}/installation-status": {
         parameters: {
             query?: never;
@@ -225,74 +175,6 @@ export interface paths {
         get: operations["getInstallationStatus"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/skills/{skillId}/ownership-transfers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 发起所有权转移邀请 */
-        post: operations["createOwnershipTransfer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ownership-transfers/{transferId}/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 接受所有权转移 */
-        post: operations["acceptOwnershipTransfer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ownership-transfers/{transferId}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 拒绝所有权转移 */
-        post: operations["rejectOwnershipTransfer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ownership-transfers/{transferId}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 取消所有权转移 */
-        post: operations["cancelOwnershipTransfer"];
         delete?: never;
         options?: never;
         head?: never;
@@ -423,7 +305,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        BusinessErrorCode: "COLLABORATOR_REQUIRED" | "CONTENT_UNCHANGED" | "DISPLAY_NAME_CONFIRMATION_REQUIRED" | "DUPLICATE_SKILL_NAME" | "FILE_NOT_FOUND" | "FILE_PREVIEW_UNAVAILABLE" | "FORBIDDEN" | "INITIAL_VERSION_REQUIRED" | "INSTALLATION_UNAVAILABLE" | "INVALID_REQUEST" | "INVALID_SEMVER" | "INVALID_SKILL_PACKAGE" | "OWNER_REQUIRED" | "PACKAGE_HASH_MISMATCH" | "PACKAGE_TOO_LARGE" | "SKILL_NAME_MISMATCH" | "SKILL_NOT_FOUND" | "SKILL_UNAVAILABLE" | "TRANSFER_NOT_FOUND" | "TRANSFER_RESOLVED" | "UNAUTHENTICATED" | "USER_DISABLED" | "VERSION_ALREADY_EXISTS" | "VERSION_CONFLICT" | "VERSION_NOT_FOUND" | "VERSION_NOT_GREATER";
+        BusinessErrorCode: "CONTENT_UNCHANGED" | "DISPLAY_NAME_CONFIRMATION_REQUIRED" | "DUPLICATE_SKILL_NAME" | "FILE_NOT_FOUND" | "FILE_PREVIEW_UNAVAILABLE" | "FORBIDDEN" | "INSTALLATION_UNAVAILABLE" | "INVALID_REQUEST" | "INVALID_SEMVER" | "INVALID_SKILL_PACKAGE" | "OWNER_REQUIRED" | "PACKAGE_HASH_MISMATCH" | "PACKAGE_TOO_LARGE" | "SKILL_NAME_MISMATCH" | "SKILL_NOT_FOUND" | "SKILL_UNAVAILABLE" | "UNAUTHENTICATED" | "USER_DISABLED" | "VERSION_ALREADY_EXISTS" | "VERSION_CONFLICT" | "VERSION_NOT_FOUND" | "VERSION_NOT_GREATER";
         ApiOkMeta: {
             /**
              * @description 与 HTTP 成功状态码一致。
@@ -541,11 +423,14 @@ export interface components {
             content: string;
             sha256: string;
         };
+        /** @description Tag 为可选项；tagIds 与 newTagNames 合计最多 5 个。 */
         CreateSkillRequest: {
             /** Format: binary */
             file: string;
             displayName: string;
             displayDescription: string;
+            /** @description 首版说明；留空时默认为“首次发布”。 */
+            changelog?: string;
             tagIds?: string[];
             newTagNames?: string[];
             forkedFromSkillId?: string;
@@ -563,6 +448,8 @@ export interface components {
             displayDescription?: string;
             tagIds?: string[];
             newTagNames?: string[];
+            /** @description 完整替换现有 Tag 关联；允许清空全部 Tag。 */
+            replaceTags?: boolean;
             /** @default false */
             confirmDuplicateDisplayName: boolean;
         };
@@ -574,29 +461,6 @@ export interface components {
             /** @default false */
             confirmDuplicateDisplayName: boolean;
         } | unknown | unknown | unknown | unknown;
-        ReasonRequest: {
-            reason: string;
-        };
-        CreateOwnershipTransferRequest: {
-            targetUserId: string;
-            reason?: string | null;
-        };
-        OwnershipTransfer: {
-            id: string;
-            skillId: string;
-            fromOwner: components["schemas"]["User"];
-            targetUser: components["schemas"]["User"];
-            /** @enum {string} */
-            status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELED" | "EXPIRED";
-            reason: string | null;
-            createdBy: components["schemas"]["User"];
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            expiresAt: string;
-            /** Format: date-time */
-            resolvedAt: string | null;
-        };
         InstallationStatus: {
             skillId: string;
             /** @enum {string} */
@@ -636,6 +500,7 @@ export interface components {
             archiveReason: string | null;
         };
         InstallationEventRequest: {
+            /** Format: uuid */
             eventId: string;
             skillId: string;
             versionId: string;
@@ -645,7 +510,7 @@ export interface components {
         Notification: {
             id: string;
             /** @enum {string} */
-            type: "VERSION_PUBLISHED" | "METADATA_UPDATED" | "OWNERSHIP_TRANSFER" | "SKILL_STATUS_CHANGED";
+            type: "VERSION_PUBLISHED" | "METADATA_UPDATED";
             title: string;
             body: string;
             skillId: string | null;
@@ -706,12 +571,6 @@ export interface components {
         InstallationStatusResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["InstallationStatus"];
         };
-        OwnershipTransferResponse: components["schemas"]["ApiOkMeta"] & {
-            data: components["schemas"]["OwnershipTransfer"];
-        };
-        OwnershipTransferCreatedResponse: components["schemas"]["ApiCreatedMeta"] & {
-            data: components["schemas"]["OwnershipTransfer"];
-        };
         DownloadTicketCreatedResponse: components["schemas"]["ApiCreatedMeta"] & {
             data: components["schemas"]["DownloadTicket"];
         };
@@ -739,7 +598,6 @@ export interface components {
     parameters: {
         SkillId: string;
         VersionId: string;
-        TransferId: string;
         Page: number;
         PageSize: number;
     };
@@ -773,7 +631,7 @@ export interface operations {
     listMySkills: {
         parameters: {
             query: {
-                relation: "OWNED" | "COLLABORATED" | "ARCHIVED";
+                relation: "OWNED" | "COLLABORATED";
                 page?: components["parameters"]["Page"];
                 pageSize?: components["parameters"]["PageSize"];
             };
@@ -888,6 +746,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillDetailResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skillId: components["parameters"]["SkillId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill 已永久删除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        code: 200;
+                        data: {
+                            id: string;
+                            deletedObjectCount: number;
+                            objectCount: number;
+                            ossCleaned: boolean;
+                        };
+                        /** @constant */
+                        msg: "success";
+                    };
                 };
             };
             default: components["responses"]["ErrorResponse"];
@@ -1047,92 +939,10 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
-    withdrawSkillVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                skillId: components["parameters"]["SkillId"];
-                versionId: components["parameters"]["VersionId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReasonRequest"];
-            };
-        };
-        responses: {
-            /** @description 版本已撤回 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillVersionResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    archiveSkill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                skillId: components["parameters"]["SkillId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReasonRequest"];
-            };
-        };
-        responses: {
-            /** @description Skill 已归档 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillDetailResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    restoreSkill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                skillId: components["parameters"]["SkillId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReasonRequest"];
-            };
-        };
-        responses: {
-            /** @description Skill 已恢复 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillDetailResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
     getInstallationStatus: {
         parameters: {
             query?: {
-                /** @description 本地安装凭证记录的版本 ID，用于判断该版本是否已撤回。 */
+                /** @description 本地安装凭证记录的版本 ID；可能返回历史撤回版本的兼容状态。 */
                 versionId?: string;
             };
             header?: never;
@@ -1150,102 +960,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstallationStatusResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    createOwnershipTransfer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                skillId: components["parameters"]["SkillId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateOwnershipTransferRequest"];
-            };
-        };
-        responses: {
-            /** @description 邀请已创建 */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OwnershipTransferCreatedResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    acceptOwnershipTransfer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transferId: components["parameters"]["TransferId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已接受 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OwnershipTransferResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    rejectOwnershipTransfer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transferId: components["parameters"]["TransferId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已拒绝 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OwnershipTransferResponse"];
-                };
-            };
-            default: components["responses"]["ErrorResponse"];
-        };
-    };
-    cancelOwnershipTransfer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                transferId: components["parameters"]["TransferId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已取消 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OwnershipTransferResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

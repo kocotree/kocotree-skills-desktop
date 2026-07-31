@@ -37,6 +37,35 @@ describe("MockSkillApi", () => {
     expect(result.items.every((skill) => skill.status === "ACTIVE")).toBe(true);
   });
 
+  it("Skill 浏览支持按页码和页容量返回列表", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const firstPage = await api.listSkills({ page: 1, pageSize: 5 });
+    const secondPage = await api.listSkills({ page: 2, pageSize: 5 });
+    expect(firstPage.items).toHaveLength(5);
+    expect(secondPage.items).toHaveLength(5);
+    expect(secondPage.total).toBe(firstPage.total);
+    expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
+  });
+
+  it("热门排序依次按安装量、更新时间、创建时间和 ID 降序", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const result = await api.listSkills({ sort: "INSTALLS_DESC", pageSize: 100 });
+
+    for (let index = 1; index < result.items.length; index += 1) {
+      const previous = result.items[index - 1];
+      const current = result.items[index];
+      const comparison = previous.installCount !== current.installCount
+        ? previous.installCount - current.installCount
+        : previous.updatedAt !== current.updatedAt
+          ? Date.parse(previous.updatedAt) - Date.parse(current.updatedAt)
+          : previous.createdAt !== current.createdAt
+            ? Date.parse(previous.createdAt) - Date.parse(current.createdAt)
+            : previous.id.localeCompare(current.id);
+
+      expect(comparison).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it("为全部预置 Mock Skill 标记统一 Tag", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const mockTag = (await api.listTags()).find((item) => item.name === "Mock");
@@ -67,13 +96,58 @@ describe("MockSkillApi", () => {
     expect((await api.listVersionFiles(created.id, created.currentVersion.id)).some((item) => item.path === "SKILL.md")).toBe(true);
   });
 
+  it("创建 Skill 时允许不选择 Tag", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    await api.signIn();
+    const created = await api.createSkill({
+      file: await createSkillZip("tag-optional"),
+      displayName: "Tag 可选测试",
+      displayDescription: "验证发布时可以不选择 Tag。",
+    });
+
+    expect(created.tags).toEqual([]);
+  });
+
+  it("编辑展示信息时允许清空全部 Tag", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const user = await api.signIn();
+    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
+    expect(target.tags.length).toBeGreaterThan(0);
+
+    const updated = await api.updateSkillMetadata(target.id, {
+      tagIds: [],
+      newTagNames: [],
+    });
+
+    expect(updated.tags).toEqual([]);
+  });
+
+  it("发布新版本时允许清空全部 Tag", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    await api.signIn();
+    const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
+    expect(target.tags.length).toBeGreaterThan(0);
+
+    const updated = await api.publishSkillVersion(target.id, {
+      file: await createSkillZip(target.skillName, "", "tag optional"),
+      baseVersionId: target.currentVersion.id,
+      version: "9.0.0",
+      changelog: "验证 Tag 可选",
+      tagIds: [],
+      newTagNames: [],
+    });
+
+    expect(updated.tags).toEqual([]);
+    expect(updated.currentVersion.version).toBe("9.0.0");
+  });
+
   it("展示名称重复时要求用户明确确认", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
     const file = await createSkillZip("another-review");
-    await expect(api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。" }))
+    await expect(api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", newTagNames: ["测试"] }))
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "DISPLAY_NAME_CONFIRMATION_REQUIRED"));
-    const created = await api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", confirmDuplicateDisplayName: true });
+    const created = await api.createSkill({ file, displayName: "代码审查助手", displayDescription: "同名展示测试。", newTagNames: ["测试"], confirmDuplicateDisplayName: true });
     expect(created.skillName).toBe("another-review");
   });
 
@@ -101,16 +175,15 @@ describe("MockSkillApi", () => {
     })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "SKILL_NAME_MISMATCH"));
   });
 
-  it("普通用户发布成功后成为协作者", async () => {
+  it("非 Owner 不能发布新版本", async () => {
     const api = new MockSkillApi({ delayMs: 0, initialUser: mockUsers.chen });
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const updated = await api.publishSkillVersion(target.id, {
+    await expect(api.publishSkillVersion(target.id, {
       file: await createSkillZip(target.skillName, "", "new collaborator"),
       baseVersionId: target.currentVersion.id,
       version: "1.4.3",
-      changelog: "补充协作者测试",
-    });
-    expect(updated.collaborators.map((user) => user.id)).toContain(mockUsers.chen.id);
+      changelog: "尝试更新其他人的 Skill",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
   it("协作者不能修改展示名称", async () => {
@@ -121,22 +194,12 @@ describe("MockSkillApi", () => {
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
-  it("协作者可以修改展示简介", async () => {
+  it("协作者不能修改展示简介", async () => {
     const api = new MockSkillApi({ delayMs: 0, initialUser: mockUsers.lin });
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const updated = await api.updateSkillMetadata(target.id, { displayDescription: "协作者更新后的展示简介。" });
-    expect(updated.displayDescription).toContain("协作者更新");
-    expect(updated.updatedBy.id).toBe(mockUsers.lin.id);
-  });
-
-  it("所有权只能转移给现有协作者", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const transfer = await api.createOwnershipTransfer(target.id, { targetUserId: mockUsers.lin.id, reason: "职责调整" });
-    expect(transfer.status).toBe("PENDING");
-    await expect(api.createOwnershipTransfer(target.id, { targetUserId: mockUsers.chen.id }))
-      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "COLLABORATOR_REQUIRED"));
+    await expect(api.updateSkillMetadata(target.id, {
+      displayDescription: "协作者尝试更新展示简介。",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "OWNER_REQUIRED"));
   });
 
   it("安装上报使用事件 ID 保持幂等", async () => {
@@ -158,37 +221,6 @@ describe("MockSkillApi", () => {
     expect((await api.listNotifications()).unreadCount).toBe(0);
   });
 
-  it("归档后从广场隐藏并保留在我的 Skill", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    const user = await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
-    await api.archiveSkill(target.id, { reason: "测试归档" });
-    expect((await api.listSkills()).items.some((skill) => skill.id === target.id)).toBe(false);
-    expect((await api.listMySkills({ relation: "ARCHIVED" })).items.some((skill) => skill.id === target.id)).toBe(true);
-  });
-
-  it("填写原因后可以恢复已归档 Skill", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    const user = await api.signIn();
-    const target = (await api.listSkills()).items.find((skill) => skill.owner.id === user.id)!;
-    await api.archiveSkill(target.id, { reason: "测试归档" });
-    const restored = await api.restoreSkill(target.id, { reason: "恢复维护" });
-    expect(restored.status).toBe("ACTIVE");
-    expect(restored.archiveReason).toBeNull();
-    expect((await api.listSkills()).items.some((skill) => skill.id === target.id)).toBe(true);
-  });
-
-  it("允许撤回后续版本但保留 1.0.0", async () => {
-    const api = new MockSkillApi({ delayMs: 0 });
-    await api.signIn();
-    const codeReview = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
-    const withdrawn = await api.withdrawSkillVersion(codeReview.id, codeReview.currentVersion.id, { reason: "存在错误" });
-    expect(withdrawn.status).toBe("WITHDRAWN");
-    const sqlChecker = (await api.listSkills()).items.find((skill) => skill.skillName === "sql-checker")!;
-    await expect(api.withdrawSkillVersion(sqlChecker.id, sqlChecker.currentVersion.id, { reason: "尝试撤回首版" }))
-      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INITIAL_VERSION_REQUIRED"));
-  });
-
   it("本地同名未知 Skill 需要强制替换", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const localApi = new MockLocalSkillService(0);
@@ -199,7 +231,7 @@ describe("MockSkillApi", () => {
     await expect(localApi.install({ skill: conflictingSkill, version: conflictingVersion }))
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "LOCAL_SKILL_CONFLICT"));
     const result = await localApi.install({ skill: conflictingSkill, version: conflictingVersion, force: true });
-    expect(result.backupPath).toContain(".agents/.kocotree/backups");
+    expect(result.backupPath).toContain(".skills-manager/backups");
   });
 
   it("安装异常演示卡片覆盖文档中的前端处理场景", async () => {

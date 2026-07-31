@@ -62,20 +62,17 @@ ZIP 本地解析和平台版本安装属于客户端能力，不通过服务端 
 
 | 能力 | 匿名 | 登录用户 | 协作者 | Owner | 管理员 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 浏览公开 Skill、版本、Tag、文件树 | 是 | 是 | 是 | 是 | 是 |
+| 浏览公开 Skill、版本、Tag、文件树 | 否 | 是 | 是 | 是 | 是 |
 | 安装与安装上报 | 否 | 是 | 是 | 是 | 是 |
 | 创建 Skill | 否 | 是 | 是 | 是 | 是 |
-| 发布 ACTIVE Skill 新版本 | 否 | 是 | 是 | 是 | 是 |
-| 发布 ARCHIVED Skill 新版本 | 否 | 否 | 是 | 是 | 是 |
-| 修改展示简介、Tags | 否 | 否 | 是 | 是 | 是 |
-| 修改展示名称 | 否 | 否 | 否 | 是 | 否 |
-| 撤回自己的非首版版本 | 否 | 是 | 是 | 是 | 是 |
-| 撤回任意非首版版本 | 否 | 否 | 否 | 是 | 是 |
-| 归档、恢复 Skill | 否 | 否 | 否 | 是 | 是 |
-| 正常发起所有权转移 | 否 | 否 | 否 | 是 | 否 |
-| 处理停用 Owner | 否 | 否 | 否 | 否 | 是 |
+| 发布新版本 | 否 | 否 | 否 | 是 | 否 |
+| 修改展示名称、简介、Tags | 否 | 否 | 否 | 是 | 否 |
+| 永久删除 Skill | 否 | 否 | 否 | 是 | 否 |
 
-管理员不能在有效 Owner 存在时强制转移所有权，也不能直接修改该 Skill 的展示名称。
+Owner 固定为首个版本上传者。系统不提供归档、恢复、版本撤回或所有权转移。
+
+除飞书登录入口、OAuth 回调、桌面一次性换码和健康检查外，所有业务接口都必须携带
+`Authorization: Bearer <token>`。
 
 ## 4. 核心 DTO
 
@@ -100,7 +97,7 @@ ZIP 本地解析和平台版本安装属于客户端能力，不通过服务端 
 | `id` | `string` | 是 | 稳定标识。 |
 | `name` | `string` | 是 | 展示名称。 |
 
-Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
+Tag 治理规则暂缓。单个 Skill 可以不关联 Tag，最多关联 5 个。
 
 ### 4.3 SkillVersion
 
@@ -109,7 +106,7 @@ Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
 | `id` | `string` | 是 | 版本标识。 |
 | `skillId` | `string` | 是 | 所属 Skill。 |
 | `version` | `string` | 是 | SemVer。 |
-| `status` | `PUBLISHED \| WITHDRAWN` | 是 | 版本状态。 |
+| `status` | `PUBLISHED \| WITHDRAWN` | 是 | 版本状态；`WITHDRAWN` 仅兼容历史数据。 |
 | `skillName` | `string` | 是 | 此版本 `SKILL.md` 的名称。 |
 | `skillDescription` | `string` | 是 | 此版本 `SKILL.md` 的描述。 |
 | `changelog` | `string` | 是 | 不可变更新说明。 |
@@ -119,9 +116,9 @@ Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
 | `contentHash` | `string` | 是 | 规范化目录内容哈希。 |
 | `uploadedBy` | `User` | 是 | 实际上传者。 |
 | `publishedAt` | `string` | 是 | 发布时间。 |
-| `withdrawnBy` | `User \| null` | 是 | 撤回人。 |
-| `withdrawnAt` | `string \| null` | 是 | 撤回时间。 |
-| `withdrawalReason` | `string \| null` | 是 | 撤回原因。 |
+| `withdrawnBy` | `User \| null` | 是 | 历史撤回记录的操作人；新数据固定为 `null`。 |
+| `withdrawnAt` | `string \| null` | 是 | 历史撤回时间；新数据固定为 `null`。 |
+| `withdrawalReason` | `string \| null` | 是 | 历史撤回原因；新数据固定为 `null`。 |
 
 `SkillVersionDetail` 在此基础上增加原始 `skillMd`。
 
@@ -134,15 +131,15 @@ Tag 治理规则暂缓。单个 Skill 最多关联 5 个 Tag。
 | `displayName` | `string` | 是 | 平台展示名称。 |
 | `skillDescription` | `string` | 是 | 当前可用版本原始描述。 |
 | `displayDescription` | `string` | 是 | 平台展示简介。 |
-| `status` | `ACTIVE \| ARCHIVED \| NAME_CONFLICT` | 是 | 在线状态。 |
+| `status` | `ACTIVE \| ARCHIVED \| NAME_CONFLICT` | 是 | 在线状态；`ARCHIVED` 仅兼容历史数据。 |
 | `owner` | `User` | 是 | 当前 Owner。 |
-| `tags` | `Tag[]` | 是 | 最多 5 个。 |
+| `tags` | `Tag[]` | 是 | 可以为空，最多 5 个。 |
 | `currentVersion` | `SkillVersion` | 是 | 最高 `PUBLISHED` 版本。 |
 | `installCount` | `integer` | 是 | 成功安装操作总数。 |
 | `derivedFrom` | `DerivedSource \| null` | 是 | 直接派生来源。 |
 | `updatedBy` | `User` | 是 | 最近版本或平台信息更新者。 |
-| `archivedAt` | `string \| null` | 是 | 归档时间。 |
-| `archiveReason` | `string \| null` | 是 | 归档原因。 |
+| `archivedAt` | `string \| null` | 是 | 历史归档时间；新数据固定为 `null`。 |
+| `archiveReason` | `string \| null` | 是 | 历史归档原因；新数据固定为 `null`。 |
 | `nameConflictReason` | `string \| null` | 是 | 名称冲突说明。 |
 | `createdAt` | `string` | 是 | 创建时间。 |
 | `updatedAt` | `string` | 是 | 最近更新时间。 |
@@ -197,7 +194,7 @@ Authorization: Bearer <token>
 GET /api/tags?query=开发
 ```
 
-匿名可用，返回 `ApiResponse<Tag[]>`。创建 Tag 通过 Skill 创建、版本发布或平台信息修改请求中的 `newTagNames` 完成。
+需要登录，返回 `ApiResponse<Tag[]>`。创建 Tag 通过 Skill 创建、版本发布或平台信息修改请求中的 `newTagNames` 完成。
 
 ## 7. Skill 查询
 
@@ -209,7 +206,9 @@ GET /api/skills?query=review&tagId=tag_dev&sort=UPDATED_DESC&page=1&pageSize=20
 
 排序枚举：`UPDATED_DESC`、`CREATED_DESC`、`INSTALLS_DESC`。
 
-公开列表不返回 `ARCHIVED` 或 `NAME_CONFLICT`。两种状态仅通过在线管理列表和已安装客户端状态查询返回。
+`INSTALLS_DESC` 按安装次数、更新时间、创建时间和 Skill ID 依次降序排列，确保安装次数相同时仍能稳定分页。
+
+公开列表不返回历史 `ARCHIVED` 数据或 `NAME_CONFLICT`。
 
 ### 7.2 Skill 详情
 
@@ -217,7 +216,7 @@ GET /api/skills?query=review&tagId=tag_dev&sort=UPDATED_DESC&page=1&pageSize=20
 GET /api/skills/{skillId}
 ```
 
-公开访问 `ARCHIVED` 返回 `404 SKILL_NOT_FOUND`。Owner、协作者或管理员携带令牌时可以读取归档管理详情。
+公开访问历史 `ARCHIVED` 数据返回 `404 SKILL_NOT_FOUND`；该状态仅供旧数据兼容读取。
 
 ### 7.3 版本历史
 
@@ -225,7 +224,7 @@ GET /api/skills/{skillId}
 GET /api/skills/{skillId}/versions?page=1&pageSize=20
 ```
 
-返回 `ApiResponse<VersionPage>`，其中包含 `PUBLISHED` 与 `WITHDRAWN` 版本，并按 SemVer 降序。公开访问归档 Skill 返回不存在。
+返回 `ApiResponse<VersionPage>`，按 SemVer 降序。正常数据均为 `PUBLISHED`；历史 `WITHDRAWN` 记录仅供兼容展示。
 
 ### 7.4 版本详情
 
@@ -269,7 +268,7 @@ GET /api/skills/{skillId}/versions/{versionId}/files/content?path=references%2Fg
 GET /api/users/me/skills?relation=OWNED&page=1&pageSize=20
 ```
 
-`relation` 支持 `OWNED`、`COLLABORATED`、`ARCHIVED`。该接口只返回在线平台关系，不表达本地安装目录。
+`relation` 支持 `OWNED`、`COLLABORATED`。该接口只返回在线平台关系，不表达本地安装目录。
 
 ## 8. 创建、更新和平台信息
 
@@ -286,13 +285,14 @@ Authorization: Bearer <token>
 | `file` | ZIP | 是 | 原始 ZIP。 |
 | `displayName` | `string` | 是 | 平台展示名称。 |
 | `displayDescription` | `string` | 是 | 平台展示简介。 |
-| `tagIds` | `string[]` | 否 | 已有 Tag。 |
-| `newTagNames` | `string[]` | 否 | 新 Tag 名称。 |
+| `changelog` | `string` | 否 | 首版说明；留空时默认为“首次发布”。 |
+| `tagIds` | `string[]` | 条件必填 | 已有 Tag；与 `newTagNames` 至少提供一项。 |
+| `newTagNames` | `string[]` | 条件必填 | 新 Tag 名称；与 `tagIds` 至少提供一项。 |
 | `confirmDuplicateDisplayName` | `boolean` | 否 | 确认展示名称重名。 |
 | `forkedFromSkillId` | `string` | 否 | 派生来源 Skill。 |
 | `forkedFromVersionId` | `string` | 否 | 派生来源版本。 |
 
-来源字段必须同时出现。服务端固定创建 `1.0.0`，更新说明为“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
+来源字段必须同时出现。Tag 为可选项，最多选择或创建 5 个。服务端固定创建 `1.0.0`；未填写首版说明时使用“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
 
 `tagIds` 与 `newTagNames` 使用重复表单字段传递，每个数组元素对应一个同名字段。例如：
 
@@ -317,14 +317,15 @@ Authorization: Bearer <token>
 | `version` | `string` | 是 | 更高 SemVer。 |
 | `changelog` | `string` | 是 | 不可变更新说明。 |
 | `displayName` | `string` | 否 | 仅 Owner 可提交。 |
-| `displayDescription` | `string` | 否 | Owner 或协作者可提交。 |
+| `displayDescription` | `string` | 否 | 仅 Owner 可提交。 |
 | `tagIds` | `string[]` | 否 | 出现时完整替换 Tag 关联。 |
 | `newTagNames` | `string[]` | 否 | 新 Tag 名称。 |
 | `confirmDuplicateDisplayName` | `boolean` | 否 | Owner 确认展示名称重名。 |
 
-任何登录用户可以更新 `ACTIVE` Skill；`ARCHIVED` 只允许 Owner、已有协作者和管理员。首次更新者在同一事务成功后成为协作者并可应用展示简介与 Tags。任何字段失败都会回滚整个请求。
+只有 Owner 可以给现有 Skill 发布新版本，并在同一事务中应用展示简介与 Tags。客户端是否显示发布入口不影响该服务端权限校验。任何字段失败都会回滚整个请求。
 
 `tagIds` 与 `newTagNames` 的编码方式与创建 Skill 相同，均使用重复表单字段。
+传入任一 Tag 字段时服务端会视为完整替换，并允许清空全部 Tag。
 
 响应 `201 ApiResponse<SkillDetail>`。
 
@@ -346,64 +347,28 @@ Authorization: Bearer <token>
 }
 ```
 
-请求至少包含一个可修改字段。`displayName` 仅 Owner 可改；展示简介和 Tags 允许 Owner 与协作者修改。修改不创建版本，采用后提交覆盖前提交。修改为重名展示名称时，客户端确认后携带 `confirmDuplicateDisplayName=true` 重试。
+请求至少包含一个可修改字段。展示名称、展示简介和 Tags 均仅 Owner 可改。修改不创建版本，采用后提交覆盖前提交。修改为重名展示名称时，客户端确认后携带 `confirmDuplicateDisplayName=true` 重试。
 
-## 9. 撤回、归档与恢复
-
-### 9.1 撤回版本
+### 8.4 永久删除 Skill
 
 ```http
-POST /api/skills/{skillId}/versions/{versionId}/withdraw
+DELETE /api/skills/{skillId}
 Authorization: Bearer <token>
 ```
 
-```json
-{
-  "reason": "该版本包含错误的操作指引。"
-}
-```
+仅 Owner 可以永久删除。数据库中的 Skill、版本、文件和关联记录会在同一事务中删除；
+事务成功后服务端尽力清理所有版本的 OSS 包。OSS 清理失败不会恢复已经删除的数据库记录，
+响应中的 `ossCleaned=false` 用于后续清理孤立对象。
 
-`1.0.0` 返回 `INITIAL_VERSION_REQUIRED`。撤回不可逆，响应为 `ApiResponse<SkillVersion>`。
-
-### 9.2 归档 Skill
-
-```http
-POST /api/skills/{skillId}/archive
-Authorization: Bearer <token>
-```
-
-```json
-{
-  "reason": "该 Skill 已停止维护。"
-}
-```
-
-仅 Owner 或管理员可用，原因必填且不可修改。
-
-### 9.3 恢复 Skill
-
-```http
-POST /api/skills/{skillId}/restore
-Authorization: Bearer <token>
-```
-
-```json
-{
-  "reason": "维护工作已经恢复。"
-}
-```
-
-不强制先发布新版本，响应为 `ApiResponse<SkillDetail>`。
-
-### 9.4 已安装客户端查询状态
+## 9. 已安装客户端查询状态
 
 ```http
 GET /api/skills/{skillId}/installation-status?versionId={versionId}
 ```
 
-该接口允许匿名调用；登录状态只用于服务端审计，不扩大返回字段。`versionId` 来自本地安装凭证，可选。响应不返回 ZIP、下载地址或完整平台展示信息。
+该接口必须登录并携带 Bearer Token。`versionId` 来自本地安装凭证，可选。响应不返回 ZIP、下载地址或完整平台展示信息。
 
-归档且本地安装版本已撤回时返回：
+历史归档数据或历史撤回版本可能返回：
 
 ```json
 {
@@ -427,37 +392,9 @@ GET /api/skills/{skillId}/installation-status?versionId={versionId}
 
 在线状态查询失败属于临时状态，客户端保留安装凭证和本地记录并显示“在线信息不可用”，不得自动改为 `LOCAL_UNKNOWN`。
 
-## 10. 所有权转移
+## 10. 下载与安装上报
 
-### 10.1 发起邀请
-
-```http
-POST /api/skills/{skillId}/ownership-transfers
-Authorization: Bearer <token>
-```
-
-```json
-{
-  "targetUserId": "user_456",
-  "reason": "原 Owner 账号已停用。"
-}
-```
-
-有效 Owner 只能选择已有协作者，`reason` 可选。管理员只能处理停用 Owner，必须填写原因；没有协作者时可以选择任意登录过平台的活跃用户。
-
-### 10.2 接受、拒绝和取消
-
-```http
-POST /api/ownership-transfers/{transferId}/accept
-POST /api/ownership-transfers/{transferId}/reject
-POST /api/ownership-transfers/{transferId}/cancel
-```
-
-邀请 7 天后自动过期。同一 Skill 同时只能存在一个 `PENDING` 邀请。
-
-## 11. 下载与安装上报
-
-### 11.1 获取下载凭证
+### 10.1 获取下载凭证
 
 ```http
 POST /api/skills/{skillId}/versions/{versionId}/download-tickets
@@ -479,7 +416,7 @@ Authorization: Bearer <token>
 }
 ```
 
-### 11.2 平台匹配接口
+### 10.2 平台匹配接口
 
 ```http
 POST /api/installations/resolve
@@ -493,11 +430,11 @@ Authorization: Bearer <token>
 }
 ```
 
-匹配成功返回 `skillId`、`versionId` 和在线状态；归档 Skill 只返回最小归档状态。此操作不增加安装次数。
+匹配成功返回 `skillId`、`versionId` 和在线状态；历史归档数据只返回最小兼容状态。此操作不增加安装次数。
 
 该服务端接口保留在在线契约中，当前客户端安装流程不调用。
 
-### 11.3 上报安装成功
+### 10.3 上报安装成功
 
 ```http
 POST /api/installations/events
@@ -506,7 +443,7 @@ Authorization: Bearer <token>
 
 ```json
 {
-  "eventId": "01J...",
+  "eventId": "019fa329-b953-7c9d-a388-a3262594472f",
   "skillId": "skill_123",
   "versionId": "ver_143",
   "installedAt": "2026-07-17T10:02:00+08:00"
@@ -515,18 +452,18 @@ Authorization: Bearer <token>
 
 相同 `eventId` 重试返回成功但不重复计数。凭证恢复、下载失败、取消和安装失败不上报。
 
-## 12. 通知
+## 11. 通知
 
-### 12.1 获取通知
+### 11.1 获取通知
 
 ```http
 GET /api/notifications?page=1&pageSize=20&unreadOnly=true
 Authorization: Bearer <token>
 ```
 
-通知包含版本发布、展示信息修改、所有权邀请和状态变化。客户端只显示弱提醒红点。
+通知包含版本发布和展示信息修改。客户端只显示弱提醒红点。
 
-### 12.2 标记已读
+### 11.2 标记已读
 
 ```http
 POST /api/notifications/{notificationId}/read
@@ -535,7 +472,7 @@ POST /api/notifications/read-all
 
 两个接口均返回 `200 ApiResponse<{}>`。
 
-## 13. 常见错误码
+## 12. 常见错误码
 
 表中的 HTTP 数字同时是响应体的 `code`，错误码字符串位于 `data.errorCode`。
 
@@ -546,24 +483,20 @@ POST /api/notifications/read-all
 | 400 | `INVALID_SEMVER` | 版本号不是合法 SemVer。 |
 | 400 | `VERSION_NOT_GREATER` | 版本号未高于最高历史版本。 |
 | 400 | `CONTENT_UNCHANGED` | 内容与历史版本一致。 |
-| 400 | `INITIAL_VERSION_REQUIRED` | `1.0.0` 不允许撤回。 |
 | 401 | `UNAUTHENTICATED` | 当前请求没有可用的登录身份。 |
 | 403 | `FORBIDDEN` | 当前用户无权执行操作。 |
 | 403 | `USER_DISABLED` | 当前用户账号已停用。 |
 | 403 | `OWNER_REQUIRED` | 当前操作仅允许 Owner 或指定管理员执行。 |
-| 403 | `COLLABORATOR_REQUIRED` | 目标用户不是当前 Skill 的有效协作者。 |
 | 404 | `SKILL_NOT_FOUND` | Skill 不存在或公开不可见。 |
 | 404 | `VERSION_NOT_FOUND` | 版本不存在。 |
 | 404 | `FILE_NOT_FOUND` | 版本文件或文件清单不存在。 |
-| 404 | `TRANSFER_NOT_FOUND` | 所有权转移邀请不存在。 |
 | 409 | `DUPLICATE_SKILL_NAME` | `skillName` 已被占用。 |
 | 409 | `DISPLAY_NAME_CONFIRMATION_REQUIRED` | 展示名称重名，需要确认。 |
 | 409 | `VERSION_CONFLICT` | `baseVersionId` 已过期。 |
 | 409 | `VERSION_ALREADY_EXISTS` | 相同 SemVer 版本号已经存在。 |
 | 409 | `SKILL_NAME_MISMATCH` | 更新 ZIP 名称与目标 Skill 不一致。 |
-| 409 | `SKILL_UNAVAILABLE` | Skill 已归档或名称冲突，当前操作不可用。 |
+| 409 | `SKILL_UNAVAILABLE` | Skill 因名称冲突等原因不可用。 |
 | 409 | `INSTALLATION_UNAVAILABLE` | 当前 Skill 或版本不可安装。 |
-| 409 | `TRANSFER_RESOLVED` | 所有权转移邀请已经处理。 |
 | 413 | `PACKAGE_TOO_LARGE` | ZIP 超过文件大小、数量或解压大小限制。 |
 | 415 | `FILE_PREVIEW_UNAVAILABLE` | 文件不是受支持的 UTF-8 文本预览类型。 |
 | 422 | `PACKAGE_HASH_MISMATCH` | 服务端或客户端下载校验失败。 |
@@ -579,13 +512,15 @@ POST /api/notifications/read-all
 | `PACKAGE_HASH_MISMATCH` | 下载字节的 SHA-256 与凭证不一致。 |
 | `INVALID_SKILL_PACKAGE` | ZIP 结构、路径或 `SKILL.md` 不合法。 |
 | `SKILL_NAME_MISMATCH` | `SKILL.md` 名称与目标 Skill 不一致。 |
-| `LOCAL_SKILL_CONFLICT` | 目标目录已经存在，当前真实安装器停止写入。 |
+| `LOCAL_SKILL_CONFLICT` | 目标目录已经存在；客户端需提示用户，确认后携带 `force=true` 重试。 |
 | `LOCAL_INSTALL_IO_ERROR` | 创建目录、解压文件或最终移动失败。 |
+| `INSTALL_ROLLBACK_COMPLETED` | 覆盖写入失败，原 Skill 已自动恢复。 |
+| `INSTALL_ROLLBACK_FAILED` | 覆盖写入失败且自动恢复失败，`details.backupPath` 指向旧目录备份。 |
 | `HOME_DIRECTORY_UNAVAILABLE` | 无法解析当前用户主目录。 |
 
-Mock 安装器保留 `INSTALL_ROLLBACK_COMPLETED` 场景，用于验证未来覆盖失败提示；当前真实安装器不覆盖已有目录。
+真实安装器和 Mock 安装器都支持用户确认后的覆盖语义；真实安装器会在覆盖前保留旧目录备份。
 
-## 14. TypeScript DTO 示例
+## 13. TypeScript DTO 示例
 
 ```ts
 export interface ApiResponse<T> {
@@ -671,9 +606,9 @@ export interface SkillSummaryDto {
 
 实际前端类型应从 OpenAPI 生成，不手工复制这段示例。
 
-## 15. 模拟接口要求
+## 14. 模拟接口要求
 
 - 模拟实现与真实 HTTP 客户端实现同一 TypeScript 应用接口；HTTP 客户端校验响应 `code` 后向页面返回 `data`。
-- 覆盖匿名浏览、登录恢复动作、新建、更新、并发冲突、撤回、归档、所有权邀请、历史版本安装和安装上报。
+- 覆盖登录后浏览、登录恢复动作、新建、更新、并发冲突、历史版本安装和安装上报。
 - 模拟数据不能被 React 组件直接导入。
 - 本地安装状态与服务端 DTO 明确隔离。

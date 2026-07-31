@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Tooltip } from "./ui";
 import {
   parseSkillPackage,
+  parseSkillFolder,
   skillApi,
   SkillApiError,
+  type ParsedSkillPackage,
   type SkillDetailDto,
   type SkillSummaryDto,
   type SkillPackageInspection,
@@ -11,6 +13,7 @@ import {
   type UserDto,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import { mergeTagNames, parseTagNames } from "./tagNames";
 
 interface UploadPageProps {
   targetSkill: SkillSummaryDto | null;
@@ -20,11 +23,15 @@ interface UploadPageProps {
   onSwitchToCreate: () => void;
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
+type UploadSourceType = "zip" | "folder";
+
+const folderInputAttributes = {
+  directory: "",
+  webkitdirectory: "",
+};
+
+// Tag 选择暂时不在上传页展示，保留完整实现便于后续恢复。
+const showTagSelection = false;
 
 function nextPatchVersion(version: string): string {
   const [major = "1", minor = "0", patch = "0"] = version.split(/[+-]/)[0].split(".");
@@ -32,7 +39,7 @@ function nextPatchVersion(version: string): string {
 }
 
 /**
- * 功能说明：在本地解析 ZIP，并在用户确认后一次性创建 Skill 或发布指定 Skill 新版本。
+ * 功能说明：在本地解析 ZIP 或自动打包文件夹，并在用户确认后创建 Skill 或发布指定 Skill 新版本。
  * @param targetSkill - 从详情页进入时绑定的目标 Skill，新建流程为 null。
  * @param currentUser - 当前已登录的发布用户。
  * @param onCancel - 取消发布并返回浏览页的回调。
@@ -48,11 +55,13 @@ export function UploadPage({
   onSwitchToCreate,
 }: UploadPageProps) {
   const [fileName, setFileName] = useState("");
+  const [selectedSourceType, setSelectedSourceType] = useState<UploadSourceType | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<SkillPackageInspection | null>(null);
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [newTagNames, setNewTagNames] = useState("");
+  const [newTagNames, setNewTagNames] = useState<string[]>([]);
+  const [newTagDraft, setNewTagDraft] = useState("");
   const [newTagInputVisible, setNewTagInputVisible] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
@@ -73,6 +82,9 @@ export function UploadPage({
   useEffect(() => {
     setVersion(targetSkill ? nextPatchVersion(targetSkill.currentVersion.version) : "1.0.0");
     setChangelog(targetSkill ? "" : "首次发布");
+    setNewTagNames([]);
+    setNewTagDraft("");
+    setNewTagInputVisible(false);
     setError("");
     setDuplicateConflicts([]);
     if (targetSkill) {
@@ -87,46 +99,101 @@ export function UploadPage({
   }, [inspection, targetSkill]);
 
   /**
-   * 功能说明：选择 ZIP 后立即在客户端本地解析，并将只读包信息保存在当前页面状态中。
-   * @param file - 用户选择的 ZIP 文件。
+   * 功能说明：解析用户选择的 ZIP 或文件夹，并将可上传文件与只读包信息保存在页面状态中。
+   * @param sourceName - 页面展示的 ZIP 文件名或文件夹名。
+   * @param sourceType - 用户选择的上传来源类型。
+   * @param parse - 对应来源的本地解析与打包操作。
    * @returns 无返回值。
    */
-  async function inspectFile(file: File): Promise<void> {
-    setFileName(file.name);
+  async function inspectSource(
+    sourceName: string,
+    sourceType: UploadSourceType,
+    parse: () => Promise<ParsedSkillPackage>,
+  ): Promise<void> {
+    setFileName(sourceName);
+    setSelectedSourceType(sourceType);
     setSelectedFile(null);
     setInspection(null);
     setError("");
     setInspecting(true);
-    console.info("[KocotreeSkills] 开始解析 Skill ZIP", { fileName: file.name, size: file.size });
+    console.info("[KocotreeSkills] 开始解析 Skill 上传来源", {
+      sourceName,
+      sourceType,
+    });
     try {
-      const { inspection: result } = await parseSkillPackage(file);
-      setSelectedFile(file);
+      const { inspection: result, uploadFile } = await parse();
+      setSelectedFile(uploadFile);
       setInspection(result);
       if (!targetSkill) {
         setDisplayName(result.skillName);
         setDisplayDescription(result.skillDescription);
       }
-      console.info("[KocotreeSkills] Skill ZIP 解析完成", {
+      console.info("[KocotreeSkills] Skill 上传来源解析完成", {
         skillName: result.skillName,
+        sourceType,
       });
     } catch (reason) {
-      console.error("[KocotreeSkills] Skill ZIP 解析失败", reason);
-      setError(reason instanceof SkillApiError ? reason.message : "ZIP 解析失败，请重新选择文件");
+      console.error("[KocotreeSkills] Skill 上传来源解析失败", reason);
+      setError(reason instanceof SkillApiError ? reason.message : "Skill 解析失败，请重新选择");
     } finally {
       setInspecting(false);
     }
   }
 
+  async function inspectFile(file: File): Promise<void> {
+    await inspectSource(
+      file.name,
+      "zip",
+      () => parseSkillPackage(file),
+    );
+  }
+
+  async function inspectFolder(files: File[]): Promise<void> {
+    const firstPath = files[0]?.webkitRelativePath || "";
+    const folderName = firstPath.split("/")[0] || "Skill 文件夹";
+    await inspectSource(
+      folderName,
+      "folder",
+      () => parseSkillFolder(files),
+    );
+  }
+
   function toggleTag(tagId: string): void {
     setSelectedTagIds((current) => {
-      if (current.includes(tagId)) return current.filter((id) => id !== tagId);
-      if (current.length >= 5) {
+      if (current.includes(tagId)) {
+        setError("");
+        return current.filter((id) => id !== tagId);
+      }
+      if (current.length + newTagNames.length >= 5) {
         setError("每个 Skill 最多选择或创建 5 个 Tag");
         return current;
       }
       setError("");
       return [...current, tagId];
     });
+  }
+
+  function commitNewTagDraft(): void {
+    const draftNames = parseTagNames(newTagDraft);
+    if (draftNames.length === 0) {
+      setError("请输入 Tag 名称");
+      return;
+    }
+    const matchedTagIds = availableTags
+      .filter((tag) => draftNames.some((name) => name.toLocaleLowerCase() === tag.name.toLocaleLowerCase()))
+      .map((tag) => tag.id);
+    const unmatchedNames = draftNames.filter((name) => !availableTags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase()));
+    const nextTagIds = [...new Set([...selectedTagIds, ...matchedTagIds])];
+    const nextNewTagNames = mergeTagNames(newTagNames, unmatchedNames.join(","));
+    if (nextTagIds.length + nextNewTagNames.length > 5) {
+      setError("每个 Skill 最多选择或创建 5 个 Tag");
+      return;
+    }
+    setSelectedTagIds(nextTagIds);
+    setNewTagNames(nextNewTagNames);
+    setNewTagDraft("");
+    setNewTagInputVisible(false);
+    setError("");
   }
 
   /**
@@ -136,7 +203,7 @@ export function UploadPage({
    */
   async function publish(confirmDuplicateDisplayName: boolean): Promise<void> {
     if (!inspection || !selectedFile) {
-      setError("请先选择并成功解析一个 ZIP");
+      setError("请先选择并成功解析 Skill ZIP 或文件夹");
       return;
     }
     setPublishing(true);
@@ -153,20 +220,20 @@ export function UploadPage({
           displayName: targetSkill.owner.id === currentUser.id || currentUser.role === "ADMIN" ? displayName : undefined,
           displayDescription,
           tagIds: selectedTagIds,
-          newTagNames: newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean),
+          newTagNames,
           confirmDuplicateDisplayName,
         });
       } else {
-        const createdTags = newTagNames.split(/[,，]/).map((name) => name.trim()).filter(Boolean);
-        if (selectedTagIds.length + createdTags.length > 5) {
+        if (selectedTagIds.length + newTagNames.length > 5) {
           throw new SkillApiError("INVALID_REQUEST", "已有 Tag 与新 Tag 合计不能超过 5 个");
         }
         result = await skillApi.createSkill({
           file: selectedFile,
           displayName,
           displayDescription,
+          changelog,
           tagIds: selectedTagIds,
-          newTagNames: createdTags,
+          newTagNames,
           forkedFromSkillId: forkSource?.id,
           forkedFromVersionId: forkSource?.currentVersion.id,
           confirmDuplicateDisplayName,
@@ -202,40 +269,70 @@ export function UploadPage({
       <header className="page-heading upload-heading">
         <div>
           <h1>{targetSkill ? "上传新版本" : "上传 Skill"}</h1>
-          <p>{targetSkill ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）` : "在本地解析 ZIP，并确认平台展示信息后发布"}</p>
+          <p>
+            {targetSkill
+              ? `目标 Skill：${targetSkill.displayName}（${targetSkill.skillName}）`
+              : "将本地 Skill 上传到云端，与团队成员共享"}
+          </p>
         </div>
       </header>
 
       <form className="upload-panel" onSubmit={(event) => void handleSubmit(event)}>
         <div className="form-section-heading">
           <span className="section-number">1</span>
-          <div><h2>选择 Skill ZIP</h2><p>最大 50 MB，根目录或单层外包装目录中必须包含 SKILL.md</p></div>
+          <div><h2>选择 Skill 压缩包或文件夹</h2></div>
         </div>
 
-        <label className={inspecting ? "file-dropzone is-loading" : "file-dropzone"}>
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            disabled={inspecting || publishing}
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) void inspectFile(file);
-            }}
-          />
-          <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
-          <strong>{inspecting ? "正在解析 ZIP…" : fileName || "拖入 Skill ZIP，或点击选择文件"}</strong>
-          <small>{fileName && !inspecting ? "重新点击可更换文件" : "仅支持 .zip 文件"}</small>
-        </label>
+        <div className="upload-source-grid">
+          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "zip" ? " is-selected" : ""}`}>
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              disabled={inspecting || publishing}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void inspectFile(file);
+              }}
+            />
+            <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
+            <strong>{inspecting && selectedSourceType === "zip" ? "正在解析 ZIP…" : selectedSourceType === "zip" ? fileName : "选择本地 Skill 压缩包"}</strong>
+            {selectedSourceType === "zip" && !inspecting && <small>重新点击可更换 ZIP</small>}
+          </label>
+          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "folder" ? " is-selected" : ""}`}>
+            <input
+              type="file"
+              multiple
+              disabled={inspecting || publishing}
+              {...folderInputAttributes}
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files || []);
+                if (files.length > 0) void inspectFolder(files);
+              }}
+            />
+            <span className="dropzone-icon"><AppIcon name="folder" size={25} /></span>
+            <strong>{inspecting && selectedSourceType === "folder" ? "正在打包文件夹…" : selectedSourceType === "folder" ? fileName : "选择本地 Skill 文件夹"}</strong>
+            {selectedSourceType === "folder" && !inspecting && <small>重新点击可更换文件夹</small>}
+          </label>
+        </div>
 
         {inspection && (
-          <section className="inspection-result" aria-label="ZIP 解析结果">
-            <div className="inspection-heading"><strong>本地解析成功</strong></div>
-            <dl>
-              <div><dt>Skill 名称</dt><dd><code>{inspection.skillName}</code></dd></div>
-              <div><dt>Skill 描述</dt><dd>{inspection.skillDescription}</dd></div>
-              <div><dt>文件</dt><dd>{inspection.fileCount} 个文件 · {formatFileSize(inspection.packageSize)}</dd></div>
-              <div><dt>内容哈希</dt><dd title={inspection.contentHash}><code>{inspection.contentHash.slice(0, 24)}…</code></dd></div>
-            </dl>
+          <section className="inspection-result" aria-label="Skill 包解析结果">
+            <div className="inspection-heading">
+              <span className="inspection-status">
+                <span className="inspection-status-icon"><AppIcon name="check" size={14} /></span>
+                <strong>本地解析成功</strong>
+              </span>
+            </div>
+            <div className="inspection-details">
+              <div className="inspection-detail">
+                <span>Skill 名称</span>
+                <code>{inspection.skillName}</code>
+              </div>
+              <div className="inspection-detail">
+                <span>Skill 描述</span>
+                <p>{inspection.skillDescription}</p>
+              </div>
+            </div>
             {inspection.warnings.map((warning) => <p className="inspection-warning" key={warning}>{warning}</p>)}
           </section>
         )}
@@ -243,7 +340,7 @@ export function UploadPage({
         {nameMismatch && inspection && targetSkill && (
           <div className="mismatch-notice">
             <strong>Skill 名称不一致，不能作为新版本发布</strong>
-            <span>目标为 <code>{targetSkill.skillName}</code>，ZIP 中为 <code>{inspection.skillName}</code>。</span>
+            <span>目标为 <code>{targetSkill.skillName}</code>，所选 Skill 中为 <code>{inspection.skillName}</code>。</span>
             <Button size="small" onClick={() => { setForkSource(targetSkill); onSwitchToCreate(); }}>作为派生 Skill 发布</Button>
           </div>
         )}
@@ -261,66 +358,104 @@ export function UploadPage({
 
             {!targetSkill && (
               <div className="form-grid">
-                <label className="field"><span>展示名称</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
-                <label className="field"><span>首个版本</span><input readOnly value="1.0.0" /></label>
-                <label className="field field-wide"><span>展示简介</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                <fieldset className="tag-field field-wide">
-                  <legend>选择已有 Tag（最多 5 个）</legend>
-                  <div>
-                    {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
-                    {newTagInputVisible ? (
-                      <input
-                        className="tag-create-input"
-                        autoFocus
-                        aria-label="创建新 Tag"
-                        value={newTagNames}
-                        onChange={(event) => setNewTagNames(event.currentTarget.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            setNewTagInputVisible(false);
-                          }
-                          if (event.key === "Escape") {
-                            setNewTagInputVisible(false);
-                          }
-                        }}
-                        placeholder="输入 Tag，多个用逗号分隔"
-                      />
-                    ) : (
-                      <Tooltip content="创建新 Tag">
-                        <button
-                          className="tag-create-button"
-                          type="button"
-                          aria-label="创建新 Tag"
-                          onClick={() => setNewTagInputVisible(true)}
-                        >
-                          <AppIcon name="plus" size={15} />
-                        </button>
-                      </Tooltip>
-                    )}
-                  </div>
-                </fieldset>
+                <label className="field"><span>展示名称（必填）</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
+                <label className="field"><span>版本号（固定）</span><input readOnly value={version} /></label>
+                <label className="field field-wide"><span>展示简介（必填）</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
+                {showTagSelection && (
+                  <fieldset className="tag-field field-wide" aria-required="false">
+                    <legend>选择 Tag（可选，最多 5 个）</legend>
+                    <div>
+                      {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
+                      {newTagNames.map((name) => (
+                        <span className="tag-created-chip" key={name}>
+                          {name}
+                          <button
+                            type="button"
+                            aria-label={`删除新 Tag：${name}`}
+                            onClick={() => {
+                              setNewTagNames((items) => items.filter((item) => item !== name));
+                              setError("");
+                            }}
+                          >
+                            <AppIcon name="close" size={12} />
+                          </button>
+                        </span>
+                      ))}
+                      {newTagInputVisible ? (
+                        <span className="tag-create-editor">
+                          <input
+                            className="tag-create-input"
+                            autoFocus
+                            aria-label="创建新 Tag"
+                            value={newTagDraft}
+                            onChange={(event) => {
+                              setNewTagDraft(event.currentTarget.value);
+                              setError("");
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                commitNewTagDraft();
+                              }
+                              if (event.key === "Escape") {
+                                setNewTagDraft("");
+                                setNewTagInputVisible(false);
+                              }
+                            }}
+                            placeholder="输入后按回车添加"
+                          />
+                          <Tooltip content="取消创建新 Tag">
+                            <button
+                              className="tag-create-cancel-button"
+                              type="button"
+                              aria-label="取消创建新 Tag"
+                              onClick={() => {
+                                setNewTagDraft("");
+                                setNewTagInputVisible(false);
+                              }}
+                            >
+                              <AppIcon name="close" size={14} />
+                            </button>
+                          </Tooltip>
+                        </span>
+                      ) : (
+                        <Tooltip content="创建新 Tag">
+                          <button
+                            className="tag-create-button"
+                            type="button"
+                            aria-label="创建新 Tag"
+                            onClick={() => setNewTagInputVisible(true)}
+                          >
+                            <AppIcon name="plus" size={15} />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </fieldset>
+                )}
               </div>
             )}
 
             {targetSkill && (
               <div className="form-grid update-metadata-grid">
                 {(targetSkill.owner.id === currentUser.id || currentUser.role === "ADMIN") && (
-                  <label className="field"><span>展示名称</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
+                  <label className="field"><span>展示名称（必填）</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
                 )}
-                <label className="field field-wide"><span>展示简介</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                <fieldset className="tag-field field-wide">
-                  <legend>Tag（最多 5 个）</legend>
-                  <div>{availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}</div>
-                </fieldset>
+                <label className="field field-wide"><span>展示简介（必填）</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
+                {showTagSelection && (
+                  <fieldset className="tag-field field-wide" aria-required="false">
+                    <legend>Tag（可选，最多 5 个）</legend>
+                    <div>{availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}</div>
+                  </fieldset>
+                )}
               </div>
             )}
 
             <div className="form-grid version-form-grid">
               {targetSkill && (
-                <label className="field"><span>版本号</span><input required value={version} onChange={(event) => setVersion(event.currentTarget.value)} placeholder={`高于 ${targetSkill.currentVersion.version}`} /></label>
+                <label className="field"><span>版本号（必填）</span><input required value={version} onChange={(event) => setVersion(event.currentTarget.value)} placeholder={`高于 ${targetSkill.currentVersion.version}`} /></label>
               )}
-              <label className="field field-wide"><span>更新说明{targetSkill ? "（必填）" : ""}</span><textarea required value={changelog} readOnly={!targetSkill} onChange={(event) => setChangelog(event.currentTarget.value)} placeholder={targetSkill ? "请说明本次更新内容，例如：优化触发条件，补充使用示例。" : "首次发布"} /></label>
+              <label className="field field-wide"><span>更新说明（{targetSkill ? "必填" : "选填"}）</span><textarea required={Boolean(targetSkill)} value={changelog} onChange={(event) => setChangelog(event.currentTarget.value)} placeholder={targetSkill ? "请说明本次更新内容，例如：优化触发条件，补充使用示例。" : "首次发布"} /></label>
             </div>
           </>
         )}

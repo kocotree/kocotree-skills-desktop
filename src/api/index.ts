@@ -1,14 +1,17 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { MockSkillApi } from "./mockSkillApi";
-import { MockLocalSkillService } from "./mockLocalSkillService";
+import {
+  AUTH_INVALIDATED_EVENT,
+  HttpSkillApi,
+} from "./httpSkillApi";
 import { TauriInstaller } from "./tauriInstaller";
 
 export * from "./contracts";
+export { AUTH_INVALIDATED_EVENT };
 export * from "./skillPackage";
+export * from "./localSkillSource";
 
-/** 当前开发阶段共享的模拟接口实例。 */
-export const skillApi = new MockSkillApi();
-export const localSkillService = new MockLocalSkillService();
+/** 所有在线业务数据均来自真实后端，不提供运行时 Mock 回退。 */
+export const skillApi = new HttpSkillApi();
 export const usesRealInstaller = isTauri();
-/** 浏览器使用 Mock，Tauri 桌面窗口使用真实磁盘安装器。 */
-export const installer = usesRealInstaller ? new TauriInstaller() : localSkillService;
+export const localSkillService = new TauriInstaller();
+export const installer = localSkillService;

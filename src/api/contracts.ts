@@ -33,13 +33,11 @@ export type InstallationStatusDto = components["schemas"]["InstallationStatus"];
 export type InstallationResolutionDto = components["schemas"]["InstallationResolution"];
 export type NotificationDto = components["schemas"]["Notification"];
 export type NotificationPageDto = components["schemas"]["NotificationPage"];
-export type OwnershipTransferDto = components["schemas"]["OwnershipTransfer"];
-export type ReasonDto = components["schemas"]["ReasonRequest"];
-export type CreateOwnershipTransferDto = components["schemas"]["CreateOwnershipTransferRequest"];
 export interface CreateSkillDto {
   file: File;
   displayName: string;
   displayDescription: string;
+  changelog?: string;
   tagIds?: string[];
   newTagNames?: string[];
   forkedFromSkillId?: string;
@@ -64,6 +62,12 @@ export interface UpdateSkillMetadataDto {
   newTagNames?: string[];
   confirmDuplicateDisplayName?: boolean;
 }
+export interface DeleteSkillResultDto {
+  id: string;
+  deletedObjectCount: number;
+  objectCount: number;
+  ossCleaned: boolean;
+}
 export type ResolveInstallationDto = components["schemas"]["ResolveInstallationRequest"];
 export type InstallationEventDto = components["schemas"]["InstallationEventRequest"];
 
@@ -72,6 +76,11 @@ export type ListMySkillsQuery = NonNullable<operations["listMySkills"]["paramete
 export type ListVersionsQuery = NonNullable<operations["listSkillVersions"]["parameters"]["query"]>;
 export type ListNotificationsQuery = NonNullable<operations["listNotifications"]["parameters"]["query"]>;
 
+export interface SignInOptions {
+  openBrowser?: boolean;
+  onAuthorizationUrl?: (url: string) => void;
+}
+
 /** 客户端本地安装状态，不属于服务端 Skill DTO。 */
 export type LocalSkillStatus =
   | "PLATFORM_INSTALLED"
@@ -79,6 +88,25 @@ export type LocalSkillStatus =
   | "PLATFORM_MATCHED"
   | "LOCAL_UNKNOWN"
   | "MISSING";
+
+export type LocalSkillLocation =
+  | "MANAGER"
+  | "AGENTS"
+  | "CLAUDE"
+  | "CODEX";
+
+export type LocalSkillEntryKind =
+  | "DIRECTORY"
+  | "SYMLINK"
+  | "JUNCTION"
+  | "COPY";
+
+export type LocalSkillAgent = "agents" | "claude" | "codex";
+
+/** 当前设备上可供 Kocotree 投放 Skill 的 Agent 安装状态。 */
+export interface AgentInstallationStatus {
+  claude: boolean;
+}
 
 /** 客户端扫描和合并展示用的本地 Skill 记录。 */
 export interface LocalSkillRecord {
@@ -92,6 +120,22 @@ export interface LocalSkillRecord {
   contentHash: string;
   installedAt: string | null;
   status: LocalSkillStatus;
+  location?: LocalSkillLocation;
+  entryKind?: LocalSkillEntryKind;
+  resolvedPath?: string;
+  assignedAgents?: LocalSkillAgent[];
+}
+
+export interface SetLocalSkillEnabledInput {
+  skillName: string;
+  sourcePath: string;
+  agent: LocalSkillAgent;
+  enabled: boolean;
+}
+
+export interface RemoveLocalSkillInput {
+  skillId: string;
+  skillName: string;
 }
 
 export interface LocalInstallRequest {
@@ -121,8 +165,10 @@ export interface SkillInstaller {
  * 返回值：本地扫描和安装操作的异步结果。
  */
 export interface LocalSkillService extends SkillInstaller {
+  getAgentInstallationStatus(): Promise<AgentInstallationStatus>;
   scanSkills(): Promise<LocalSkillRecord[]>;
-  remove(skillName: string): Promise<void>;
+  setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
+  remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
 }
 
 /**
@@ -139,16 +185,10 @@ export interface SkillApi {
   listVersionFiles(skillId: string, versionId: string): Promise<FileEntryDto[]>;
   getVersionFileContent(skillId: string, versionId: string, path: string): Promise<SkillFileContentDto>;
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto>;
+  deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
   updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto>;
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto): Promise<SkillDetailDto>;
-  withdrawSkillVersion(skillId: string, versionId: string, input: ReasonDto): Promise<SkillVersionDto>;
-  archiveSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto>;
-  restoreSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto>;
   getInstallationStatus(skillId: string, versionId?: string): Promise<InstallationStatusDto>;
-  createOwnershipTransfer(skillId: string, input: CreateOwnershipTransferDto): Promise<OwnershipTransferDto>;
-  acceptOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
-  rejectOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
-  cancelOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto>;
   getDownloadTicket(skillId: string, versionId: string): Promise<DownloadTicketDto>;
   resolveInstallation(input: ResolveInstallationDto): Promise<InstallationResolutionDto>;
   recordInstallation(event: InstallationEventDto): Promise<void>;
@@ -156,7 +196,8 @@ export interface SkillApi {
   readNotification(notificationId: string): Promise<void>;
   readAllNotifications(): Promise<void>;
   getCurrentUser(): Promise<UserDto | null>;
-  signIn(): Promise<UserDto>;
+  signIn(options?: SignInOptions): Promise<UserDto>;
+  cancelSignIn(): void;
   signOut(): Promise<void>;
 }
 

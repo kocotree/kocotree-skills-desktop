@@ -1,15 +1,34 @@
+mod auth_callback;
 mod installer;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            log::info!("收到新的桌面应用实例参数: {argv:?}");
+            auth_callback::focus_main_window(app);
+        }));
+    }
+
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![installer::install_skill])
+        .invoke_handler(tauri::generate_handler![
+            auth_callback::begin_desktop_auth_callback,
+            installer::get_agent_installation_status,
+            installer::install_skill,
+            installer::scan_local_skills,
+            installer::set_local_skill_enabled,
+            installer::remove_local_skill
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

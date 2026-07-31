@@ -1,8 +1,8 @@
 import JSZip from "jszip";
 import {
   SkillApiError,
-  type CreateOwnershipTransferDto,
   type CreateSkillDto,
+  type DeleteSkillResultDto,
   type DownloadTicketDto,
   type FileEntryDto,
   type InstallationEventDto,
@@ -13,13 +13,12 @@ import {
   type ListSkillsQuery,
   type ListVersionsQuery,
   type NotificationPageDto,
-  type OwnershipTransferDto,
   type PublishSkillVersionDto,
-  type ReasonDto,
   type SkillApi,
   type SkillDetailDto,
   type SkillFileContentDto,
   type SkillPageDto,
+  type SignInOptions,
   type SkillVersionDetailDto,
   type SkillVersionDto,
   type TagDto,
@@ -78,6 +77,13 @@ function compareSemVer(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
+function comparePopularSkills(left: SkillDetailDto, right: SkillDetailDto): number {
+  return right.installCount - left.installCount
+    || Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
+    || Date.parse(right.createdAt) - Date.parse(left.createdAt)
+    || right.id.localeCompare(left.id);
+}
+
 /**
  * 功能说明：提供与正式 HTTP 接口相同业务边界的内存模拟服务。
  * @param options - 模拟延迟和初始登录用户配置。
@@ -92,12 +98,16 @@ export class MockSkillApi implements SkillApi {
   private readonly versionSkillMd = new Map(Object.entries(mockVersionFiles).map(([id, source]) => [id, source.skillMd]));
   private readonly installationEvents = new Set<string>();
   private readonly notifications = clone(mockNotifications);
-  private readonly transfers: OwnershipTransferDto[] = [];
   private currentUser: UserDto | null;
 
   constructor(options: MockSkillApiOptions = {}) {
     this.delayMs = options.delayMs ?? 220;
     this.currentUser = options.initialUser ?? null;
+  }
+
+  /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */
+  setCurrentUser(user: UserDto | null): void {
+    this.currentUser = user ? clone(user) : null;
   }
 
   private async wait(): Promise<void> {
@@ -157,7 +167,7 @@ export class MockSkillApi implements SkillApi {
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
     let items = this.skills.filter((skill) => skill.status === "ACTIVE" && (!query.tagId || skill.tags.some((tag) => tag.id === query.tagId)) && [skill.skillName, skill.displayName, skill.skillDescription, skill.displayDescription, ...skill.tags.map((tag) => tag.name)].join(" ").toLocaleLowerCase().includes(keyword));
     items = [...items].sort((left, right) => {
-      if (query.sort === "INSTALLS_DESC") return right.installCount - left.installCount;
+      if (query.sort === "INSTALLS_DESC") return comparePopularSkills(left, right);
       if (query.sort === "CREATED_DESC") return Date.parse(right.createdAt) - Date.parse(left.createdAt);
       return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
     });
@@ -170,7 +180,6 @@ export class MockSkillApi implements SkillApi {
     await this.wait();
     const user = this.requireUser();
     const items = this.skills.filter((skill) => {
-      if (query.relation === "ARCHIVED") return skill.status === "ARCHIVED" && this.canCollaborate(skill, user);
       if (query.relation === "OWNED") return skill.owner.id === user.id && skill.status !== "ARCHIVED";
       return skill.collaborators.some((item) => item.id === user.id) && skill.status !== "ARCHIVED";
     });
@@ -239,12 +248,13 @@ export class MockSkillApi implements SkillApi {
     const parsed = await parseSkillPackage(input.file);
     if (this.skills.some((skill) => skill.skillName === parsed.inspection.skillName)) throw new SkillApiError("DUPLICATE_SKILL_NAME", "该 Skill 名称已经存在，请发布为新版本");
     this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName);
+    const resolvedTags = this.resolveTags(input.tagIds, input.newTagNames);
     const now = new Date().toISOString();
     const skillId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
     const version: SkillVersionDto = {
       id: versionId, skillId, version: "1.0.0", status: "PUBLISHED", skillName: parsed.inspection.skillName,
-      skillDescription: parsed.inspection.skillDescription, changelog: "首次发布", baseVersionId: null,
+      skillDescription: parsed.inspection.skillDescription, changelog: input.changelog?.trim() || "首次发布", baseVersionId: null,
       packageSize: parsed.inspection.packageSize, packageSha256: parsed.inspection.packageSha256, contentHash: parsed.inspection.contentHash,
       uploadedBy: user, publishedAt: now, withdrawnBy: null, withdrawnAt: null, withdrawalReason: null,
     };
@@ -253,7 +263,7 @@ export class MockSkillApi implements SkillApi {
     const skill: SkillDetailDto = {
       id: skillId, skillName: version.skillName, displayName: input.displayName, skillDescription: version.skillDescription,
       displayDescription: input.displayDescription, status: "ACTIVE", owner: user, collaborators: [],
-      tags: this.resolveTags(input.tagIds, input.newTagNames), currentVersion: version, installCount: 0,
+      tags: resolvedTags, currentVersion: version, installCount: 0,
       derivedFrom: derivedSkill && derivedVersion ? { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" } : null,
       derivedChain: derivedSkill && derivedVersion ? [...derivedSkill.derivedChain, { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" }] : [],
       updatedBy: user, archivedAt: null, archiveReason: null, nameConflictReason: null, createdAt: now, updatedAt: now,
@@ -266,18 +276,48 @@ export class MockSkillApi implements SkillApi {
     return clone(skill);
   }
 
+  async deleteSkill(skillId: string): Promise<DeleteSkillResultDto> {
+    await this.wait();
+    const user = this.requireUser();
+    const skillIndex = this.skills.findIndex(
+      (skill) => skill.id === skillId,
+    );
+    if (skillIndex < 0) {
+      throw new SkillApiError(
+        "SKILL_NOT_FOUND",
+        "没有找到该 Skill",
+      );
+    }
+    const skill = this.skills[skillIndex];
+    if (skill.owner.id !== user.id) {
+      throw new SkillApiError(
+        "OWNER_REQUIRED",
+        "只有 Skill Owner 可以永久删除",
+      );
+    }
+    const objectCount = (this.versions.get(skillId) || []).length;
+    this.skills.splice(skillIndex, 1);
+    this.versions.delete(skillId);
+    return {
+      id: skillId,
+      deletedObjectCount: objectCount,
+      objectCount,
+      ossCleaned: true,
+    };
+  }
+
   async updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto> {
     await this.wait();
     const user = this.requireUser();
     const skill = this.findSkill(skillId);
-    if (!this.canCollaborate(skill, user)) throw new SkillApiError("FORBIDDEN", "只有 Owner 或协作者可以修改展示信息");
-    if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
-    if (input.displayName !== undefined) {
-      this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
-      skill.displayName = input.displayName;
-    }
+    if (skill.owner.id !== user.id) throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示信息");
+    if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
+    const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
+      ? this.resolveTags(input.tagIds, input.newTagNames)
+      : undefined;
+    if (input.displayName !== undefined) skill.displayName = input.displayName;
     if (input.displayDescription !== undefined) skill.displayDescription = input.displayDescription;
-    if (input.tagIds !== undefined || input.newTagNames !== undefined) skill.tags = this.resolveTags(input.tagIds, input.newTagNames);
+    if (resolvedTags) skill.tags = resolvedTags;
     skill.updatedBy = user;
     skill.updatedAt = new Date().toISOString();
     return clone(skill);
@@ -287,6 +327,7 @@ export class MockSkillApi implements SkillApi {
     await this.wait();
     const user = this.requireUser();
     const skill = this.findSkill(skillId);
+    if (skill.owner.id !== user.id) throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以发布新版本");
     if (skill.status !== "ACTIVE") throw new SkillApiError("SKILL_UNAVAILABLE", "当前 Skill 状态不允许发布新版本");
     const parsed = await parseSkillPackage(input.file);
     if (parsed.inspection.skillName !== skill.skillName) throw new SkillApiError("SKILL_NAME_MISMATCH", "ZIP 中的 Skill 名称与目标 Skill 不一致，建议发布为新的 Skill", { expectedSkillName: skill.skillName, actualSkillName: parsed.inspection.skillName });
@@ -296,8 +337,10 @@ export class MockSkillApi implements SkillApi {
     if (versions.some((version) => version.version === input.version)) throw new SkillApiError("VERSION_ALREADY_EXISTS", "该版本号已经存在");
     if (compareSemVer(input.version, skill.currentVersion.version) <= 0) throw new SkillApiError("VERSION_NOT_GREATER", "新版本必须高于当前版本");
     if (versions.some((version) => version.contentHash === parsed.inspection.contentHash)) throw new SkillApiError("CONTENT_UNCHANGED", "ZIP 内容与历史版本一致，无需重复发布");
-    if (input.displayName !== undefined && skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 可以修改展示名称");
     if (input.displayName !== undefined) this.checkDisplayName(input.displayName, input.confirmDuplicateDisplayName, skillId);
+    const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
+      ? this.resolveTags(input.tagIds, input.newTagNames)
+      : undefined;
     const now = new Date().toISOString();
     const version: SkillVersionDto = {
       id: crypto.randomUUID(), skillId, version: input.version, status: "PUBLISHED", skillName: parsed.inspection.skillName,
@@ -306,55 +349,15 @@ export class MockSkillApi implements SkillApi {
       uploadedBy: user, publishedAt: now, withdrawnBy: null, withdrawnAt: null, withdrawalReason: null,
     };
     versions.unshift(version);
-    if (skill.owner.id !== user.id && !skill.collaborators.some((item) => item.id === user.id)) skill.collaborators.push(user);
     skill.currentVersion = version;
     skill.skillDescription = version.skillDescription;
     if (input.displayName !== undefined) skill.displayName = input.displayName;
     if (input.displayDescription !== undefined) skill.displayDescription = input.displayDescription;
-    if (input.tagIds !== undefined || input.newTagNames !== undefined) skill.tags = this.resolveTags(input.tagIds, input.newTagNames);
+    if (resolvedTags) skill.tags = resolvedTags;
     skill.updatedBy = user;
     skill.updatedAt = now;
     this.versionFiles.set(version.id, parsed.source);
     this.versionSkillMd.set(version.id, parsed.inspection.skillMd);
-    return clone(skill);
-  }
-
-  async withdrawSkillVersion(skillId: string, versionId: string, input: ReasonDto): Promise<SkillVersionDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (!this.canCollaborate(skill, user)) throw new SkillApiError("FORBIDDEN", "没有撤回版本的权限");
-    const version = this.findVersion(skillId, versionId);
-    if (version.version === "1.0.0") throw new SkillApiError("INITIAL_VERSION_REQUIRED", "首个 1.0.0 版本不能撤回");
-    version.status = "WITHDRAWN";
-    version.withdrawnBy = user;
-    version.withdrawnAt = new Date().toISOString();
-    version.withdrawalReason = input.reason;
-    return clone(version);
-  }
-
-  async archiveSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以归档 Skill");
-    skill.status = "ARCHIVED";
-    skill.archivedAt = new Date().toISOString();
-    skill.archiveReason = input.reason;
-    return clone(skill);
-  }
-
-  async restoreSkill(skillId: string, input: ReasonDto): Promise<SkillDetailDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以恢复 Skill");
-    skill.status = "ACTIVE";
-    skill.archivedAt = null;
-    skill.archiveReason = null;
-    skill.updatedBy = user;
-    skill.updatedAt = new Date().toISOString();
-    console.info("[MockSkillApi] Skill 恢复完成", { skillId, reason: input.reason });
     return clone(skill);
   }
 
@@ -376,36 +379,6 @@ export class MockSkillApi implements SkillApi {
         : null,
     };
   }
-
-  async createOwnershipTransfer(skillId: string, input: CreateOwnershipTransferDto): Promise<OwnershipTransferDto> {
-    await this.wait();
-    const user = this.requireUser();
-    const skill = this.findSkill(skillId);
-    if (skill.owner.id !== user.id && user.role !== "ADMIN") throw new SkillApiError("OWNER_REQUIRED", "只有 Owner 或管理员可以转移所有权");
-    const target = skill.collaborators.find((item) => item.id === input.targetUserId);
-    if (!target) throw new SkillApiError("COLLABORATOR_REQUIRED", "所有权只能转移给现有协作者");
-    const transfer: OwnershipTransferDto = { id: crypto.randomUUID(), skillId, fromOwner: skill.owner, targetUser: target, status: "PENDING", reason: input.reason ?? null, createdBy: user, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(), resolvedAt: null };
-    this.transfers.push(transfer);
-    return clone(transfer);
-  }
-
-  private resolveTransfer(transferId: string, status: "ACCEPTED" | "REJECTED" | "CANCELED"): OwnershipTransferDto {
-    const transfer = this.transfers.find((item) => item.id === transferId);
-    if (!transfer) throw new SkillApiError("TRANSFER_NOT_FOUND", "没有找到所有权转移邀请");
-    if (transfer.status !== "PENDING") throw new SkillApiError("TRANSFER_RESOLVED", "该邀请已经处理");
-    transfer.status = status;
-    transfer.resolvedAt = new Date().toISOString();
-    if (status === "ACCEPTED") {
-      const skill = this.findSkill(transfer.skillId);
-      skill.collaborators = [...skill.collaborators.filter((item) => item.id !== transfer.targetUser.id), transfer.fromOwner];
-      skill.owner = transfer.targetUser;
-    }
-    return transfer;
-  }
-
-  async acceptOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "ACCEPTED")); }
-  async rejectOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "REJECTED")); }
-  async cancelOwnershipTransfer(transferId: string): Promise<OwnershipTransferDto> { await this.wait(); this.requireUser(); return clone(this.resolveTransfer(transferId, "CANCELED")); }
 
   /**
    * 功能说明：签发模拟下载凭证，并生成可供真实 Tauri 安装器使用的 ZIP data URL。
@@ -482,6 +455,7 @@ export class MockSkillApi implements SkillApi {
   async readNotification(notificationId: string): Promise<void> { await this.wait(); this.requireUser(); const item = this.notifications.find((notification) => notification.id === notificationId); if (item) item.readAt = new Date().toISOString(); }
   async readAllNotifications(): Promise<void> { await this.wait(); this.requireUser(); const now = new Date().toISOString(); this.notifications.forEach((item) => { if (!item.readAt) item.readAt = now; }); }
   async getCurrentUser(): Promise<UserDto | null> { await this.wait(); return clone(this.currentUser); }
-  async signIn(): Promise<UserDto> { await this.wait(); this.currentUser = clone(mockUsers.current); console.info("[MockSkillApi] 模拟飞书登录完成", { userId: this.currentUser.id }); return clone(this.currentUser); }
+  async signIn(_options?: SignInOptions): Promise<UserDto> { await this.wait(); this.currentUser = clone(mockUsers.current); console.info("[MockSkillApi] 模拟飞书登录完成", { userId: this.currentUser.id }); return clone(this.currentUser); }
+  cancelSignIn(): void {}
   async signOut(): Promise<void> { await this.wait(); this.currentUser = null; console.info("[MockSkillApi] 模拟用户退出登录"); }
 }
