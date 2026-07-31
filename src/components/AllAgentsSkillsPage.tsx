@@ -179,7 +179,7 @@ export function AllAgentsSkillsPage({
         <div>
           <h1>全部 Agents</h1>
           <p>
-            Skill 安装后默认关闭；打开下方 Claude Code 或 Codex 开关，即可在对应 Agent 中使用
+            Skill 安装后默认关闭；打开下方开关后，即可在 Codex 和 Claude 中使用
           </p>
         </div>
       </header>
