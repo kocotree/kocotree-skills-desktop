@@ -12,6 +12,8 @@ import {
 
 interface InstallSkillCommandResult {
   installedPath: string;
+  replacedSkillName: string | null;
+  backupPath: string | null;
 }
 
 interface InstallSkillCommandError {
@@ -82,6 +84,7 @@ export class TauriInstaller implements LocalSkillService {
           installedAt,
           downloadUrl: input.ticket.url,
           packageSha256: input.ticket.packageSha256,
+          force: Boolean(input.force),
         },
       });
       console.info("[TauriInstaller] 真实安装完成", {
@@ -104,8 +107,8 @@ export class TauriInstaller implements LocalSkillService {
           entryKind: "DIRECTORY",
           resolvedPath: result.installedPath,
         },
-        replacedSkillName: null,
-        backupPath: null,
+        replacedSkillName: result.replacedSkillName,
+        backupPath: result.backupPath,
         notices: [],
       };
     } catch (reason) {

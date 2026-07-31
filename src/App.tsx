@@ -832,41 +832,39 @@ function App() {
           tone: "warning",
           title: "Skill 已安装，Agent 尚未开启",
           summary: "Skill 本体已进入私有仓库，需要分别开启 Claude Code 或 Codex 才能使用。",
-          details: localResult.notices,
+          details: [
+            ...localResult.notices,
+            ...(localResult.backupPath
+              ? [`原目录备份：${localResult.backupPath}`]
+              : []),
+          ],
         });
+      } else if (localResult.backupPath) {
+        Toast.success(`Skill 已覆盖安装，原目录已备份到 ${localResult.backupPath}`);
       } else {
         Toast.success(`Skill 已安装到 ${localResult.record.installPath}`);
       }
     } catch (reason) {
       console.error("[KocotreeSkills] Skill 安装失败", reason);
       if (reason instanceof SkillApiError && reason.code === "LOCAL_SKILL_CONFLICT") {
-        if (reason.details?.forceSupported === false) {
-          setInstallPrompt(null);
-          setInstallFeedback({
-            tone: "warning",
-            title: "本地已存在同名 Skill",
-            summary: "第一版真实安装暂不覆盖已有目录，本地内容没有发生变化。",
-            details: [
-              typeof reason.details.targetPath === "string"
-                ? `冲突目录：${reason.details.targetPath}`
-                : reason.message,
-              "请先确认并手工处理同名目录，覆盖安装将在后续版本提供。",
-            ],
-          });
-          return;
-        }
         const localStatus = typeof reason.details?.localSkill === "object" && reason.details.localSkill !== null
           ? (reason.details.localSkill as { status?: string }).status
           : undefined;
         const locallyModified = localStatus === "PLATFORM_MODIFIED";
+        const targetPath = typeof reason.details?.targetPath === "string"
+          ? reason.details.targetPath
+          : null;
         setInstallPrompt({
           skill,
           version,
           forceRequired: true,
           promptTitle: locallyModified ? "检测到本地内容已修改" : "发现本地同名 Skill",
-          warnings: [locallyModified
-            ? "本地目录包含平台安装后修改的内容。继续操作会先备份当前目录，再用平台版本替换。"
-            : "本地目录中已经存在同名的未知来源 Skill。继续操作会先备份当前目录，再安装平台版本。"],
+          warnings: [
+            targetPath ? `同名目录：${targetPath}` : reason.message,
+            locallyModified
+              ? "本地目录包含平台安装后修改的内容。确认覆盖后会先备份当前目录，再用平台版本替换。"
+              : "确认覆盖后会先备份当前目录，再安装平台版本。",
+          ],
         });
         return;
       }
@@ -884,6 +882,18 @@ function App() {
           title: "安装失败，已自动恢复",
           summary: "新版本没有生效，原 Skill 已恢复到安装前状态。",
           details: [reason.message, "本次失败不会上报安装次数，可以排查原因后重新尝试。"],
+        });
+      } else if (reason instanceof SkillApiError && reason.code === "INSTALL_ROLLBACK_FAILED") {
+        setInstallFeedback({
+          tone: "error",
+          title: "安装与自动恢复均失败",
+          summary: "原 Skill 备份仍然保留，但需要手工恢复到原目录。",
+          details: [
+            reason.message,
+            typeof reason.details?.backupPath === "string"
+              ? `备份目录：${reason.details.backupPath}`
+              : "请保留当前目录状态并联系平台管理员处理。",
+          ],
         });
       } else {
         Toast.error(reason instanceof SkillApiError ? reason.message : "安装失败，请稍后重试");

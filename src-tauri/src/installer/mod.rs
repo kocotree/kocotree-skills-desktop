@@ -3,7 +3,7 @@ use std::{
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
@@ -41,6 +41,8 @@ pub struct InstallSkillInput {
     pub installed_at: String,
     pub download_url: String,
     pub package_sha256: String,
+    #[serde(default)]
+    pub force: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -60,6 +62,8 @@ struct InstalledSkillMetadata {
 #[serde(rename_all = "camelCase")]
 pub struct InstallSkillResult {
     pub installed_path: String,
+    pub replaced_skill_name: Option<String>,
+    pub backup_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -781,19 +785,45 @@ fn extract_package(
     Ok(())
 }
 
+fn next_backup_path(backups_root: &Path, skill_name: &str) -> Result<PathBuf, InstallError> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let base_name = format!("{skill_name}-{timestamp}");
+    for suffix in 0_u32.. {
+        let file_name = if suffix == 0 {
+            base_name.clone()
+        } else {
+            format!("{base_name}-{suffix}")
+        };
+        let candidate = backups_root.join(file_name);
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(candidate);
+            }
+            Err(error) => return Err(io_error("检查 Skill 备份目录", error)),
+        }
+    }
+    unreachable!("备份目录后缀空间已耗尽")
+}
+
 /**
- * 功能说明：把已下载并校验的 ZIP 安装到指定 Skill 根目录。
+ * 功能说明：把已下载并校验的 ZIP 安装到指定 Skill 根目录，并在用户确认后备份替换已有目录。
  * 参数：
  * - `input`：目标 Skill、版本、下载地址和包哈希。
  * - `package_bytes`：完整 ZIP 字节。
  * - `skills_root`：平台解析后的 Skill 安装根目录。
+ * - `backups_root`：覆盖前保存原 Skill 的备份根目录。
  *
- * 返回值：最终安装路径；目标冲突或文件系统失败时不修改已有目录。
+ * 返回值：最终安装路径和可选备份路径；未确认冲突或校验失败时不修改已有目录。
  */
 fn install_package_bytes(
     input: &InstallSkillInput,
     package_bytes: &[u8],
     skills_root: &Path,
+    backups_root: &Path,
 ) -> Result<InstallSkillResult, InstallError> {
     if !is_valid_skill_name(&input.skill_name) {
         return Err(InstallError::new(
@@ -805,24 +835,25 @@ fn install_package_bytes(
     fs::create_dir_all(skills_root).map_err(|error| io_error("创建 Skill 根目录", error))?;
 
     let target = skills_root.join(&input.skill_name);
-    match fs::symlink_metadata(&target) {
+    let target_exists = match fs::symlink_metadata(&target) {
         Ok(_) => {
-            warn!(
-                "Skill 安装因目标目录冲突而停止：skill_name={}",
-                input.skill_name
-            );
-            return Err(InstallError::with_details(
-                "LOCAL_SKILL_CONFLICT",
-                "本地已存在同名 Skill，当前版本暂不支持覆盖",
-                serde_json::json!({
-                    "targetPath": target,
-                    "forceSupported": false,
-                }),
-            ));
+            if input.force {
+                true
+            } else {
+                warn!("Skill 安装等待覆盖确认：skill_name={}", input.skill_name);
+                return Err(InstallError::with_details(
+                    "LOCAL_SKILL_CONFLICT",
+                    "本地已存在同名 Skill，请确认是否覆盖安装",
+                    serde_json::json!({
+                        "targetPath": target,
+                        "forceSupported": true,
+                    }),
+                ));
+            }
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(error) => return Err(io_error("检查目标 Skill 目录", error)),
-    }
+    };
 
     let temp_dir = TempDirBuilder::new()
         .prefix(".kocotree-install-")
@@ -849,10 +880,54 @@ fn install_package_bytes(
     })?;
     fs::write(payload.join(INSTALL_METADATA_FILE), metadata_bytes)
         .map_err(|error| io_error("写入安装元数据", error))?;
-    fs::rename(&payload, &target).map_err(|error| io_error("写入 Skill 目录", error))?;
+
+    let backup_path = if target_exists {
+        fs::create_dir_all(backups_root).map_err(|error| io_error("创建 Skill 备份目录", error))?;
+        let backup_path = next_backup_path(backups_root, &input.skill_name)?;
+        fs::rename(&target, &backup_path).map_err(|error| io_error("备份原 Skill 目录", error))?;
+        Some(backup_path)
+    } else {
+        None
+    };
+
+    if let Err(write_error) = fs::rename(&payload, &target) {
+        if let Some(backup_path) = &backup_path {
+            return match fs::rename(backup_path, &target) {
+                Ok(()) => Err(InstallError::with_details(
+                    "INSTALL_ROLLBACK_COMPLETED",
+                    "新版本写入失败，原 Skill 已自动恢复",
+                    serde_json::json!({
+                        "targetPath": target,
+                        "cause": write_error.to_string(),
+                    }),
+                )),
+                Err(rollback_error) => Err(InstallError::with_details(
+                    "INSTALL_ROLLBACK_FAILED",
+                    "新版本写入失败，原 Skill 也未能自动恢复",
+                    serde_json::json!({
+                        "targetPath": target,
+                        "backupPath": backup_path,
+                        "installCause": write_error.to_string(),
+                        "rollbackCause": rollback_error.to_string(),
+                    }),
+                )),
+            };
+        }
+        return Err(io_error("写入 Skill 目录", write_error));
+    }
+
+    if target_exists {
+        info!(
+            "Skill 已覆盖安装并保留备份：skill_name={}, backup_path={}",
+            input.skill_name,
+            backup_path.as_deref().unwrap_or(backups_root).display()
+        );
+    }
 
     Ok(InstallSkillResult {
         installed_path: target.to_string_lossy().into_owned(),
+        replaced_skill_name: target_exists.then(|| input.skill_name.clone()),
+        backup_path: backup_path.map(|path| path.to_string_lossy().into_owned()),
     })
 }
 
@@ -880,8 +955,10 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
             InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
         })?;
         migrate_shared_skills_to_private_store(&home)?;
-        let skills_root = private_skills_root(&home);
-        install_package_bytes(&input, &package_bytes, &skills_root)
+        let manager_root = home.join(".skills-manager");
+        let skills_root = manager_root.join("skills");
+        let backups_root = manager_root.join("backups");
+        install_package_bytes(&input, &package_bytes, &skills_root, &backups_root)
     }
     .await;
 
@@ -2220,6 +2297,7 @@ mod tests {
             installed_at: "2026-01-01T00:00:00.000Z".to_string(),
             download_url: "data:application/zip;base64,".to_string(),
             package_sha256: format!("sha256:{}", sha256_hex(bytes)),
+            force: false,
         }
     }
 
@@ -2227,8 +2305,13 @@ mod tests {
     fn installs_valid_package() {
         let root = tempfile::tempdir().unwrap();
         let bytes = create_package("test-skill", Some("test-skill"));
-        let result =
-            install_package_bytes(&input_for("test-skill", &bytes), &bytes, root.path()).unwrap();
+        let result = install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            root.path(),
+            &root.path().join("backups"),
+        )
+        .unwrap();
 
         assert!(Path::new(&result.installed_path).join("SKILL.md").is_file());
         assert!(Path::new(&result.installed_path)
@@ -2244,14 +2327,71 @@ mod tests {
         fs::write(target.join("original.txt"), "keep").unwrap();
         let bytes = create_package("test-skill", None);
 
-        let error = install_package_bytes(&input_for("test-skill", &bytes), &bytes, root.path())
-            .unwrap_err();
+        let error = install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            root.path(),
+            &root.path().join("backups"),
+        )
+        .unwrap_err();
 
         assert_eq!(error.code, "LOCAL_SKILL_CONFLICT");
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details["forceSupported"].as_bool()),
+            Some(true)
+        );
         assert_eq!(
             fs::read_to_string(target.join("original.txt")).unwrap(),
             "keep"
         );
+    }
+
+    #[test]
+    fn replaces_existing_target_after_confirmation_and_keeps_backup() {
+        let root = tempfile::tempdir().unwrap();
+        let backups_root = root.path().join("backups");
+        let target = root.path().join("test-skill");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("original.txt"), "keep").unwrap();
+        let bytes = create_package("test-skill", None);
+        let mut input = input_for("test-skill", &bytes);
+        input.force = true;
+
+        let result = install_package_bytes(&input, &bytes, root.path(), &backups_root).unwrap();
+
+        assert!(target.join("SKILL.md").is_file());
+        assert!(!target.join("original.txt").exists());
+        let backup_path = PathBuf::from(result.backup_path.unwrap());
+        assert!(backup_path.starts_with(&backups_root));
+        assert_eq!(
+            fs::read_to_string(backup_path.join("original.txt")).unwrap(),
+            "keep"
+        );
+        assert_eq!(result.replaced_skill_name.as_deref(), Some("test-skill"));
+    }
+
+    #[test]
+    fn validates_replacement_package_before_moving_existing_target() {
+        let root = tempfile::tempdir().unwrap();
+        let backups_root = root.path().join("backups");
+        let target = root.path().join("test-skill");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("original.txt"), "keep").unwrap();
+        let bytes = create_package("another-skill", None);
+        let mut input = input_for("test-skill", &bytes);
+        input.force = true;
+
+        let error = install_package_bytes(&input, &bytes, root.path(), &backups_root).unwrap_err();
+
+        assert_eq!(error.code, "SKILL_NAME_MISMATCH");
+        assert_eq!(
+            fs::read_to_string(target.join("original.txt")).unwrap(),
+            "keep"
+        );
+        assert!(!backups_root.exists());
     }
 
     #[test]
@@ -2261,7 +2401,9 @@ mod tests {
         let mut input = input_for("test-skill", &bytes);
         input.package_sha256 = format!("sha256:{}", "0".repeat(64));
 
-        let error = install_package_bytes(&input, &bytes, root.path()).unwrap_err();
+        let error =
+            install_package_bytes(&input, &bytes, root.path(), &root.path().join("backups"))
+                .unwrap_err();
 
         assert_eq!(error.code, "PACKAGE_HASH_MISMATCH");
         assert!(!root.path().join("test-skill").exists());
@@ -2272,8 +2414,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let bytes = create_package("another-skill", None);
 
-        let error = install_package_bytes(&input_for("test-skill", &bytes), &bytes, root.path())
-            .unwrap_err();
+        let error = install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            root.path(),
+            &root.path().join("backups"),
+        )
+        .unwrap_err();
 
         assert_eq!(error.code, "SKILL_NAME_MISMATCH");
         assert!(!root.path().join("test-skill").exists());
@@ -2296,8 +2443,13 @@ mod tests {
         let bytes = cursor.into_inner();
         let root = tempfile::tempdir().unwrap();
 
-        let error = install_package_bytes(&input_for("test-skill", &bytes), &bytes, root.path())
-            .unwrap_err();
+        let error = install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            root.path(),
+            &root.path().join("backups"),
+        )
+        .unwrap_err();
 
         assert_eq!(error.code, "INVALID_SKILL_PACKAGE");
         assert!(!root.path().join("test-skill").exists());
@@ -2312,7 +2464,13 @@ mod tests {
         fs::write(claude_command, "").unwrap();
         let bytes = create_package("test-skill", None);
         let skills_root = private_skills_root(home.path());
-        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            &skills_root,
+            &home.path().join(".skills-manager").join("backups"),
+        )
+        .unwrap();
         let source = skills_root.join("test-skill");
 
         for agent in ["claude", "codex"] {
@@ -2366,7 +2524,13 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         let bytes = create_package("test-skill", None);
         let skills_root = private_skills_root(home.path());
-        install_package_bytes(&input_for("test-skill", &bytes), &bytes, &skills_root).unwrap();
+        install_package_bytes(
+            &input_for("test-skill", &bytes),
+            &bytes,
+            &skills_root,
+            &home.path().join(".skills-manager").join("backups"),
+        )
+        .unwrap();
         let source = skills_root.join("test-skill");
         let independent = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&independent).unwrap();

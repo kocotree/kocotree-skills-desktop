@@ -512,11 +512,13 @@ POST /api/notifications/read-all
 | `PACKAGE_HASH_MISMATCH` | 下载字节的 SHA-256 与凭证不一致。 |
 | `INVALID_SKILL_PACKAGE` | ZIP 结构、路径或 `SKILL.md` 不合法。 |
 | `SKILL_NAME_MISMATCH` | `SKILL.md` 名称与目标 Skill 不一致。 |
-| `LOCAL_SKILL_CONFLICT` | 目标目录已经存在，当前真实安装器停止写入。 |
+| `LOCAL_SKILL_CONFLICT` | 目标目录已经存在；客户端需提示用户，确认后携带 `force=true` 重试。 |
 | `LOCAL_INSTALL_IO_ERROR` | 创建目录、解压文件或最终移动失败。 |
+| `INSTALL_ROLLBACK_COMPLETED` | 覆盖写入失败，原 Skill 已自动恢复。 |
+| `INSTALL_ROLLBACK_FAILED` | 覆盖写入失败且自动恢复失败，`details.backupPath` 指向旧目录备份。 |
 | `HOME_DIRECTORY_UNAVAILABLE` | 无法解析当前用户主目录。 |
 
-Mock 安装器保留 `INSTALL_ROLLBACK_COMPLETED` 场景，用于验证未来覆盖失败提示；当前真实安装器不覆盖已有目录。
+真实安装器和 Mock 安装器都支持用户确认后的覆盖语义；真实安装器会在覆盖前保留旧目录备份。
 
 ## 13. TypeScript DTO 示例
 

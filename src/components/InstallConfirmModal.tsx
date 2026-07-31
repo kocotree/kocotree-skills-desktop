@@ -44,7 +44,7 @@ export function InstallConfirmModal({
         <div className="install-confirm-actions">
           <Button onClick={onCancel} disabled={loading}>取消</Button>
           <Button theme="solid" type={forceRequired ? "danger" : "primary"} loading={loading} onClick={() => onConfirm(forceRequired)}>
-            {forceRequired ? "强制替换并安装" : "继续安装"}
+            {forceRequired ? "覆盖并安装" : "继续安装"}
           </Button>
         </div>
       }
@@ -58,7 +58,7 @@ export function InstallConfirmModal({
           <div className={forceRequired ? "install-warning danger" : "install-warning"}>
             {warnings.map((warning) => <p key={warning}>{warning}</p>)}
           </div>
-          {forceRequired && <small>强制替换会先创建模拟备份，再删除同名目录并安装平台版本。</small>}
+          {forceRequired && <small>覆盖前会备份当前目录；如果新版本写入失败，软件会自动恢复原 Skill。</small>}
         </div>
       )}
     </Modal>
