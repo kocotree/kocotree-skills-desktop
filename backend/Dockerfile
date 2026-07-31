@@ -4,7 +4,10 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV TZ=Asia/Shanghai
 
-RUN corepack enable \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable \
     && corepack prepare pnpm@10 --activate
 
 WORKDIR /app
@@ -24,4 +27,4 @@ USER node
 
 EXPOSE 4000
 
-CMD ["pnpm", "start"]
+CMD ["node", "--import", "tsx", "src/server.ts"]
