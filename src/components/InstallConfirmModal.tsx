@@ -52,8 +52,8 @@ export function InstallConfirmModal({
       {skill && version && (
         <div className="install-confirm-content">
           <div className="install-target">
-            <span className="skill-logo skill-logo-green">{skill.skillName.slice(0, 2).toUpperCase()}</span>
-            <span><strong>{skill.displayName}</strong><code>{skill.skillName} · v{version.version}</code></span>
+            <strong>{skill.displayName}</strong>
+            <code>{skill.skillName} · v{version.version}</code>
           </div>
           <div className={forceRequired ? "install-warning danger" : "install-warning"}>
             {warnings.map((warning) => <p key={warning}>{warning}</p>)}

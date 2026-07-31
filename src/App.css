@@ -2258,12 +2258,6 @@ textarea:focus-visible,
 }
 
 .install-target {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.install-target > span:last-child {
   display: grid;
   gap: 4px;
 }
