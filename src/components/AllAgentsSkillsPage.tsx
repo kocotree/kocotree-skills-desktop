@@ -68,7 +68,7 @@ function activationDescription(
 
 async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
   if (!usesRealInstaller) {
-    Toast.info(`Skill 文件夹：${record.installPath}`);
+    Toast.info(`Skill 位置：${record.installPath}`);
     return;
   }
   try {
@@ -323,7 +323,7 @@ export function AllAgentsSkillsPage({
                     size="small"
                     onClick={() => void revealWorkspaceSkill(record)}
                   >
-                    打开 Skill 文件夹
+                    打开 Skill 位置
                   </Button>
                 </div>
               </article>

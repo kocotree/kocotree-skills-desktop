@@ -102,7 +102,7 @@ function sourceLabels(
 
 async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
   if (!usesRealInstaller) {
-    Toast.info(`Skill 文件夹：${record.installPath}`);
+    Toast.info(`Skill 位置：${record.installPath}`);
     return;
   }
   try {
@@ -362,7 +362,7 @@ export function LocalSkillsPage({
                       onClick={() => void revealLocalSkill(record)}
                     >
                       {getLocalSkillSourceRecord(group)
-                        ? "打开 Skill 文件夹"
+                        ? "打开 Skill 位置"
                         : "在目录中显示"}
                     </Button>
                   </div>
