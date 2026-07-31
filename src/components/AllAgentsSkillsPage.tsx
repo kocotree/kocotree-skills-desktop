@@ -227,6 +227,11 @@ export function AllAgentsSkillsPage({
           <section className="my-skills-list local-skills-list agents-workspace-list">
           {visibleGroups.map((group) => {
             const record = getLocalSkillSourceRecord(group)!;
+            const statusLabel = record.entryKind !== "DIRECTORY"
+              ? "受管入口"
+              : record.status === "LOCAL_UNKNOWN"
+                ? null
+                : STATUS_LABELS[record.status];
             return (
               <article className="my-skill-card local workspace-skill-card" key={group.id}>
                 <button
@@ -243,18 +248,20 @@ export function AllAgentsSkillsPage({
                 </button>
 
                 <div className="my-skill-card-footer">
-                  <div className="my-skill-statuses">
-                    <span
-                      className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
-                    >
-                      {record.entryKind !== "DIRECTORY"
-                        ? "受管入口"
-                        : STATUS_LABELS[record.status]}
-                    </span>
-                    {record.version && (
-                      <span className="my-skill-version">v{record.version}</span>
-                    )}
-                  </div>
+                  {(statusLabel || record.version) && (
+                    <div className="my-skill-statuses">
+                      {statusLabel && (
+                        <span
+                          className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
+                        >
+                          {statusLabel}
+                        </span>
+                      )}
+                      {record.version && (
+                        <span className="my-skill-version">v{record.version}</span>
+                      )}
+                    </div>
+                  )}
                   <div className="my-skill-card-footer-actions workspace-skill-footer-actions">
                     <div className="skill-agent-controls workspace-agent-controls">
                       {AGENTS.map((agent) => {

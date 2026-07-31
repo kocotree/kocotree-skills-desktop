@@ -2604,11 +2604,16 @@ button.my-skill-card:hover {
 }
 
 .workspace-skill-footer-actions {
+  margin-left: auto;
   gap: 10px;
 }
 
 .workspace-skill-card .my-skill-statuses {
   padding-left: 0;
+}
+
+.workspace-skill-card .my-skill-card-footer {
+  align-items: center;
 }
 
 .workspace-connection-summary {
@@ -3164,6 +3169,18 @@ button.my-skill-card:hover {
 
   .my-skills-list {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1400px) {
+  .agents-workspace-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1399px) {
+  .agents-workspace-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
