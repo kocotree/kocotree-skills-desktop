@@ -2516,30 +2516,6 @@ button.my-skill-card:hover {
   box-shadow: 0 5px 16px rgba(36, 43, 50, 0.06);
 }
 
-.agent-skill-logo {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  flex: none;
-  place-items: center;
-  border: 1px solid #d8dbd7;
-  border-radius: 10px;
-  background: #f7f8f6;
-  color: #596059;
-}
-
-.agent-skill-logo-claude {
-  border-color: #d87958;
-  background: #df815f;
-  color: #fff;
-}
-
-.agent-skill-logo-codex {
-  border-color: #25282c;
-  background: #25282c;
-  color: #fff;
-}
-
 .local-skills-list .my-skill-card {
   min-height: 226px;
 }
@@ -2551,25 +2527,28 @@ button.my-skill-card:hover {
   padding-top: 2px;
 }
 
-.workspace-agent-controls {
+.compact-agent-controls {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0;
 }
 
-.workspace-skill-card {
+.compact-local-skill-card {
   min-height: 0;
   gap: 8px;
   padding: 12px 14px;
+}
+
+.workspace-skill-card {
   border-top-color: #bcdccc;
 }
 
-.local-skills-list .workspace-skill-card {
+.local-skills-list .compact-local-skill-card {
   min-height: 118px;
 }
 
-.workspace-agent-controls .skill-agent-control {
+.compact-agent-controls .skill-agent-control {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2578,19 +2557,19 @@ button.my-skill-card:hover {
   background: transparent;
 }
 
-.workspace-agent-controls .skill-agent-control.agent-not-installed {
+.compact-agent-controls .skill-agent-control.agent-not-installed {
   background: transparent;
 }
 
-.workspace-agent-controls .skill-agent-name {
+.compact-agent-controls .skill-agent-name {
   gap: 4px;
 }
 
-.workspace-agent-controls .skill-agent-toggle {
+.compact-agent-controls .skill-agent-toggle {
   gap: 0;
 }
 
-.workspace-agent-controls .skill-agent-state {
+.compact-agent-controls .skill-agent-state {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2599,20 +2578,20 @@ button.my-skill-card:hover {
   white-space: nowrap;
 }
 
-.workspace-agent-controls .agent-installation-badge {
+.compact-agent-controls .agent-installation-badge {
   display: none;
 }
 
-.workspace-skill-footer-actions {
+.compact-skill-footer-actions {
   margin-left: auto;
   gap: 10px;
 }
 
-.workspace-skill-card .my-skill-statuses {
+.compact-local-skill-card .my-skill-statuses {
   padding-left: 0;
 }
 
-.workspace-skill-card .my-skill-card-footer {
+.compact-local-skill-card .my-skill-card-footer {
   align-items: center;
 }
 
@@ -3173,13 +3152,15 @@ button.my-skill-card:hover {
 }
 
 @media (min-width: 1400px) {
-  .agents-workspace-list {
+  .agents-workspace-list,
+  .agent-skills-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 901px) and (max-width: 1399px) {
-  .agents-workspace-list {
+  .agents-workspace-list,
+  .agent-skills-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -3304,13 +3285,13 @@ button.my-skill-card:hover {
     align-items: center;
   }
 
-  .workspace-skill-card .my-skill-card-footer {
+  .compact-local-skill-card .my-skill-card-footer {
     align-items: stretch;
     flex-direction: column;
     gap: 8px;
   }
 
-  .workspace-skill-footer-actions {
+  .compact-skill-footer-actions {
     width: 100%;
     flex-wrap: wrap;
     justify-content: flex-end;

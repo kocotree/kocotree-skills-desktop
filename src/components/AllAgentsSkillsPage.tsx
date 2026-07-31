@@ -233,7 +233,7 @@ export function AllAgentsSkillsPage({
                 ? null
                 : STATUS_LABELS[record.status];
             return (
-              <article className="my-skill-card local workspace-skill-card" key={group.id}>
+              <article className="my-skill-card local compact-local-skill-card workspace-skill-card" key={group.id}>
                 <button
                   className="my-skill-card-open"
                   type="button"
@@ -262,8 +262,8 @@ export function AllAgentsSkillsPage({
                       )}
                     </div>
                   )}
-                  <div className="my-skill-card-footer-actions workspace-skill-footer-actions">
-                    <div className="skill-agent-controls workspace-agent-controls">
+                  <div className="my-skill-card-footer-actions compact-skill-footer-actions">
+                    <div className="skill-agent-controls compact-agent-controls">
                       {AGENTS.map((agent) => {
                         const state = getLocalSkillActivationState(group, agent.id);
                         const installed =

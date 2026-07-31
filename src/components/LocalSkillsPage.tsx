@@ -86,20 +86,6 @@ function activationDescription(
     : `开启后将为 ${AGENT_DETAILS[agent].label} 创建生效入口`;
 }
 
-function sourceLabels(
-  group: LocalSkillGroup,
-  agent: LocalSkillFilter,
-): string[] {
-  if (agent === "claude") {
-    return group.agentRecords.claude
-      ? ["用户目录/.claude/skills"]
-      : ["当前已关闭"];
-  }
-  return group.agentRecords.codex
-    ? ["用户目录/.codex/skills"]
-    : ["当前已关闭"];
-}
-
 async function revealLocalSkill(record: LocalSkillRecord): Promise<void> {
   if (!usesRealInstaller) {
     Toast.info(`Skill 位置：${record.installPath}`);
@@ -272,7 +258,7 @@ export function LocalSkillsPage({
         </section>
       ) : (
         <>
-          <section className="my-skills-list local-skills-list">
+          <section className="my-skills-list local-skills-list agent-skills-list">
           {visibleGroups.map((group) => {
             const record = group.primaryRecord;
             const state = getLocalSkillActivationState(group, filter);
@@ -281,82 +267,74 @@ export function LocalSkillsPage({
             const interactive = agentInstalled
               && canControlLocalSkill(group)
               && ["enabled", "disabled", "legacy"].includes(state);
+            const statusLabel = record.entryKind !== "DIRECTORY"
+              ? "受管入口"
+              : record.status === "LOCAL_UNKNOWN"
+                ? null
+                : STATUS_LABELS[record.status];
             return (
-              <article className="my-skill-card local" key={group.id}>
+              <article className="my-skill-card local compact-local-skill-card" key={group.id}>
                 <button
                   className="my-skill-card-open"
                   type="button"
                   onClick={() => void revealLocalSkill(record)}
                 >
                   <span className="my-skill-card-heading">
-                    <span
-                      className={`agent-skill-logo agent-skill-logo-${filter}`}
-                    >
-                      <AppIcon
-                        name={AGENT_DETAILS[filter].icon}
-                        size={18}
-                      />
-                    </span>
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
                       <code>{record.skillName}</code>
-                      <small title={record.installPath}>
-                        {record.installPath}
-                      </small>
                     </span>
                   </span>
                 </button>
 
-                <div className="skill-agent-controls">
-                  <div
-                    className={`skill-agent-control skill-agent-control-${filter}`}
-                    title={activationDescription(group, filter, state)}
-                  >
-                    <span className="skill-agent-name">
-                      <AppIcon
-                        name={AGENT_DETAILS[filter].icon}
-                        size={14}
-                      />
-                      {AGENT_DETAILS[filter].label}
-                    </span>
-                    <button
-                      className={`skill-agent-toggle state-${state}`}
-                      type="button"
-                      role="switch"
-                      aria-checked={state === "enabled"}
-                      aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
-                      disabled={!interactive || Boolean(pendingControl)}
-                      onClick={() => void toggleSkill(group)}
-                    >
-                      <span className="skill-agent-toggle-track">
-                        <span className="skill-agent-toggle-knob" />
-                      </span>
-                      <span className="skill-agent-state">
-                        {pending ? "处理中" : ACTIVATION_LABELS[state]}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
                 <div className="my-skill-card-footer">
-                  <div className="my-skill-statuses">
-                    {sourceLabels(group, filter).map((label) => (
-                      <span className="agent-source" key={label}>
-                        {label}
-                      </span>
-                    ))}
-                    <span
-                      className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
-                    >
-                      {STATUS_LABELS[record.status]}
-                    </span>
-                    {record.version && (
-                      <span className="my-skill-version">
-                        v{record.version}
-                      </span>
-                    )}
-                  </div>
-                  <div className="my-skill-card-footer-actions">
+                  {(statusLabel || record.version) && (
+                    <div className="my-skill-statuses">
+                      {statusLabel && (
+                        <span
+                          className={`local-status local-status-${record.status.toLocaleLowerCase()}`}
+                        >
+                          {statusLabel}
+                        </span>
+                      )}
+                      {record.version && (
+                        <span className="my-skill-version">
+                          v{record.version}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className="my-skill-card-footer-actions compact-skill-footer-actions">
+                    <div className="skill-agent-controls compact-agent-controls">
+                      <div
+                        className={`skill-agent-control skill-agent-control-${filter}`}
+                        title={activationDescription(group, filter, state)}
+                      >
+                        <span className="skill-agent-name">
+                          <AppIcon
+                            name={AGENT_DETAILS[filter].icon}
+                            size={14}
+                          />
+                          {AGENT_DETAILS[filter].label}
+                        </span>
+                        <button
+                          className={`skill-agent-toggle state-${state}`}
+                          type="button"
+                          role="switch"
+                          aria-checked={state === "enabled"}
+                          aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
+                          disabled={!interactive || Boolean(pendingControl)}
+                          onClick={() => void toggleSkill(group)}
+                        >
+                          <span className="skill-agent-toggle-track">
+                            <span className="skill-agent-toggle-knob" />
+                          </span>
+                          <span className="skill-agent-state">
+                            {pending ? "处理中" : ACTIVATION_LABELS[state]}
+                          </span>
+                        </button>
+                      </div>
+                    </div>
                     <Button
                       size="small"
                       onClick={() => void revealLocalSkill(record)}
