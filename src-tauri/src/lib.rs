@@ -27,7 +27,8 @@ pub fn run() {
             installer::install_skill,
             installer::scan_local_skills,
             installer::set_local_skill_enabled,
-            installer::remove_local_skill
+            installer::remove_local_skill,
+            installer::remove_local_skill_entries
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

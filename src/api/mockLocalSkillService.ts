@@ -7,6 +7,7 @@ import {
   type LocalSkillLocation,
   type LocalSkillRecord,
   type LocalSkillService,
+  type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
 } from "./contracts";
@@ -350,6 +351,25 @@ export class MockLocalSkillService implements LocalSkillService {
     }
     for (let index = this.records.length - 1; index >= 0; index -= 1) {
       if (this.records[index]?.skillName === input.skillName) {
+        this.records.splice(index, 1);
+      }
+    }
+    return structuredClone(this.records);
+  }
+
+  async removeEntries(
+    input: RemoveLocalSkillEntriesInput,
+  ): Promise<LocalSkillRecord[]> {
+    await this.wait();
+    const recordIds = new Set(input.recordIds);
+    if (recordIds.size === 0) {
+      throw new SkillApiError(
+        "LOCAL_ENTRY_DELETE_EMPTY",
+        "没有选择要移到回收站的本地 Skill 文件",
+      );
+    }
+    for (let index = this.records.length - 1; index >= 0; index -= 1) {
+      if (recordIds.has(this.records[index]!.id)) {
         this.records.splice(index, 1);
       }
     }

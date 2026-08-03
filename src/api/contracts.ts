@@ -138,6 +138,11 @@ export interface RemoveLocalSkillInput {
   skillName: string;
 }
 
+/** 按扫描记录将用户明确选择的本地 Skill 条目移到系统回收站。 */
+export interface RemoveLocalSkillEntriesInput {
+  recordIds: string[];
+}
+
 export interface LocalInstallRequest {
   skill: SkillSummaryDto;
   version: SkillVersionDto;
@@ -169,6 +174,7 @@ export interface LocalSkillService extends SkillInstaller {
   scanSkills(): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
+  removeEntries(input: RemoveLocalSkillEntriesInput): Promise<LocalSkillRecord[]>;
 }
 
 /**

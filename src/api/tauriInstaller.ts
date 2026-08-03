@@ -6,6 +6,7 @@ import {
   type LocalInstallResult,
   type LocalSkillRecord,
   type LocalSkillService,
+  type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
 } from "./contracts";
@@ -169,6 +170,24 @@ export class TauriInstaller implements LocalSkillService {
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_UNINSTALL_FAILED",
         commandError?.message ?? "本地 Skill 卸载失败",
+        commandError?.details,
+      );
+    }
+  }
+
+  async removeEntries(
+    input: RemoveLocalSkillEntriesInput,
+  ): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "remove_local_skill_entries",
+        { input },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_ENTRY_DELETE_FAILED",
+        commandError?.message ?? "将本地 Skill 文件移到回收站失败",
         commandError?.details,
       );
     }

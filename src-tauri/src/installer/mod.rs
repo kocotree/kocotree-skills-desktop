@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File},
     io::{Cursor, Read},
     path::{Path, PathBuf},
@@ -235,6 +235,12 @@ pub struct SetLocalSkillEnabledInput {
 pub struct RemoveLocalSkillInput {
     pub skill_id: String,
     pub skill_name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveLocalSkillEntriesInput {
+    pub record_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1983,6 +1989,16 @@ fn uninstall_io_error(action: &str, error: std::io::Error) -> InstallError {
     InstallError::new("LOCAL_UNINSTALL_IO_ERROR", format!("{action}失败：{error}"))
 }
 
+fn move_local_skill_path_to_trash(action: &str, path: &Path) -> Result<(), InstallError> {
+    trash::delete(path).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_TRASH_FAILED",
+            format!("{action}失败：{error}"),
+            serde_json::json!({ "path": path }),
+        )
+    })
+}
+
 fn owned_install_metadata_matches(
     path: &Path,
     input: &RemoveLocalSkillInput,
@@ -2137,19 +2153,16 @@ fn remove_local_skill_at_home(
 
     for (target, kind) in &removal_targets {
         match kind {
-            LocalRemovalKind::ManagedLink(link_kind) => {
-                remove_managed_directory_link(target, *link_kind)
-                    .map_err(|error| uninstall_io_error("移除 Agent Skill 连接", error))?;
+            LocalRemovalKind::ManagedLink(_) => {
+                move_local_skill_path_to_trash("将 Agent Skill 连接移到回收站", target)?;
             }
             LocalRemovalKind::Directory => {
-                fs::remove_dir_all(target)
-                    .map_err(|error| uninstall_io_error("删除 Agent Skill 目录", error))?;
+                move_local_skill_path_to_trash("将 Agent Skill 目录移到回收站", target)?;
             }
         }
     }
     if source_owned {
-        fs::remove_dir_all(&source)
-            .map_err(|error| uninstall_io_error("删除 Skill 本体", error))?;
+        move_local_skill_path_to_trash("将 Skill 本体移到回收站", &source)?;
     }
     let legacy_was_migrated = legacy_manager_source.as_ref().is_some_and(|legacy_source| {
         manager_state
@@ -2159,12 +2172,12 @@ fn remove_local_skill_at_home(
             .is_some_and(|path| path == *legacy_source)
     });
     if (found_legacy_connection || legacy_was_migrated) && legacy_manager_source.is_some() {
-        fs::remove_dir_all(
+        move_local_skill_path_to_trash(
+            "将旧版 Skill 本体移到回收站",
             legacy_manager_source
                 .as_ref()
                 .expect("已确认存在旧版 Skill 本体"),
-        )
-        .map_err(|error| uninstall_io_error("删除旧版 Skill 本体", error))?;
+        )?;
     }
 
     let mut state_changed = false;
@@ -2199,6 +2212,154 @@ fn remove_local_skill_on_disk(
     let home = dirs::home_dir()
         .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
     remove_local_skill_at_home(&home, input)
+}
+
+fn local_skill_root_for_location(home: &Path, location: &str) -> Option<PathBuf> {
+    match location {
+        "MANAGER" => Some(private_skills_root(home)),
+        "AGENTS" => Some(shared_skills_root(home)),
+        "CLAUDE" => Some(home.join(".claude").join("skills")),
+        "CODEX" => Some(home.join(".codex").join("skills")),
+        _ => None,
+    }
+}
+
+fn remove_local_skill_entries_at_home(
+    home: &Path,
+    input: RemoveLocalSkillEntriesInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    if input.record_ids.is_empty() {
+        return Err(InstallError::new(
+            "LOCAL_ENTRY_DELETE_EMPTY",
+            "没有选择要移到回收站的本地 Skill 文件",
+        ));
+    }
+    if input.record_ids.len() > 32 {
+        return Err(InstallError::new(
+            "LOCAL_ENTRY_DELETE_TOO_MANY",
+            "一次移到回收站的本地 Skill 文件过多",
+        ));
+    }
+
+    let records = scan_local_skills_from_home(home)?;
+    let requested_ids = input.record_ids.into_iter().collect::<HashSet<_>>();
+    let mut targets = records
+        .iter()
+        .filter(|record| requested_ids.contains(&record.id))
+        .collect::<Vec<_>>();
+    if targets.len() != requested_ids.len() {
+        return Err(InstallError::new(
+            "LOCAL_ENTRY_DELETE_STALE",
+            "本地 Skill 文件已经发生变化，请重新扫描后再删除",
+        ));
+    }
+
+    let selected_paths = targets
+        .iter()
+        .map(|record| record.install_path.as_str())
+        .collect::<HashSet<_>>();
+    for target in &targets {
+        let target_path = PathBuf::from(&target.install_path);
+        let expected_root = local_skill_root_for_location(home, &target.location).ok_or_else(|| {
+            InstallError::new("LOCAL_ENTRY_DELETE_LOCATION_INVALID", "本地 Skill 位置无效")
+        })?;
+        if target_path.parent() != Some(expected_root.as_path()) {
+            return Err(InstallError::with_details(
+                "LOCAL_ENTRY_DELETE_PATH_UNSAFE",
+                "要移到回收站的路径不在允许的 Skill 目录中",
+                serde_json::json!({ "path": target_path }),
+            ));
+        }
+        let metadata = fs::symlink_metadata(&target_path)
+            .map_err(|error| uninstall_io_error("检查本地 Skill 文件", error))?;
+        let link_kind = managed_directory_link_kind(&target_path, &metadata)
+            .map_err(|error| uninstall_io_error("检查本地 Skill 连接", error))?;
+        if link_kind.is_none() && !metadata.is_dir() {
+            return Err(InstallError::with_details(
+                "LOCAL_ENTRY_DELETE_TARGET_UNSAFE",
+                "要移到回收站的本地 Skill 既不是目录也不是目录连接",
+                serde_json::json!({ "path": target_path }),
+            ));
+        }
+        if link_kind.is_none() && target.entry_kind != "COPY" {
+            let referenced_by_unselected_entry = records.iter().any(|record| {
+                record.resolved_path == target.resolved_path
+                    && record.install_path != target.install_path
+                    && !selected_paths.contains(record.install_path.as_str())
+            });
+            if referenced_by_unselected_entry {
+                return Err(InstallError::with_details(
+                    "LOCAL_ENTRY_DELETE_STILL_REFERENCED",
+                    "该 Skill 目录仍被其他 Agent 引用，请在“全部 Agents”中彻底删除",
+                    serde_json::json!({ "path": target_path }),
+                ));
+            }
+        }
+    }
+
+    targets.sort_by_key(|record| {
+        let path = PathBuf::from(&record.install_path);
+        fs::symlink_metadata(&path)
+            .ok()
+            .and_then(|metadata| managed_directory_link_kind(&path, &metadata).ok().flatten())
+            .is_none()
+    });
+    for target in &targets {
+        let target_path = PathBuf::from(&target.install_path);
+        let metadata = fs::symlink_metadata(&target_path)
+            .map_err(|error| uninstall_io_error("检查本地 Skill 文件", error))?;
+        if managed_directory_link_kind(&target_path, &metadata)
+            .map_err(|error| uninstall_io_error("检查本地 Skill 连接", error))?
+            .is_some()
+        {
+            move_local_skill_path_to_trash("将本地 Skill 连接移到回收站", &target_path)?;
+        } else {
+            move_local_skill_path_to_trash("将本地 Skill 目录移到回收站", &target_path)?;
+        }
+    }
+
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    let mut state_changed = false;
+    for target in &targets {
+        let affected_agents: &[&str] = match target.location.as_str() {
+            "CLAUDE" => &["claude"],
+            "CODEX" => &["codex"],
+            _ => &["claude", "codex"],
+        };
+        for agent in affected_agents {
+            if let Some(assignments) = manager_state.assignments.get_mut(*agent) {
+                let previous_length = assignments.len();
+                assignments.retain(|skill_name| skill_name != &target.skill_name);
+                state_changed |= assignments.len() != previous_length;
+            }
+            state_changed |= manager_state
+                .connections
+                .remove(&managed_connection_key(agent, &target.skill_name))
+                .is_some();
+        }
+        if matches!(target.location.as_str(), "MANAGER" | "AGENTS") {
+            state_changed |= manager_state
+                .legacy_sources
+                .remove(&target.skill_name)
+                .is_some();
+        }
+    }
+    manager_state
+        .assignments
+        .retain(|_, assignments| !assignments.is_empty());
+    if state_changed {
+        save_local_skill_manager_state(home, &manager_state)?;
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn remove_local_skill_entries_on_disk(
+    input: RemoveLocalSkillEntriesInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    remove_local_skill_entries_at_home(&home, input)
 }
 
 /** 迁移旧版共享本体，并扫描私有仓库以及 Claude Code/Codex 生效目录。 */
@@ -2255,6 +2416,22 @@ pub async fn remove_local_skill(
         ),
     }
     result
+}
+
+/** 将用户明确选择的扫描条目移到系统回收站；连接不会影响其源目录。 */
+#[tauri::command]
+pub async fn remove_local_skill_entries(
+    input: RemoveLocalSkillEntriesInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    info!("开始将本地 Skill 条目移到回收站：record_count={}", input.record_ids.len());
+    tauri::async_runtime::spawn_blocking(move || remove_local_skill_entries_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_ENTRY_DELETE_FAILED",
+                format!("将本地 Skill 文件移到回收站失败：{error}"),
+            )
+        })?
 }
 
 #[cfg(test)]
