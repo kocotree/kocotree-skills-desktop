@@ -322,6 +322,25 @@ paths:
                 $ref: '#/components/schemas/SkillVersionDetailResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Versions]
+      summary: 永久删除当前用户拥有的 Skill 版本
+      description: 至少保留一个版本；删除当前版本后，剩余的最新版本会成为当前版本。
+      operationId: deleteSkillVersion
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Skill 版本已永久删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionDeletionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /api/skills/{skillId}/versions/{versionId}/files:
     get:
       tags: [Versions]
@@ -1141,6 +1160,16 @@ components:
           type: integer
         total:
           type: integer
+    SkillVersionDeletionResult:
+      type: object
+      required: [versionId, latestVersionId, ossCleaned]
+      properties:
+        versionId:
+          type: string
+        latestVersionId:
+          type: string
+        ossCleaned:
+          type: boolean
     NotificationPage:
       type: object
       required: [items, page, pageSize, total, unreadCount]
@@ -1242,6 +1271,14 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/SkillVersion'
+    SkillVersionDeletionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillVersionDeletionResult'
     InstallationStatusResponse:
       allOf:
         - $ref: '#/components/schemas/ApiOkMeta'

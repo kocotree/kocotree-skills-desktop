@@ -23,6 +23,7 @@ Tag 查询、Skill 列表、Skill 详情、版本历史、文件预览、创建 
 | `GET /api/skills/:skillId/versions/:versionId/files/content?path=...` | 获取文本文件内容 |
 | `POST /api/skills` | 上传 ZIP 并创建 Skill `1.0.0` |
 | `POST /api/skills/:skillId/versions` | 为已有 Skill 发布新版本 |
+| `DELETE /api/skills/:skillId/versions/:versionId` | Owner 永久删除指定版本，且至少保留一个版本 |
 | `DELETE /api/skills/:skillId` | Owner 永久删除 Skill 并清理版本 OSS 包 |
 | `POST /api/skills/:skillId/versions/:versionId/download-tickets` | 获取指定已发布版本的短期 OSS 下载地址 |
 | `POST /api/installations/events` | 幂等上报安装成功并增加安装次数 |

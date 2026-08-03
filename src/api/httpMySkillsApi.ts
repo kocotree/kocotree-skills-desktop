@@ -1,5 +1,6 @@
 import type {
   DeleteSkillResultDto,
+  DeleteSkillVersionResultDto,
   ListMySkillsQuery,
   PublishTargetResolutionDto,
   SkillPageDto,
@@ -43,6 +44,18 @@ export class HttpMySkillsApi {
   deleteSkill(skillId: string): Promise<DeleteSkillResultDto> {
     return this.http.request<DeleteSkillResultDto>(
       `/api/skills/${encodeURIComponent(skillId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+  }
+
+  deleteSkillVersion(
+    skillId: string,
+    versionId: string,
+  ): Promise<DeleteSkillVersionResultDto> {
+    return this.http.request<DeleteSkillVersionResultDto>(
+      `/api/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}`,
       {
         method: "DELETE",
       },

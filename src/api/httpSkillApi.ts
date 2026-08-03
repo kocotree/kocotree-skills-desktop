@@ -109,6 +109,10 @@ export class HttpSkillApi implements SkillApi {
     return this.mySkills.deleteSkill(skillId);
   }
 
+  deleteSkillVersion(skillId: string, versionId: string) {
+    return this.mySkills.deleteSkillVersion(skillId, versionId);
+  }
+
   listNotifications(query: ListNotificationsQuery = {}) {
     return this.notifications.listNotifications(query);
   }

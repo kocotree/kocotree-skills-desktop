@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Tooltip } from "./ui";
+import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Toast, Tooltip } from "./ui";
 import {
   skillApi,
   SkillApiError,
@@ -23,6 +23,7 @@ interface SkillDetailModalProps {
   onInstall: (skill: SkillSummaryDto, version: SkillVersionDto) => void;
   onUninstall: (skill: SkillSummaryDto) => void;
   onUploadVersion: (skill: SkillSummaryDto) => void;
+  onVersionDeleted: (skill: SkillDetailDto) => void;
   onOpenDerivedSource: (skillId: string) => void;
 }
 
@@ -84,6 +85,7 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
  * @param onInstall - 安装指定历史版本的回调。
  * @param onUninstall - 卸载当前 Skill 的回调。
  * @param onUploadVersion - 进入指定 Skill 新版本上传流程的回调。
+ * @param onVersionDeleted - 云端版本删除后同步刷新上层页面的回调。
  * @param onOpenDerivedSource - 返回浏览页并定位来源 Skill 的回调。
  * @returns Skill 详情模态框。
  */
@@ -98,10 +100,12 @@ export function SkillDetailModal({
   onInstall,
   onUninstall,
   onUploadVersion,
+  onVersionDeleted,
   onOpenDerivedSource,
 }: SkillDetailModalProps) {
   const [detail, setDetail] = useState<SkillDetailDto | null>(null);
   const [versions, setVersions] = useState<SkillVersionDto[]>([]);
+  const [versionTotal, setVersionTotal] = useState(0);
   const [activeTabKey, setActiveTabKey] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -112,16 +116,23 @@ export function SkillDetailModal({
   const [fileTreeLoading, setFileTreeLoading] = useState(false);
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [fileError, setFileError] = useState("");
+  const [deleteVersionTarget, setDeleteVersionTarget] = useState<SkillVersionDto | null>(null);
+  const [deletingVersionId, setDeletingVersionId] = useState<string | null>(null);
+  const [deleteVersionError, setDeleteVersionError] = useState("");
 
   useEffect(() => {
     if (!skill) {
       setDetail(null);
       setVersions([]);
+      setVersionTotal(0);
       setActiveTabKey("overview");
       setFileVersionId("");
       setFileEntries([]);
       setSelectedFilePath("");
       setFileContent(null);
+      setDeleteVersionTarget(null);
+      setDeletingVersionId(null);
+      setDeleteVersionError("");
       return;
     }
     let active = true;
@@ -132,6 +143,7 @@ export function SkillDetailModal({
         if (!active) return;
         setDetail(nextDetail);
         setVersions(versionPage.items);
+        setVersionTotal(versionPage.total);
         setFileVersionId(nextDetail.currentVersion.id);
       })
       .catch((reason: unknown) => {
@@ -211,6 +223,57 @@ export function SkillDetailModal({
   const sortedCollaborators = [...(detail?.collaborators ?? [])].sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
   const canManageSkill = Boolean(detail && currentUser && detail.owner.id === currentUser.id);
   const showManagementActions = context === "manage" && canManageSkill;
+
+  function cancelVersionDelete(): void {
+    if (deletingVersionId) return;
+    setDeleteVersionTarget(null);
+    setDeleteVersionError("");
+  }
+
+  async function confirmVersionDelete(): Promise<void> {
+    if (!detail || !deleteVersionTarget || deletingVersionId) return;
+
+    const target = deleteVersionTarget;
+    setDeletingVersionId(target.id);
+    setDeleteVersionError("");
+    try {
+      const result = await skillApi.deleteSkillVersion(
+        detail.id,
+        target.id,
+      );
+      const [nextDetail, versionPage] = await Promise.all([
+        skillApi.getSkill(detail.id),
+        skillApi.listSkillVersions(detail.id),
+      ]);
+      setDetail(nextDetail);
+      setVersions(versionPage.items);
+      setVersionTotal(versionPage.total);
+      setFileVersionId((current) =>
+        current === target.id ||
+        !versionPage.items.some((version) => version.id === current)
+          ? nextDetail.currentVersion.id
+          : current,
+      );
+      setDeleteVersionTarget(null);
+      onVersionDeleted(nextDetail);
+      if (result.ossCleaned) {
+        Toast.success(`版本 v${target.version} 已永久删除`);
+      } else {
+        Toast.info(
+          `版本 v${target.version} 已删除，安装包需要后台继续清理`,
+        );
+      }
+    } catch (reason) {
+      console.error("[KocotreeSkills] 删除 Skill 版本失败", reason);
+      setDeleteVersionError(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "暂时无法删除版本，请稍后重试",
+      );
+    } finally {
+      setDeletingVersionId(null);
+    }
+  }
 
   return (
     <>
@@ -376,7 +439,7 @@ export function SkillDetailModal({
                 </dl>
               </section>
             </TabPane>
-            <TabPane tab={`版本历史 ${versions.length}`} itemKey="versions">
+            <TabPane tab={`版本历史 ${versionTotal}`} itemKey="versions">
               <div className="version-list">
                 {versions.map((version) => (
                   <article className="version-item" key={version.id}>
@@ -399,6 +462,21 @@ export function SkillDetailModal({
                       {version.status === "WITHDRAWN" && <span className="withdrawal-reason">撤回原因：{version.withdrawalReason}</span>}
                     </button>
                     <div className="version-actions">
+                      {canManageSkill && (
+                        <Button
+                          className="version-delete-button"
+                          size="small"
+                          theme="borderless"
+                          disabled={versionTotal <= 1 || deletingVersionId !== null}
+                          aria-label={`删除版本 v${version.version}`}
+                          tooltip={versionTotal <= 1 ? "至少需要保留一个版本，无法删除" : "删除此版本"}
+                          icon={<AppIcon name="trash" size={17} />}
+                          onClick={() => {
+                            setDeleteVersionTarget(version);
+                            setDeleteVersionError("");
+                          }}
+                        />
+                      )}
                       <Button size="small" disabled={version.status === "WITHDRAWN" || detail.status !== "ACTIVE"} onClick={() => onInstall(detail, version)}>安装</Button>
                     </div>
                   </article>
@@ -484,6 +562,50 @@ export function SkillDetailModal({
           </Tabs>
         </div>
       ) : null}
+    </Modal>
+    <Modal
+      className="delete-version-modal"
+      title={deleteVersionTarget ? `删除版本 v${deleteVersionTarget.version}` : "删除版本"}
+      visible={deleteVersionTarget !== null}
+      width={480}
+      centered
+      maskClosable={!deletingVersionId}
+      closeOnEsc={!deletingVersionId}
+      onCancel={cancelVersionDelete}
+      footer={
+        <div className="delete-version-actions">
+          <Button disabled={Boolean(deletingVersionId)} onClick={cancelVersionDelete}>
+            取消
+          </Button>
+          <Button
+            theme="solid"
+            type="danger"
+            loading={Boolean(deletingVersionId)}
+            onClick={() => void confirmVersionDelete()}
+          >
+            永久删除
+          </Button>
+        </div>
+      }
+    >
+      {deleteVersionTarget && detail && (
+        <div className="delete-version-content">
+          <p>
+            确定永久删除 <strong>{detail.displayName}</strong> 的版本{" "}
+            <strong>v{deleteVersionTarget.version}</strong> 吗？版本记录、文件和云端安装包都将被删除，且无法恢复。
+          </p>
+          {deleteVersionTarget.id === detail.currentVersion.id && (
+            <p className="delete-version-current-notice">
+              这是当前版本。删除后，剩余的最新版本会自动成为当前版本。
+            </p>
+          )}
+          {deleteVersionError && (
+            <div className="delete-version-error" role="alert">
+              {deleteVersionError}
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
     </>
   );

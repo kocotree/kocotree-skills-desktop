@@ -69,6 +69,8 @@ export interface DeleteSkillResultDto {
   objectCount: number;
   ossCleaned: boolean;
 }
+export type DeleteSkillVersionResultDto =
+  components["schemas"]["SkillVersionDeletionResult"];
 export type ResolveInstallationDto = components["schemas"]["ResolveInstallationRequest"];
 export type InstallationEventDto = components["schemas"]["InstallationEventRequest"];
 
@@ -207,6 +209,10 @@ export interface SkillApi {
   getVersionFileContent(skillId: string, versionId: string, path: string): Promise<SkillFileContentDto>;
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto>;
   deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
+  deleteSkillVersion(
+    skillId: string,
+    versionId: string,
+  ): Promise<DeleteSkillVersionResultDto>;
   updateSkillMetadata(skillId: string, input: UpdateSkillMetadataDto): Promise<SkillDetailDto>;
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto): Promise<SkillDetailDto>;
   getInstallationStatus(skillId: string, versionId?: string): Promise<InstallationStatusDto>;

@@ -141,7 +141,11 @@ export interface paths {
         get: operations["getSkillVersion"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * 永久删除当前用户拥有的 Skill 版本
+         * @description 至少保留一个版本；删除当前版本后，剩余的最新版本会成为当前版本。
+         */
+        delete: operations["deleteSkillVersion"];
         options?: never;
         head?: never;
         patch?: never;
@@ -553,6 +557,11 @@ export interface components {
             pageSize: number;
             total: number;
         };
+        SkillVersionDeletionResult: {
+            versionId: string;
+            latestVersionId: string;
+            ossCleaned: boolean;
+        };
         NotificationPage: {
             items: components["schemas"]["Notification"][];
             page: number;
@@ -589,6 +598,9 @@ export interface components {
         };
         SkillVersionResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["SkillVersion"];
+        };
+        SkillVersionDeletionResponse: components["schemas"]["ApiOkMeta"] & {
+            data: components["schemas"]["SkillVersionDeletionResult"];
         };
         InstallationStatusResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["InstallationStatus"];
@@ -932,6 +944,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillVersionDetailResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteSkillVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skillId: components["parameters"]["SkillId"];
+                versionId: components["parameters"]["VersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill 版本已永久删除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillVersionDeletionResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

@@ -3,6 +3,9 @@ import { failure, requireAuth, success } from "../http";
 import { catalogService } from "../services/catalog.service";
 import { skillDeletionService } from "../services/skill-deletion.service";
 import {
+  skillVersionDeletionService,
+} from "../services/skill-version-deletion.service";
+import {
   PublishingError,
   publishingService,
 } from "../services/publishing.service";
@@ -129,4 +132,87 @@ export const mySkillsRoutes: FastifyPluginAsync = async (app) => {
       );
     }
   });
+
+  app.delete(
+    "/skills/:skillId/versions/:versionId",
+    async (request, reply) => {
+      const auth = await requireAuth(request, reply);
+      if (!auth) return;
+
+      const params = request.params as {
+        skillId?: string;
+        versionId?: string;
+      };
+      const skillId = params.skillId?.trim() || "";
+      const versionId = params.versionId?.trim() || "";
+      if (
+        !UUID_PATTERN.test(skillId) ||
+        !UUID_PATTERN.test(versionId)
+      ) {
+        return failure(
+          reply,
+          404,
+          "VERSION_NOT_FOUND",
+          "没有找到该 Skill 版本",
+        );
+      }
+
+      try {
+        const result =
+          await skillVersionDeletionService.deleteOwnedSkillVersion(
+            skillId,
+            versionId,
+            auth.user.id,
+          );
+        if (result.status === "SKILL_NOT_FOUND") {
+          return failure(
+            reply,
+            404,
+            "SKILL_NOT_FOUND",
+            "没有找到该 Skill",
+          );
+        }
+        if (result.status === "VERSION_NOT_FOUND") {
+          return failure(
+            reply,
+            404,
+            "VERSION_NOT_FOUND",
+            "没有找到该 Skill 版本",
+          );
+        }
+        if (result.status === "OWNER_REQUIRED") {
+          return failure(
+            reply,
+            403,
+            "OWNER_REQUIRED",
+            "只有 Skill Owner 可以删除版本",
+          );
+        }
+        if (result.status === "LAST_VERSION_REQUIRED") {
+          return failure(
+            reply,
+            409,
+            "LAST_VERSION_REQUIRED",
+            "至少需要保留一个版本，无法删除",
+          );
+        }
+        return success({
+          versionId: result.versionId,
+          latestVersionId: result.latestVersionId,
+          ossCleaned: result.ossCleaned,
+        });
+      } catch (error) {
+        request.log.error(
+          { err: error, skillId, versionId },
+          "永久删除 Skill 版本失败",
+        );
+        return failure(
+          reply,
+          503,
+          "SKILL_VERSION_DELETE_FAILED",
+          "暂时无法删除版本，请稍后重试",
+        );
+      }
+    },
+  );
 };

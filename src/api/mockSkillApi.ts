@@ -3,6 +3,7 @@ import {
   SkillApiError,
   type CreateSkillDto,
   type DeleteSkillResultDto,
+  type DeleteSkillVersionResultDto,
   type DownloadTicketDto,
   type FileEntryDto,
   type InstallationEventDto,
@@ -320,6 +321,53 @@ export class MockSkillApi implements SkillApi {
       id: skillId,
       deletedObjectCount: objectCount,
       objectCount,
+      ossCleaned: true,
+    };
+  }
+
+  async deleteSkillVersion(
+    skillId: string,
+    versionId: string,
+  ): Promise<DeleteSkillVersionResultDto> {
+    await this.wait();
+    const user = this.requireUser();
+    const skill = this.findSkill(skillId);
+    if (skill.owner.id !== user.id) {
+      throw new SkillApiError(
+        "OWNER_REQUIRED",
+        "只有 Skill Owner 可以删除版本",
+      );
+    }
+    const versions = this.versions.get(skillId) ?? [];
+    const versionIndex = versions.findIndex(
+      (version) => version.id === versionId,
+    );
+    if (versionIndex < 0) {
+      throw new SkillApiError(
+        "VERSION_NOT_FOUND",
+        "没有找到该 Skill 版本",
+      );
+    }
+    if (versions.length <= 1) {
+      throw new SkillApiError(
+        "LAST_VERSION_REQUIRED",
+        "至少需要保留一个版本，无法删除",
+      );
+    }
+
+    versions.splice(versionIndex, 1);
+    const latestVersion = versions[0];
+    if (skill.currentVersion.id === versionId) {
+      skill.currentVersion = clone(latestVersion);
+      skill.updatedBy = clone(latestVersion.uploadedBy);
+    }
+    skill.updatedAt = new Date().toISOString();
+    this.versionFiles.delete(versionId);
+    this.versionSkillMd.delete(versionId);
+
+    return {
+      versionId,
+      latestVersionId: skill.currentVersion.id,
       ossCleaned: true,
     };
   }

@@ -1998,6 +1998,50 @@ textarea:focus-visible,
   gap: 8px;
 }
 
+.version-delete-button {
+  width: 40px;
+  padding: 0;
+  color: #737973;
+}
+
+.version-delete-button:hover:not(:disabled) {
+  background: var(--koco-danger-soft);
+  color: #b84f39;
+}
+
+.delete-version-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.delete-version-content {
+  display: grid;
+  gap: 12px;
+}
+
+.delete-version-content p {
+  margin: 0;
+  color: #4d5150;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.delete-version-current-notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a5a26 !important;
+}
+
+.delete-version-error {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: var(--koco-danger-soft);
+  color: #b84f39;
+  font-size: 12px;
+}
+
 .metadata-actions {
   display: flex;
   justify-content: flex-end;

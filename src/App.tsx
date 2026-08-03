@@ -1373,6 +1373,13 @@ function App() {
         onInstall={handleInstallVersion}
         onUninstall={prepareUninstall}
         onUploadVersion={handleUploadVersion}
+        onVersionDeleted={(skill) => {
+          setSelectedSkill((current) =>
+            current?.id === skill.id ? skill : current,
+          );
+          setBrowseRefreshKey((current) => current + 1);
+          setPublishedRefreshKey((current) => current + 1);
+        }}
         onOpenDerivedSource={handleOpenDerivedSource}
       />
 
