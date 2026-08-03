@@ -2574,9 +2574,77 @@ button.my-skill-card:hover {
 }
 
 .compact-local-skill-card {
+  position: relative;
   min-height: 0;
   gap: 8px;
   padding: 12px 14px;
+}
+
+.compact-local-skill-card .my-skill-card-open {
+  padding-right: 76px;
+}
+
+.local-skill-hover-actions {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #dfe3df;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 18px rgba(31, 38, 33, 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.compact-local-skill-card:hover .local-skill-hover-actions,
+.compact-local-skill-card:focus-within .local-skill-hover-actions,
+.local-skill-hover-actions.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.local-skill-hover-actions .ui-tooltip-trigger {
+  display: flex;
+}
+
+.local-skill-hover-actions .local-skill-icon-action {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border-radius: 6px;
+  color: #667069;
+}
+
+.local-skill-hover-actions .local-skill-icon-action:hover:not(:disabled) {
+  border-color: transparent;
+  background: #eef4f0;
+  color: var(--accent-deep);
+}
+
+.local-skill-hover-actions .local-skill-icon-action.ui-button-danger {
+  background: transparent;
+  color: #ba5a47;
+}
+
+.local-skill-hover-actions .local-skill-icon-action.ui-button-danger:hover:not(:disabled) {
+  background: #fff0ec;
+  color: #a74735;
+}
+
+@media (hover: none) {
+  .local-skill-hover-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
 }
 
 .workspace-skill-card {
