@@ -4,6 +4,7 @@ import {
   canControlLocalSkill,
   filterWorkspaceSkillGroups,
   getLocalSkillActivationState,
+  getLocalSkillGroupRecords,
   getLocalSkillSourceRecord,
   groupLocalSkills,
   SkillApiError,
@@ -59,7 +60,7 @@ function activationDescription(
     return "检测到旧版共享目录连接；点击后迁移到私有 Skill 本体";
   }
   if (!canControlLocalSkill(group)) {
-    return "该条目不是私有仓库中的实体 Skill，不能通过开关控制";
+    return `已在 ${label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
   }
   return state === "enabled"
     ? `关闭后会从 ${label} 的扫描目录移除入口；已运行会话需新建任务或重启后刷新`
@@ -80,7 +81,9 @@ async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
 }
 
 function installationTimestamp(group: LocalSkillGroup): number {
-  const installedAt = getLocalSkillSourceRecord(group)?.installedAt;
+  const installedAt = (
+    getLocalSkillSourceRecord(group) ?? group.primaryRecord
+  ).installedAt;
   if (!installedAt) return Number.NEGATIVE_INFINITY;
   const timestamp = Date.parse(installedAt);
   return Number.isNaN(timestamp) ? Number.NEGATIVE_INFINITY : timestamp;
@@ -96,6 +99,8 @@ export function AllAgentsSkillsPage({
   error,
   onRefresh,
   onSetEnabled,
+  deletingRecordId,
+  onDelete,
 }: {
   skills: LocalSkillRecord[];
   claudeInstalled: boolean;
@@ -103,6 +108,8 @@ export function AllAgentsSkillsPage({
   error: string;
   onRefresh: () => void;
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
+  deletingRecordId: string | null;
+  onDelete: (records: LocalSkillRecord[]) => void;
 }) {
   const [query, setQuery] = useState("");
   const [pendingControl, setPendingControl] = useState("");
@@ -116,7 +123,7 @@ export function AllAgentsSkillsPage({
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleGroups = groups.filter((group) => {
-    const record = getLocalSkillSourceRecord(group)!;
+    const record = getLocalSkillSourceRecord(group) ?? group.primaryRecord;
     return !normalizedQuery
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
       || record.skillName.toLocaleLowerCase().includes(normalizedQuery);
@@ -179,7 +186,7 @@ export function AllAgentsSkillsPage({
         <div>
           <h1>全部 Agents</h1>
           <p>
-            Skill 安装后默认关闭；打开下方开关后，即可在 Codex 和 Claude 中使用
+            查看电脑上检测到的全部 Skill，并管理它们在 Codex 和 Claude 中的使用状态
           </p>
         </div>
       </header>
@@ -198,7 +205,7 @@ export function AllAgentsSkillsPage({
             <input
               type="search"
               value={query}
-              placeholder="搜索私有 Skill"
+              placeholder="搜索本地 Skill"
               aria-label="搜索全部 Agents Skill"
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -226,14 +233,46 @@ export function AllAgentsSkillsPage({
         <>
           <section className="my-skills-list local-skills-list agents-workspace-list">
           {visibleGroups.map((group) => {
-            const record = getLocalSkillSourceRecord(group)!;
+            const record = getLocalSkillSourceRecord(group) ?? group.primaryRecord;
+            const groupRecords = getLocalSkillGroupRecords(group);
+            const deleting = groupRecords.some(
+              (item) => item.id === deletingRecordId,
+            );
             const statusLabel = record.entryKind !== "DIRECTORY"
-              ? "受管入口"
-              : record.status === "LOCAL_UNKNOWN"
-                ? null
-                : STATUS_LABELS[record.status];
+              ? record.status === "LOCAL_UNKNOWN"
+                ? "本地连接"
+                : "受管入口"
+              : STATUS_LABELS[record.status];
             return (
               <article className="my-skill-card local compact-local-skill-card workspace-skill-card" key={group.id}>
+                <div
+                  className={`local-skill-hover-actions${deleting ? " is-visible" : ""}`}
+                  role="group"
+                  aria-label={`${record.displayName} 文件操作`}
+                >
+                  <Button
+                    className="local-skill-icon-action"
+                    size="small"
+                    type="tertiary"
+                    theme="borderless"
+                    icon={<AppIcon name="folder" size={16} />}
+                    tooltip="打开 Skill 位置"
+                    aria-label={`打开 ${record.displayName} 的 Skill 位置`}
+                    onClick={() => void revealWorkspaceSkill(record)}
+                  />
+                  <Button
+                    className="local-skill-icon-action"
+                    size="small"
+                    type="danger"
+                    theme="borderless"
+                    icon={<AppIcon name="trash" size={16} />}
+                    tooltip="移到回收站"
+                    aria-label={`将 ${record.displayName} 移到回收站`}
+                    loading={deleting}
+                    disabled={deletingRecordId !== null}
+                    onClick={() => onDelete(groupRecords)}
+                  />
+                </div>
                 <button
                   className="my-skill-card-open"
                   type="button"
@@ -317,12 +356,6 @@ export function AllAgentsSkillsPage({
                         );
                       })}
                     </div>
-                    <Button
-                      size="small"
-                      onClick={() => void revealWorkspaceSkill(record)}
-                    >
-                      打开 Skill 位置
-                    </Button>
                   </div>
                 </div>
               </article>
@@ -332,13 +365,13 @@ export function AllAgentsSkillsPage({
             <div className="empty-state my-skills-empty">
               <strong>
                 {normalizedQuery
-                  ? "没有匹配的私有 Skill"
-                  : "私有 Skill 仓库还是空的"}
+                  ? "没有匹配的本地 Skill"
+                  : "还没有检测到本地 Skill"}
               </strong>
               <span>
                 {normalizedQuery
                   ? "换一个名称继续搜索"
-                  : "从技能市场安装 Skill 后，可在这里分别开启 Claude Code 或 Codex"}
+                  : "可以从技能市场安装，也可以手动放入 Claude Code 或 Codex 的 Skills 目录"}
               </span>
             </div>
           )}

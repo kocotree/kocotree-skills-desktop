@@ -2299,7 +2299,46 @@ textarea:focus-visible,
   color: #555b65;
   font-size: 14px;
   line-height: 1.7;
+}
+
+.uninstall-confirm-content {
+  display: grid;
+  gap: 14px;
+}
+
+.uninstall-path-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.uninstall-path-list li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid #ece9e4;
+  border-radius: 8px;
+  background: #faf9f7;
+}
+
+.uninstall-path-list code {
+  min-width: 0;
+  overflow: hidden;
+  color: #4d535c;
+  font-size: 12px;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.uninstall-path-list span {
+  flex: none;
+  color: #9a4b46;
+  font-size: 12px;
 }
 
 .install-feedback-actions {

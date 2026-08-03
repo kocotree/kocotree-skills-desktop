@@ -282,5 +282,17 @@ export function canControlLocalSkill(group: LocalSkillGroup): boolean {
 export function filterWorkspaceSkillGroups(
   groups: LocalSkillGroup[],
 ): LocalSkillGroup[] {
-  return groups.filter((group) => getLocalSkillSourceRecord(group) !== null);
+  return groups;
+}
+
+/** 返回一个聚合卡片中实际扫描到的全部本地条目，并按记录编号去重。 */
+export function getLocalSkillGroupRecords(
+  group: LocalSkillGroup,
+): LocalSkillRecord[] {
+  const records = [
+    group.managerRecord,
+    group.workspaceRecord,
+    ...Object.values(group.agentRecords),
+  ].filter((record): record is LocalSkillRecord => Boolean(record));
+  return [...new Map(records.map((record) => [record.id, record])).values()];
 }

@@ -13,6 +13,7 @@ export type AppIconName =
   | "close"
   | "folder"
   | "file"
+  | "trash"
   | "agents"
   | "claude"
   | "codex"
@@ -34,6 +35,7 @@ const iconPaths: Record<AppIconName, React.ReactNode> = {
   close: <><path d="M6 6l12 12M18 6 6 18" /></>,
   folder: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /></>,
   file: <><path d="M6.5 3.5h7l4 4v13h-11z" /><path d="M13.5 3.5v4h4" /></>,
+  trash: <><path d="M4 7h16M9 7V4.5h6V7M6.5 7l.8 13h9.4l.8-13" /><path d="M10 11v5.5M14 11v5.5" /></>,
   agents: <><circle cx="12" cy="12" r="8.5" /><path d="M3.5 12h17M12 3.5c2.2 2.3 3.3 5.1 3.3 8.5S14.2 18.2 12 20.5C9.8 18.2 8.7 15.4 8.7 12S9.8 5.8 12 3.5Z" /></>,
   claude: <><path d="M12 3.5v17M3.5 12h17M6 6l12 12M18 6 6 18" /><circle cx="12" cy="12" r="2.4" /></>,
   codex: <path

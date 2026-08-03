@@ -55,8 +55,10 @@ interface InstallPromptState {
 }
 
 interface UninstallPromptState {
-  skill: SkillSummaryDto;
-  record: LocalSkillRecord;
+  displayName: string;
+  records: LocalSkillRecord[];
+  managedRecord: LocalSkillRecord | null;
+  completeRemoval: boolean;
 }
 
 function localFilterForPage(page: PageKey): LocalSkillFilter | null {
@@ -921,28 +923,58 @@ function App() {
       Toast.error("无法确认这个 Skill 的本地安装归属，请在本地 Skill 管理中检查");
       return;
     }
-    setUninstallPrompt({ skill, record });
+    const records = localSkills.filter(
+      (item) => item.skillId === skill.id && item.skillName === record.skillName,
+    );
+    setUninstallPrompt({
+      displayName: skill.displayName,
+      records: records.length > 0 ? records : [record],
+      managedRecord: record,
+      completeRemoval: true,
+    });
+  }
+
+  function prepareLocalDelete(
+    records: LocalSkillRecord[],
+    completeRemoval: boolean,
+  ): void {
+    const firstRecord = records[0];
+    if (!firstRecord) return;
+    const managedRecord = completeRemoval
+      ? [...getUninstallableSkillRecords(records).values()][0] ?? null
+      : null;
+    setUninstallPrompt({
+      displayName: firstRecord.displayName,
+      records,
+      managedRecord,
+      completeRemoval,
+    });
   }
 
   async function uninstallSkill(): Promise<void> {
     if (!uninstallPrompt) return;
-    const { skill, record } = uninstallPrompt;
-    setUninstallingSkillId(skill.id);
+    const { displayName, records, managedRecord } = uninstallPrompt;
+    const operationId = managedRecord?.skillId ?? records[0]?.id ?? null;
+    setUninstallingSkillId(operationId);
     try {
-      const items = await localSkillService.remove({
-        skillId: skill.id,
-        skillName: record.skillName,
-      });
+      const items = managedRecord?.skillId
+        ? await localSkillService.remove({
+            skillId: managedRecord.skillId,
+            skillName: managedRecord.skillName,
+          })
+        : await localSkillService.removeEntries({
+            recordIds: records.map((record) => record.id),
+          });
       setLocalSkills(items);
       setInstalledSkillIds(installedSkillIdsFromRecords(items));
       setUninstallPrompt(null);
-      Toast.success(`${skill.displayName} 已从本地设备卸载`);
+      Toast.success(`${displayName} 已移到系统回收站`);
     } catch (reason) {
       console.error("[KocotreeSkills] Skill 卸载失败", reason);
       Toast.error(
         reason instanceof SkillApiError
           ? reason.message
-          : "卸载失败，请稍后重试",
+          : "移到回收站失败，请稍后重试",
       );
       await refreshLocalSkills();
     } finally {
@@ -1179,6 +1211,8 @@ function App() {
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
             onSetEnabled={setLocalSkillEnabled}
+            deletingRecordId={uninstallingSkillId}
+            onDelete={(records) => prepareLocalDelete(records, true)}
           />
         ) : localFilter ? (
           <LocalSkillsPage
@@ -1189,6 +1223,8 @@ function App() {
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
             onSetEnabled={setLocalSkillEnabled}
+            deletingRecordId={uninstallingSkillId}
+            onDelete={(records) => prepareLocalDelete(records, false)}
           />
         ) : null}
         {currentUser && (
@@ -1254,8 +1290,9 @@ function App() {
       <InstallFeedbackModal feedback={installFeedback} onClose={() => setInstallFeedback(null)} />
 
       <UninstallConfirmModal
-        skill={uninstallPrompt?.skill ?? null}
-        record={uninstallPrompt?.record ?? null}
+        displayName={uninstallPrompt?.displayName ?? ""}
+        records={uninstallPrompt?.records ?? []}
+        completeRemoval={uninstallPrompt?.completeRemoval ?? false}
         loading={uninstallingSkillId !== null}
         onCancel={() => {
           if (uninstallingSkillId === null) setUninstallPrompt(null);

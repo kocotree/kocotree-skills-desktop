@@ -79,7 +79,7 @@ function activationDescription(
     return "检测到旧版共享目录连接；点击后迁移到私有 Skill 本体";
   }
   if (!canControlLocalSkill(group)) {
-    return "该 Skill 不在可控制的私有仓库中";
+    return `已在 ${AGENT_DETAILS[agent].label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
   }
   return state === "enabled"
     ? `关闭后会移除扫描入口；已运行的 ${AGENT_DETAILS[agent].label} 会话需新建任务或重启后刷新`
@@ -110,6 +110,8 @@ export function LocalSkillsPage({
   error,
   onRefresh,
   onSetEnabled,
+  deletingRecordId,
+  onDelete,
 }: {
   filter: LocalSkillFilter;
   skills: LocalSkillRecord[];
@@ -118,6 +120,8 @@ export function LocalSkillsPage({
   error: string;
   onRefresh: () => void;
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
+  deletingRecordId: string | null;
+  onDelete: (records: LocalSkillRecord[]) => void;
 }) {
   const [pendingControl, setPendingControl] = useState("");
   const [query, setQuery] = useState("");
@@ -264,16 +268,50 @@ export function LocalSkillsPage({
             const state = getLocalSkillActivationState(group, filter);
             const controlKey = `${group.id}:${filter}`;
             const pending = pendingControl === controlKey;
+            const agentRecord = group.agentRecords[filter] ?? record;
+            const deleting = agentRecord.id === deletingRecordId;
             const interactive = agentInstalled
               && canControlLocalSkill(group)
               && ["enabled", "disabled", "legacy"].includes(state);
             const statusLabel = record.entryKind !== "DIRECTORY"
-              ? "受管入口"
-              : record.status === "LOCAL_UNKNOWN"
-                ? null
-                : STATUS_LABELS[record.status];
+              ? record.status === "LOCAL_UNKNOWN"
+                ? "本地连接"
+                : "受管入口"
+              : STATUS_LABELS[record.status];
             return (
               <article className="my-skill-card local compact-local-skill-card" key={group.id}>
+                <div
+                  className={`local-skill-hover-actions${deleting ? " is-visible" : ""}`}
+                  role="group"
+                  aria-label={`${record.displayName} 文件操作`}
+                >
+                  <Button
+                    className="local-skill-icon-action"
+                    size="small"
+                    type="tertiary"
+                    theme="borderless"
+                    icon={<AppIcon name="folder" size={16} />}
+                    tooltip={getLocalSkillSourceRecord(group)
+                      ? "打开 Skill 位置"
+                      : "在目录中显示"}
+                    aria-label={`${getLocalSkillSourceRecord(group)
+                      ? "打开"
+                      : "在目录中显示"} ${record.displayName}`}
+                    onClick={() => void revealLocalSkill(record)}
+                  />
+                  <Button
+                    className="local-skill-icon-action"
+                    size="small"
+                    type="danger"
+                    theme="borderless"
+                    icon={<AppIcon name="trash" size={16} />}
+                    tooltip="移到回收站"
+                    aria-label={`将 ${record.displayName} 移到回收站`}
+                    loading={deleting}
+                    disabled={deletingRecordId !== null}
+                    onClick={() => onDelete([agentRecord])}
+                  />
+                </div>
                 <button
                   className="my-skill-card-open"
                   type="button"
@@ -335,14 +373,6 @@ export function LocalSkillsPage({
                         </button>
                       </div>
                     </div>
-                    <Button
-                      size="small"
-                      onClick={() => void revealLocalSkill(record)}
-                    >
-                      {getLocalSkillSourceRecord(group)
-                        ? "打开 Skill 位置"
-                        : "在目录中显示"}
-                    </Button>
                   </div>
                 </div>
               </article>
