@@ -2,6 +2,10 @@ import type { FastifyPluginAsync } from "fastify";
 import { failure, requireAuth, success } from "../http";
 import { catalogService } from "../services/catalog.service";
 import { skillDeletionService } from "../services/skill-deletion.service";
+import {
+  PublishingError,
+  publishingService,
+} from "../services/publishing.service";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,6 +22,43 @@ function positiveInteger(
 }
 
 export const mySkillsRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/users/me/skills/publish-target", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    const query = request.query as Record<string, unknown>;
+    const skillName =
+      typeof query.skillName === "string" ? query.skillName : "";
+    try {
+      return success(
+        await publishingService.resolvePublishTarget(
+          skillName,
+          auth.user.id,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof PublishingError) {
+        return failure(
+          reply,
+          error.statusCode,
+          error.code,
+          error.message,
+          error.details,
+        );
+      }
+      request.log.error(
+        { err: error, skillName },
+        "解析 Skill 云端发布目标失败",
+      );
+      return failure(
+        reply,
+        503,
+        "PUBLISHING_FAILED",
+        "暂时无法检查云端 Skill，请稍后重试",
+      );
+    }
+  });
+
   app.get("/users/me/skills", async (request, reply) => {
     const auth = await requireAuth(request, reply);
     if (!auth) return;

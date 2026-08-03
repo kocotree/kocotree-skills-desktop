@@ -31,6 +31,7 @@ export interface SkillFileContentDto extends FileContentDto {
 export type DownloadTicketDto = components["schemas"]["DownloadTicket"];
 export type InstallationStatusDto = components["schemas"]["InstallationStatus"];
 export type InstallationResolutionDto = components["schemas"]["InstallationResolution"];
+export type PublishTargetResolutionDto = components["schemas"]["PublishTargetResolution"];
 export type NotificationDto = components["schemas"]["Notification"];
 export type NotificationPageDto = components["schemas"]["NotificationPage"];
 export interface CreateSkillDto {
@@ -184,6 +185,7 @@ export interface LocalSkillService extends SkillInstaller {
 export interface SkillApi {
   listSkills(query?: ListSkillsQuery): Promise<SkillPageDto>;
   listMySkills(query: ListMySkillsQuery): Promise<SkillPageDto>;
+  resolvePublishTarget(skillName: string): Promise<PublishTargetResolutionDto>;
   getSkill(skillId: string): Promise<SkillDetailDto>;
   listTags(query?: string): Promise<TagDto[]>;
   listSkillVersions(skillId: string, query?: ListVersionsQuery): Promise<VersionPageDto>;

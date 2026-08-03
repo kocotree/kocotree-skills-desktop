@@ -49,6 +49,10 @@ export class HttpSkillApi implements SkillApi {
     return this.mySkills.listMySkills(query);
   }
 
+  resolvePublishTarget(skillName: string) {
+    return this.mySkills.resolvePublishTarget(skillName);
+  }
+
   getSkill(skillId: string) {
     return this.catalog.getSkill(skillId);
   }

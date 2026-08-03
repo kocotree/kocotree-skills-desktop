@@ -18,6 +18,7 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SEMVER_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export class PublishingError extends Error {
   constructor(
@@ -353,6 +354,40 @@ async function loadPublishedSkill(
 }
 
 export const publishingService = {
+  async resolvePublishTarget(skillName: string, userId: string) {
+    const normalizedName = skillName.trim().toLocaleLowerCase();
+    if (
+      !SKILL_NAME_PATTERN.test(normalizedName) ||
+      normalizedName.length > 64
+    ) {
+      throw new PublishingError(
+        400,
+        "INVALID_REQUEST",
+        "Skill 名称格式无效",
+      );
+    }
+
+    const target =
+      await publishingRepository.findPublishTargetBySkillName(
+        normalizedName,
+      );
+    if (!target) {
+      return { state: "NOT_FOUND" as const, skill: null };
+    }
+    if (target.createdBy !== userId) {
+      return { state: "TAKEN_BY_OTHER" as const, skill: null };
+    }
+    if (target.status !== "PUBLISHED" || !target.latestVersionId) {
+      return { state: "UNAVAILABLE" as const, skill: null };
+    }
+
+    const skill = await loadPublishedSkill(
+      target.id,
+      "无法读取云端 Skill 发布目标",
+    );
+    return { state: "OWNED" as const, skill };
+  },
+
   async createSkill(input: CreateSkillInput) {
     const displayName = validateText(
       input.displayName,

@@ -1,6 +1,7 @@
 import type {
   DeleteSkillResultDto,
   ListMySkillsQuery,
+  PublishTargetResolutionDto,
   SkillPageDto,
 } from "./contracts";
 import type { AuthenticatedHttpClient } from "./httpClient";
@@ -27,6 +28,15 @@ export class HttpMySkillsApi {
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+
+  resolvePublishTarget(
+    skillName: string,
+  ): Promise<PublishTargetResolutionDto> {
+    const params = new URLSearchParams({ skillName });
+    return this.http.request<PublishTargetResolutionDto>(
+      `/api/users/me/skills/publish-target?${params.toString()}`,
     );
   }
 

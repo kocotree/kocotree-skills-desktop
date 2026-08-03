@@ -62,6 +62,30 @@ paths:
                 $ref: '#/components/schemas/SkillPageResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
+  /api/users/me/skills/publish-target:
+    get:
+      tags: [Users]
+      summary: 按 Skill 名称解析当前用户可发布的云端目标
+      operationId: resolvePublishTarget
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: skillName
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+            maxLength: 64
+      responses:
+        '200':
+          description: 云端发布目标解析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishTargetResolutionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /api/tags:
     get:
       tags: [Tags]
@@ -1043,6 +1067,17 @@ components:
           format: date-time
         archiveReason:
           type: [string, 'null']
+    PublishTargetResolution:
+      type: object
+      required: [state, skill]
+      properties:
+        state:
+          type: string
+          enum: [OWNED, NOT_FOUND, TAKEN_BY_OTHER, UNAVAILABLE]
+        skill:
+          oneOf:
+            - $ref: '#/components/schemas/SkillDetail'
+            - type: 'null'
     InstallationEventRequest:
       type: object
       required: [eventId, skillId, versionId, installedAt]
@@ -1231,6 +1266,14 @@ components:
           properties:
             data:
               $ref: '#/components/schemas/InstallationResolution'
+    PublishTargetResolutionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/PublishTargetResolution'
     NotificationPageResponse:
       allOf:
         - $ref: '#/components/schemas/ApiOkMeta'

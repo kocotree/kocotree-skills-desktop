@@ -109,6 +109,23 @@ async function createVersionFiles(
 }
 
 export const publishingRepository = {
+  findPublishTargetBySkillName(skillName: string) {
+    return prisma.skill.findFirst({
+      where: {
+        slug: {
+          equals: skillName,
+          mode: "insensitive",
+        },
+      },
+      select: {
+        id: true,
+        createdBy: true,
+        status: true,
+        latestVersionId: true,
+      },
+    });
+  },
+
   listIdentityCandidates() {
     return prisma.skill.findMany({
       select: {

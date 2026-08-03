@@ -188,6 +188,24 @@ export class MockSkillApi implements SkillApi {
     return { items: clone(items.slice((page - 1) * pageSize, page * pageSize)), total: items.length, page, pageSize };
   }
 
+  async resolvePublishTarget(skillName: string) {
+    await this.wait();
+    const user = this.requireUser();
+    const target = this.skills.find(
+      (skill) =>
+        skill.skillName.toLocaleLowerCase() ===
+        skillName.trim().toLocaleLowerCase(),
+    );
+    if (!target) return { state: "NOT_FOUND" as const, skill: null };
+    if (target.owner.id !== user.id) {
+      return { state: "TAKEN_BY_OTHER" as const, skill: null };
+    }
+    if (target.status !== "ACTIVE") {
+      return { state: "UNAVAILABLE" as const, skill: null };
+    }
+    return { state: "OWNED" as const, skill: clone(target) };
+  }
+
   async getSkill(skillId: string): Promise<SkillDetailDto> {
     await this.wait();
     const skill = this.findSkill(skillId);

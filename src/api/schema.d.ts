@@ -38,6 +38,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/skills/publish-target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按 Skill 名称解析当前用户可发布的云端目标 */
+        get: operations["resolvePublishTarget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -499,6 +516,11 @@ export interface components {
             archivedAt: string | null;
             archiveReason: string | null;
         };
+        PublishTargetResolution: {
+            /** @enum {string} */
+            state: "OWNED" | "NOT_FOUND" | "TAKEN_BY_OTHER" | "UNAVAILABLE";
+            skill: components["schemas"]["SkillDetail"] | null;
+        };
         InstallationEventRequest: {
             /** Format: uuid */
             eventId: string;
@@ -577,6 +599,9 @@ export interface components {
         InstallationResolutionResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["InstallationResolution"];
         };
+        PublishTargetResolutionResponse: components["schemas"]["ApiOkMeta"] & {
+            data: components["schemas"]["PublishTargetResolution"];
+        };
         NotificationPageResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["NotificationPage"];
         };
@@ -648,6 +673,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillPageResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    resolvePublishTarget: {
+        parameters: {
+            query: {
+                skillName: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 云端发布目标解析结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishTargetResolutionResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];
