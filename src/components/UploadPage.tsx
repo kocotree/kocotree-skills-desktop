@@ -363,7 +363,7 @@ export function UploadPage({
               <span className="section-number">2</span>
               <div>
                 <h2>{targetSkill ? "填写版本信息" : "确认发布信息"}</h2>
-                {targetSkill && <p>新版本必须高于当前最新版本</p>}
+                {targetSkill && <p>版本号由系统基于当前最新版本自动递增</p>}
               </div>
             </div>
 
@@ -464,7 +464,7 @@ export function UploadPage({
 
             <div className="form-grid version-form-grid">
               {targetSkill && (
-                <label className="field"><span>版本号（必填）</span><input required value={version} onChange={(event) => setVersion(event.currentTarget.value)} placeholder={`高于 ${targetSkill.currentVersion.version}`} /></label>
+                <label className="field"><span>版本号（自动生成）</span><input readOnly value={version} aria-label="系统自动生成的版本号" /></label>
               )}
               <label className="field field-wide"><span>更新说明（{targetSkill ? "必填" : "选填"}）</span><textarea required={Boolean(targetSkill)} value={changelog} onChange={(event) => setChangelog(event.currentTarget.value)} placeholder={targetSkill ? "请说明本次更新内容，例如：优化触发条件，补充使用示例。" : "首次发布"} /></label>
             </div>
