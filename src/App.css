@@ -2745,14 +2745,11 @@ button.my-skill-card:hover {
 }
 
 .cloud-sync-button {
-  min-width: 76px;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
   flex: none;
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-  white-space: nowrap;
-}
-
-.cloud-sync-button .ui-button-content {
-  gap: 5px;
 }
 
 .compact-local-skill-card .my-skill-statuses {
