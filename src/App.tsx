@@ -1273,7 +1273,7 @@ function App() {
       >
         <div className="login-content">
           <span className="login-mark">飞</span>
-          <div><strong>使用飞书继续</strong><p>安装、上传和发布版本时需要记录操作者身份。</p></div>
+          <div><strong>使用飞书继续</strong></div>
           {loginError && (
             <div className="login-error" role="alert">{loginError}</div>
           )}
