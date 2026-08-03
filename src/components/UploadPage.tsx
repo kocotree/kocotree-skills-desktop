@@ -5,6 +5,7 @@ import {
   parseSkillFolder,
   skillApi,
   SkillApiError,
+  type PreparedSkillUpload,
   type ParsedSkillPackage,
   type SkillDetailDto,
   type SkillSummaryDto,
@@ -17,9 +18,10 @@ import { mergeTagNames, parseTagNames } from "./tagNames";
 
 interface UploadPageProps {
   targetSkill: SkillSummaryDto | null;
+  initialPackage: PreparedSkillUpload | null;
   currentUser: UserDto;
   onCancel: () => void;
-  onPublished: (skill: SkillDetailDto) => void;
+  onPublished: (skill: SkillDetailDto) => void | Promise<void>;
   onSwitchToCreate: () => void;
 }
 
@@ -49,15 +51,24 @@ function nextPatchVersion(version: string): string {
  */
 export function UploadPage({
   targetSkill,
+  initialPackage,
   currentUser,
   onCancel,
   onPublished,
   onSwitchToCreate,
 }: UploadPageProps) {
-  const [fileName, setFileName] = useState("");
-  const [selectedSourceType, setSelectedSourceType] = useState<UploadSourceType | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [inspection, setInspection] = useState<SkillPackageInspection | null>(null);
+  const [fileName, setFileName] = useState(
+    initialPackage?.inspection.originalFileName ?? "",
+  );
+  const [selectedSourceType, setSelectedSourceType] = useState<UploadSourceType | null>(
+    initialPackage ? "folder" : null,
+  );
+  const [selectedFile, setSelectedFile] = useState<File | null>(
+    initialPackage?.uploadFile ?? null,
+  );
+  const [inspection, setInspection] = useState<SkillPackageInspection | null>(
+    initialPackage?.inspection ?? null,
+  );
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagNames, setNewTagNames] = useState<string[]>([]);
@@ -243,7 +254,7 @@ export function UploadPage({
         skillId: result.id,
         version: result.currentVersion.version,
       });
-      onPublished(result);
+      await onPublished(result);
     } catch (reason) {
       console.error("[KocotreeSkills] Skill 发布失败", reason);
       if (reason instanceof SkillApiError && reason.code === "DISPLAY_NAME_CONFIRMATION_REQUIRED") {

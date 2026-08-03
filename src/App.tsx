@@ -11,9 +11,11 @@ import {
   filterWorkspaceSkillGroups,
   getUninstallableSkillRecords,
   groupLocalSkills,
+  inspectPreparedLocalSkillPackage,
   type AgentInstallationStatus,
   type LocalSkillFilter,
   type LocalSkillRecord,
+  type PreparedSkillUpload,
   type SetLocalSkillEnabledInput,
   type SkillDetailDto,
   type SkillSummaryDto,
@@ -510,6 +512,9 @@ function App() {
   const [selectedSkillContext, setSelectedSkillContext] = useState<"browse" | "manage">("browse");
   const [highlightedBrowseSkillId, setHighlightedBrowseSkillId] = useState<string | null>(null);
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
+  const [uploadInitialPackage, setUploadInitialPackage] = useState<PreparedSkillUpload | null>(null);
+  const [uploadSourceRecord, setUploadSourceRecord] = useState<LocalSkillRecord | null>(null);
+  const [uploadReturnPage, setUploadReturnPage] = useState<PageKey>("browse");
   const [uploadSessionKey, setUploadSessionKey] = useState(0);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
   const [publishedRefreshKey, setPublishedRefreshKey] = useState(0);
@@ -539,6 +544,7 @@ function App() {
   const [installing, setInstalling] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
   const [uninstallingSkillId, setUninstallingSkillId] = useState<string | null>(null);
+  const [syncingRecordId, setSyncingRecordId] = useState<string | null>(null);
 
   const refreshLocalSkills = useCallback(async () => {
     if (!usesRealInstaller) {
@@ -987,17 +993,118 @@ function App() {
       console.info("[KocotreeSkills] 进入新版本上传流程", { skillId: skill.id });
       setSelectedSkill(null);
       setUploadTargetSkill(skill);
+      setUploadInitialPackage(null);
+      setUploadSourceRecord(null);
+      setUploadReturnPage("browse");
       setUploadSessionKey((current) => current + 1);
       setActivePage("upload");
     });
   }
 
-  function handlePublished(skill: SkillSummaryDto): void {
+  function handleSyncLocalSkill(record: LocalSkillRecord): void {
+    requireAuth(() => {
+      void syncLocalSkillToCloud(record);
+    });
+  }
+
+  async function syncLocalSkillToCloud(record: LocalSkillRecord): Promise<void> {
+    if (!usesRealInstaller) {
+      Toast.error("同步本地 Skill 仅支持桌面客户端");
+      return;
+    }
+    setSyncingRecordId(record.id);
+    Toast.info(`正在检查 ${record.displayName} 的云端状态`);
+    try {
+      const resolution = await skillApi.resolvePublishTarget(
+        record.skillName,
+      );
+      if (resolution.state === "TAKEN_BY_OTHER") {
+        Toast.error("云端已存在同名 Skill，但你不是所有者，无法发布更新");
+        return;
+      }
+      if (resolution.state === "UNAVAILABLE") {
+        Toast.error("你拥有的同名云端 Skill 当前不可发布新版本");
+        return;
+      }
+      const targetSkill = resolution.state === "OWNED"
+        ? resolution.skill
+        : null;
+      if (!targetSkill && resolution.state === "OWNED") {
+        throw new SkillApiError(
+          "SKILL_NOT_FOUND",
+          "没有找到可更新的云端 Skill",
+        );
+      }
+
+      Toast.info(`正在打包 ${record.displayName}`);
+      const sourcePath = record.resolvedPath || record.installPath;
+      const file = await localSkillService.packageSkill(
+        sourcePath,
+        record.skillName,
+      );
+      Toast.info(`正在校验 ${record.displayName} 的发布信息`);
+      const parsed = await inspectPreparedLocalSkillPackage(file);
+      if (parsed.inspection.skillName !== record.skillName) {
+        throw new SkillApiError(
+          "SKILL_NAME_MISMATCH",
+          "本地 SKILL.md 名称与扫描记录不一致，请重新扫描后再试",
+        );
+      }
+      if (
+        targetSkill &&
+        parsed.inspection.contentHash &&
+        targetSkill.currentVersion.contentHash ===
+          parsed.inspection.contentHash
+      ) {
+        Toast.info(`${record.displayName} 的云端内容已经是最新版本`);
+        return;
+      }
+
+      setUploadTargetSkill(targetSkill);
+      setUploadInitialPackage(parsed);
+      setUploadSourceRecord(record);
+      setUploadReturnPage(activePage);
+      setUploadSessionKey((current) => current + 1);
+      setActivePage("upload");
+    } catch (reason) {
+      console.error("[KocotreeSkills] 本地 Skill 云端同步准备失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "暂时无法准备本地 Skill 云端同步",
+      );
+    } finally {
+      setSyncingRecordId(null);
+    }
+  }
+
+  async function handlePublished(skill: SkillSummaryDto): Promise<void> {
+    const sourceRecord = uploadSourceRecord;
+    if (sourceRecord && usesRealInstaller) {
+      try {
+        await localSkillService.recordPublication({
+          sourcePath: sourceRecord.resolvedPath || sourceRecord.installPath,
+          skillId: skill.id,
+          versionId: skill.currentVersion.id,
+          version: skill.currentVersion.version,
+          skillName: skill.skillName,
+          displayName: skill.displayName,
+          contentHash: skill.currentVersion.contentHash,
+          syncedAt: new Date().toISOString(),
+        });
+        await refreshLocalSkills();
+      } catch (reason) {
+        console.error("[KocotreeSkills] 保存本地 Skill 云端关联失败", reason);
+        Toast.error("云端发布成功，但本地云端关联保存失败，请重新扫描后再试");
+      }
+    }
     setBrowseRefreshKey((current) => current + 1);
     setPublishedRefreshKey((current) => current + 1);
     setUploadTargetSkill(null);
+    setUploadInitialPackage(null);
+    setUploadSourceRecord(null);
     setUploadSessionKey((current) => current + 1);
-    setActivePage("browse");
+    setActivePage(sourceRecord ? uploadReturnPage : "browse");
     setSelectedSkill(null);
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
   }
@@ -1066,8 +1173,11 @@ function App() {
             onClick={() => requireAuth(() => {
               if (uploadTargetSkill) {
                 setUploadTargetSkill(null);
-                setUploadSessionKey((current) => current + 1);
               }
+              setUploadInitialPackage(null);
+              setUploadSourceRecord(null);
+              setUploadReturnPage("browse");
+              setUploadSessionKey((current) => current + 1);
               setActivePage("upload");
             })}
           >
@@ -1213,6 +1323,8 @@ function App() {
             onSetEnabled={setLocalSkillEnabled}
             deletingRecordId={uninstallingSkillId}
             onDelete={(records) => prepareLocalDelete(records, true)}
+            syncingRecordId={syncingRecordId}
+            onSyncToCloud={handleSyncLocalSkill}
           />
         ) : localFilter ? (
           <LocalSkillsPage
@@ -1225,6 +1337,8 @@ function App() {
             onSetEnabled={setLocalSkillEnabled}
             deletingRecordId={uninstallingSkillId}
             onDelete={(records) => prepareLocalDelete(records, false)}
+            syncingRecordId={syncingRecordId}
+            onSyncToCloud={handleSyncLocalSkill}
           />
         ) : null}
         {currentUser && (
@@ -1232,11 +1346,14 @@ function App() {
             <UploadPage
               key={uploadSessionKey}
               targetSkill={uploadTargetSkill}
+              initialPackage={uploadInitialPackage}
               currentUser={currentUser}
               onCancel={() => {
                 setUploadTargetSkill(null);
+                setUploadInitialPackage(null);
+                setUploadSourceRecord(null);
                 setUploadSessionKey((current) => current + 1);
-                setActivePage("browse");
+                setActivePage(uploadSourceRecord ? uploadReturnPage : "browse");
               }}
               onPublished={handlePublished}
               onSwitchToCreate={() => setUploadTargetSkill(null)}

@@ -17,6 +17,7 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import { CloudSyncButton } from "./CloudSyncButton";
 import { Button, Spin, Toast } from "./ui";
 
 const AGENTS: Array<{
@@ -101,6 +102,8 @@ export function AllAgentsSkillsPage({
   onSetEnabled,
   deletingRecordId,
   onDelete,
+  syncingRecordId,
+  onSyncToCloud,
 }: {
   skills: LocalSkillRecord[];
   claudeInstalled: boolean;
@@ -110,6 +113,8 @@ export function AllAgentsSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
   deletingRecordId: string | null;
   onDelete: (records: LocalSkillRecord[]) => void;
+  syncingRecordId: string | null;
+  onSyncToCloud: (record: LocalSkillRecord) => void;
 }) {
   const [query, setQuery] = useState("");
   const [pendingControl, setPendingControl] = useState("");
@@ -356,6 +361,12 @@ export function AllAgentsSkillsPage({
                         );
                       })}
                     </div>
+                    <CloudSyncButton
+                      record={record}
+                      loading={syncingRecordId === record.id}
+                      disabled={syncingRecordId !== null}
+                      onSync={onSyncToCloud}
+                    />
                   </div>
                 </div>
               </article>

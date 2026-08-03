@@ -16,6 +16,7 @@ import {
   type SetLocalSkillEnabledInput,
 } from "../api";
 import { AppIcon } from "./AppIcon";
+import { CloudSyncButton } from "./CloudSyncButton";
 import { Button, Modal, Spin, Toast } from "./ui";
 
 const SOURCE_DETAILS: Record<
@@ -112,6 +113,8 @@ export function LocalSkillsPage({
   onSetEnabled,
   deletingRecordId,
   onDelete,
+  syncingRecordId,
+  onSyncToCloud,
 }: {
   filter: LocalSkillFilter;
   skills: LocalSkillRecord[];
@@ -122,6 +125,8 @@ export function LocalSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
   deletingRecordId: string | null;
   onDelete: (records: LocalSkillRecord[]) => void;
+  syncingRecordId: string | null;
+  onSyncToCloud: (record: LocalSkillRecord) => void;
 }) {
   const [pendingControl, setPendingControl] = useState("");
   const [query, setQuery] = useState("");
@@ -269,6 +274,7 @@ export function LocalSkillsPage({
             const controlKey = `${group.id}:${filter}`;
             const pending = pendingControl === controlKey;
             const agentRecord = group.agentRecords[filter] ?? record;
+            const syncRecord = getLocalSkillSourceRecord(group) ?? agentRecord;
             const deleting = agentRecord.id === deletingRecordId;
             const interactive = agentInstalled
               && canControlLocalSkill(group)
@@ -373,6 +379,12 @@ export function LocalSkillsPage({
                         </button>
                       </div>
                     </div>
+                    <CloudSyncButton
+                      record={syncRecord}
+                      loading={syncingRecordId === syncRecord.id}
+                      disabled={syncingRecordId !== null}
+                      onSync={onSyncToCloud}
+                    />
                   </div>
                 </div>
               </article>

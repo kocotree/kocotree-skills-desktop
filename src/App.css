@@ -2694,6 +2694,17 @@ button.my-skill-card:hover {
   gap: 10px;
 }
 
+.cloud-sync-button {
+  min-width: 76px;
+  flex: none;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  white-space: nowrap;
+}
+
+.cloud-sync-button .ui-button-content {
+  gap: 5px;
+}
+
 .compact-local-skill-card .my-skill-statuses {
   padding-left: 0;
 }
