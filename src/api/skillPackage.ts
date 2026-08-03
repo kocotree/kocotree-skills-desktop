@@ -83,10 +83,11 @@ export async function inspectPreparedLocalSkillPackage(
     throw new SkillApiError("INVALID_SKILL_PACKAGE", "SKILL.md 必须是 UTF-8 文本");
   }
   const { skillName, skillDescription } = parseSkillFrontmatter(skillMd);
-  const contentHash = archive.comment?.startsWith(
+  const archiveComment = (archive as JSZip & { comment?: string }).comment;
+  const contentHash = archiveComment?.startsWith(
     LOCAL_CONTENT_HASH_COMMENT_PREFIX,
   )
-    ? archive.comment.slice(LOCAL_CONTENT_HASH_COMMENT_PREFIX.length)
+    ? archiveComment.slice(LOCAL_CONTENT_HASH_COMMENT_PREFIX.length)
     : "";
 
   return {
