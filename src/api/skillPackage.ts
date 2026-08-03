@@ -1,6 +1,10 @@
 import JSZip from "jszip";
 import { SkillApiError } from "./contracts";
-import { inspectSkillZip, type SkillArchiveSource } from "./zipInspector";
+import {
+  inspectSkillZip,
+  parseSkillFrontmatter,
+  type SkillArchiveSource,
+} from "./zipInspector";
 
 const MAX_PACKAGE_SIZE = 50 * 1024 * 1024;
 const MAX_FOLDER_FILE_COUNT = 2_000;
@@ -22,7 +26,13 @@ export interface SkillPackageInspection {
 /** ZIP 校验后的元数据、文件读取来源，以及清理系统元数据后的实际上传文件。 */
 export interface ParsedSkillPackage {
   inspection: SkillPackageInspection;
+  uploadFile: File;
   source: SkillArchiveSource;
+}
+
+/** 上传页只依赖解析摘要和 ZIP 文件；桌面端自动打包无需再次展开全部文件。 */
+export interface PreparedSkillUpload {
+  inspection: SkillPackageInspection;
   uploadFile: File;
 }
 
@@ -33,6 +43,66 @@ async function sha256(buffer: ArrayBuffer): Promise<string> {
     (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
   return `sha256:${value}`;
+}
+
+const LOCAL_CONTENT_HASH_COMMENT_PREFIX = "kocotree-content-hash:";
+
+/**
+ * 快速读取桌面端刚生成的 ZIP，仅展开 SKILL.md，不重复解压并哈希每个文件。
+ * 完整包校验仍由发布接口执行。
+ */
+export async function inspectPreparedLocalSkillPackage(
+  file: File,
+): Promise<PreparedSkillUpload> {
+  if (!file.name.toLocaleLowerCase().endsWith(".zip")) {
+    throw new SkillApiError("INVALID_SKILL_PACKAGE", "请选择 ZIP 格式的 Skill 包");
+  }
+  if (file.size > MAX_PACKAGE_SIZE) {
+    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 50 MB");
+  }
+
+  const buffer = await file.arrayBuffer();
+  let archive: JSZip;
+  try {
+    archive = await JSZip.loadAsync(buffer);
+  } catch {
+    throw new SkillApiError("INVALID_SKILL_PACKAGE", "无法读取本地 Skill ZIP");
+  }
+  const skillMdEntry = archive.file("SKILL.md");
+  if (!skillMdEntry) {
+    throw new SkillApiError("INVALID_SKILL_PACKAGE", "ZIP 中没有找到 SKILL.md");
+  }
+  const skillMdBytes = await skillMdEntry.async("uint8array");
+  if (skillMdBytes.byteLength > 1024 * 1024) {
+    throw new SkillApiError("INVALID_SKILL_PACKAGE", "SKILL.md 不能超过 1 MB");
+  }
+  let skillMd: string;
+  try {
+    skillMd = new TextDecoder("utf-8", { fatal: true }).decode(skillMdBytes);
+  } catch {
+    throw new SkillApiError("INVALID_SKILL_PACKAGE", "SKILL.md 必须是 UTF-8 文本");
+  }
+  const { skillName, skillDescription } = parseSkillFrontmatter(skillMd);
+  const contentHash = archive.comment?.startsWith(
+    LOCAL_CONTENT_HASH_COMMENT_PREFIX,
+  )
+    ? archive.comment.slice(LOCAL_CONTENT_HASH_COMMENT_PREFIX.length)
+    : "";
+
+  return {
+    inspection: {
+      originalFileName: file.name.replace(/\.zip$/i, ""),
+      skillName,
+      skillDescription,
+      skillMd,
+      packageSize: file.size,
+      fileCount: Object.values(archive.files).filter((entry) => !entry.dir).length,
+      packageSha256: await sha256(buffer),
+      contentHash,
+      warnings: [],
+    },
+    uploadFile: file,
+  };
 }
 
 /**

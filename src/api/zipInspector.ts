@@ -80,6 +80,7 @@ function isIgnoredSystemPath(path: string): boolean {
   return segments.includes("__MACOSX")
     || fileName === ".ds_store"
     || fileName === ".kocotree-skill.json"
+    || fileName === ".kocotree-managed-copy.json"
     || fileName === "thumbs.db"
     || fileName === "desktop.ini"
     || fileName.startsWith("._");
@@ -107,7 +108,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseSkillFrontmatter(skillMd: string): { skillName: string; skillDescription: string } {
+export function parseSkillFrontmatter(skillMd: string): { skillName: string; skillDescription: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(skillMd);
   if (!match) {
     return invalidPackage("SKILL.md 缺少合法的 YAML frontmatter");
