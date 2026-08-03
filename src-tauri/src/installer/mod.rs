@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File},
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -11,7 +11,7 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tempfile::Builder as TempDirBuilder;
-use zip::ZipArchive;
+use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
 const MAX_PACKAGE_SIZE: usize = 50 * 1024 * 1024;
 const MAX_FILE_COUNT: usize = 2_000;
@@ -56,6 +56,8 @@ struct InstalledSkillMetadata {
     display_name: String,
     content_hash: String,
     installed_at: String,
+    #[serde(default)]
+    origin: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -241,6 +243,19 @@ pub struct RemoveLocalSkillInput {
 #[serde(rename_all = "camelCase")]
 pub struct RemoveLocalSkillEntriesInput {
     pub record_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordLocalSkillPublicationInput {
+    pub source_path: String,
+    pub skill_id: String,
+    pub version_id: String,
+    pub version: String,
+    pub skill_name: String,
+    pub display_name: String,
+    pub content_hash: String,
+    pub synced_at: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -877,6 +892,7 @@ fn install_package_bytes(
         display_name: input.display_name.clone(),
         content_hash: input.content_hash.clone(),
         installed_at: input.installed_at.clone(),
+        origin: Some("INSTALLED".to_string()),
     };
     let metadata_bytes = serde_json::to_vec_pretty(&install_metadata).map_err(|error| {
         InstallError::new(
@@ -1060,7 +1076,11 @@ fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRec
                     metadata.display_name,
                     metadata.content_hash,
                     Some(metadata.installed_at),
-                    "PLATFORM_INSTALLED".to_string(),
+                    if metadata.origin.as_deref() == Some("PUBLISHED") {
+                        "PLATFORM_MATCHED".to_string()
+                    } else {
+                        "PLATFORM_INSTALLED".to_string()
+                    },
                 ),
                 None => (
                     None,
@@ -2260,9 +2280,10 @@ fn remove_local_skill_entries_at_home(
         .collect::<HashSet<_>>();
     for target in &targets {
         let target_path = PathBuf::from(&target.install_path);
-        let expected_root = local_skill_root_for_location(home, &target.location).ok_or_else(|| {
-            InstallError::new("LOCAL_ENTRY_DELETE_LOCATION_INVALID", "本地 Skill 位置无效")
-        })?;
+        let expected_root =
+            local_skill_root_for_location(home, &target.location).ok_or_else(|| {
+                InstallError::new("LOCAL_ENTRY_DELETE_LOCATION_INVALID", "本地 Skill 位置无效")
+            })?;
         if target_path.parent() != Some(expected_root.as_path()) {
             return Err(InstallError::with_details(
                 "LOCAL_ENTRY_DELETE_PATH_UNSAFE",
@@ -2362,6 +2383,260 @@ fn remove_local_skill_entries_on_disk(
     remove_local_skill_entries_at_home(&home, input)
 }
 
+fn ignored_upload_path(relative_path: &Path) -> bool {
+    let segments = relative_path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect::<Vec<_>>();
+    if segments
+        .iter()
+        .any(|segment| matches!(*segment, "__MACOSX" | ".git"))
+    {
+        return true;
+    }
+    let file_name = segments
+        .last()
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        file_name.as_str(),
+        ".ds_store"
+            | ".kocotree-skill.json"
+            | ".kocotree-managed-copy.json"
+            | "thumbs.db"
+            | "desktop.ini"
+    ) || file_name.starts_with("._")
+}
+
+fn collect_upload_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<(PathBuf, PathBuf)>,
+    total_size: &mut u64,
+) -> Result<(), InstallError> {
+    let entries =
+        fs::read_dir(directory).map_err(|error| io_error("读取本地 Skill 目录", error))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| io_error("读取本地 Skill 文件", error))?;
+        let path = entry.path();
+        let relative_path = path.strip_prefix(root).map_err(|_| {
+            InstallError::new(
+                "LOCAL_SKILL_PACKAGE_FAILED",
+                "本地 Skill 中包含无法解析的文件路径",
+            )
+        })?;
+        if ignored_upload_path(relative_path) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| io_error("读取本地 Skill 文件信息", error))?;
+        if metadata.file_type().is_symlink() {
+            return Err(InstallError::with_details(
+                "INVALID_SKILL_PACKAGE",
+                "本地 Skill 中不能包含符号链接",
+                serde_json::json!({
+                    "path": relative_path.to_string_lossy(),
+                }),
+            ));
+        }
+        if metadata.is_dir() {
+            collect_upload_files(root, &path, files, total_size)?;
+            continue;
+        }
+        if !metadata.is_file() {
+            continue;
+        }
+        if files.len() >= MAX_FILE_COUNT {
+            return Err(InstallError::new(
+                "PACKAGE_TOO_LARGE",
+                format!("Skill 文件数量不能超过 {MAX_FILE_COUNT} 个"),
+            ));
+        }
+        *total_size = total_size.saturating_add(metadata.len());
+        if *total_size > MAX_UNCOMPRESSED_SIZE {
+            return Err(InstallError::new(
+                "PACKAGE_TOO_LARGE",
+                "Skill 文件总大小不能超过 200 MB",
+            ));
+        }
+        files.push((relative_path.to_path_buf(), path));
+    }
+    Ok(())
+}
+
+fn package_local_skill_on_disk(source_path: String) -> Result<Vec<u8>, InstallError> {
+    let root = PathBuf::from(source_path)
+        .canonicalize()
+        .map_err(|error| io_error("定位本地 Skill 本体", error))?;
+    if !root.is_dir() || !root.join("SKILL.md").is_file() {
+        return Err(InstallError::new(
+            "INVALID_SKILL_PACKAGE",
+            "选择的本地目录不是有效 Skill",
+        ));
+    }
+
+    let mut files = Vec::new();
+    let mut total_size = 0_u64;
+    collect_upload_files(&root, &root, &mut files, &mut total_size)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let cursor = Cursor::new(Vec::new());
+    let mut writer = ZipWriter::new(cursor);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut content_entries = Vec::new();
+    let mut content_folders = HashSet::new();
+    for (relative_path, path) in files {
+        let archive_path = relative_path
+            .components()
+            .map(|component| {
+                component.as_os_str().to_str().ok_or_else(|| {
+                    InstallError::new(
+                        "INVALID_SKILL_PACKAGE",
+                        "本地 Skill 文件路径必须使用有效的 Unicode 字符",
+                    )
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?
+            .join("/");
+        writer.start_file(&archive_path, options).map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_PACKAGE_FAILED",
+                format!("创建 Skill ZIP 失败：{error}"),
+            )
+        })?;
+        let mut source =
+            File::open(&path).map_err(|error| io_error("读取本地 Skill 文件", error))?;
+        let mut file_digest = Sha256::new();
+        let mut buffer = [0_u8; 64 * 1024];
+        let mut file_size = 0_u64;
+        loop {
+            let bytes_read = source
+                .read(&mut buffer)
+                .map_err(|error| io_error("读取本地 Skill 文件", error))?;
+            if bytes_read == 0 {
+                break;
+            }
+            file_size = file_size.saturating_add(bytes_read as u64);
+            file_digest.update(&buffer[..bytes_read]);
+            writer
+                .write_all(&buffer[..bytes_read])
+                .map_err(|error| io_error("写入 Skill ZIP", error))?;
+        }
+        let file_hash = file_digest
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let path_segments = archive_path.split('/').collect::<Vec<_>>();
+        for index in 1..path_segments.len() {
+            content_folders.insert(path_segments[..index].join("/"));
+        }
+        content_entries.push(format!(
+            "FILE:{archive_path}:{file_hash}:{file_size}"
+        ));
+    }
+    content_entries.extend(
+        content_folders
+            .into_iter()
+            .map(|folder| format!("FOLDER:{folder}::0")),
+    );
+    content_entries.sort();
+    let canonical_content = content_entries.join("\n");
+    writer.set_comment(format!(
+        "kocotree-content-hash:sha256:{}",
+        sha256_hex(canonical_content.as_bytes())
+    ));
+    let bytes = writer
+        .finish()
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_PACKAGE_FAILED",
+                format!("完成 Skill ZIP 失败：{error}"),
+            )
+        })?
+        .into_inner();
+    if bytes.len() > MAX_PACKAGE_SIZE {
+        return Err(InstallError::new(
+            "PACKAGE_TOO_LARGE",
+            "压缩后的 Skill ZIP 不能超过 50 MB",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn record_local_skill_publication_on_disk(
+    input: RecordLocalSkillPublicationInput,
+) -> Result<(), InstallError> {
+    let source = PathBuf::from(&input.source_path)
+        .canonicalize()
+        .map_err(|error| io_error("定位本地 Skill 本体", error))?;
+    if !source.is_dir() {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_METADATA_WRITE_FAILED",
+            "本地 Skill 本体目录不存在",
+        ));
+    }
+    let skill_md = fs::read_to_string(source.join("SKILL.md"))
+        .map_err(|error| io_error("读取本地 SKILL.md", error))?;
+    if parse_skill_name(&skill_md)? != input.skill_name {
+        return Err(InstallError::new(
+            "SKILL_NAME_MISMATCH",
+            "本地 Skill 名称与已发布的云端 Skill 不一致",
+        ));
+    }
+    let metadata = InstalledSkillMetadata {
+        schema_version: 1,
+        skill_id: input.skill_id,
+        version_id: input.version_id,
+        version: input.version,
+        skill_name: input.skill_name,
+        display_name: input.display_name,
+        content_hash: input.content_hash,
+        installed_at: input.synced_at,
+        origin: Some("PUBLISHED".to_string()),
+    };
+    let bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| {
+        InstallError::new(
+            "LOCAL_SKILL_METADATA_WRITE_FAILED",
+            format!("生成 Skill 云端关联失败：{error}"),
+        )
+    })?;
+    fs::write(source.join(INSTALL_METADATA_FILE), bytes)
+        .map_err(|error| io_error("保存 Skill 云端关联", error))
+}
+
+/** 将指定本地 Skill 本体目录打包，并通过二进制 IPC 返回 ZIP 内容。 */
+#[tauri::command]
+pub async fn package_local_skill(
+    source_path: String,
+) -> Result<tauri::ipc::Response, InstallError> {
+    let bytes =
+        tauri::async_runtime::spawn_blocking(move || package_local_skill_on_disk(source_path))
+            .await
+            .map_err(|error| {
+                InstallError::new(
+                    "LOCAL_SKILL_PACKAGE_FAILED",
+                    format!("打包本地 Skill 失败：{error}"),
+                )
+            })??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/** 发布成功后记录本地 Skill 对应的云端版本。 */
+#[tauri::command]
+pub async fn record_local_skill_publication(
+    input: RecordLocalSkillPublicationInput,
+) -> Result<(), InstallError> {
+    tauri::async_runtime::spawn_blocking(move || record_local_skill_publication_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_METADATA_WRITE_FAILED",
+                format!("保存 Skill 云端关联失败：{error}"),
+            )
+        })?
+}
+
 /** 迁移旧版共享本体，并扫描私有仓库以及 Claude Code/Codex 生效目录。 */
 #[tauri::command]
 pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> {
@@ -2423,7 +2698,10 @@ pub async fn remove_local_skill(
 pub async fn remove_local_skill_entries(
     input: RemoveLocalSkillEntriesInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    info!("开始将本地 Skill 条目移到回收站：record_count={}", input.record_ids.len());
+    info!(
+        "开始将本地 Skill 条目移到回收站：record_count={}",
+        input.record_ids.len()
+    );
     tauri::async_runtime::spawn_blocking(move || remove_local_skill_entries_on_disk(input))
         .await
         .map_err(|error| {

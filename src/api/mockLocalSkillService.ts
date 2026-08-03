@@ -9,6 +9,7 @@ import {
   type LocalSkillService,
   type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
+  type RecordLocalSkillPublicationInput,
   type SetLocalSkillEnabledInput,
 } from "./contracts";
 import { mockInstallScenarios, skillIds } from "./mockData";
@@ -193,6 +194,19 @@ export class MockLocalSkillService implements LocalSkillService {
   async scanSkills(): Promise<LocalSkillRecord[]> {
     await this.wait();
     return structuredClone(this.records);
+  }
+
+  async packageSkill(_sourcePath: string, _skillName: string): Promise<File> {
+    throw new SkillApiError(
+      "LOCAL_SKILL_PACKAGE_UNAVAILABLE",
+      "本地 Skill 打包仅支持桌面客户端",
+    );
+  }
+
+  async recordPublication(
+    _input: RecordLocalSkillPublicationInput,
+  ): Promise<void> {
+    return Promise.resolve();
   }
 
   async setSkillEnabled(

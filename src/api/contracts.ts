@@ -144,6 +144,17 @@ export interface RemoveLocalSkillEntriesInput {
   recordIds: string[];
 }
 
+export interface RecordLocalSkillPublicationInput {
+  sourcePath: string;
+  skillId: string;
+  versionId: string;
+  version: string;
+  skillName: string;
+  displayName: string;
+  contentHash: string;
+  syncedAt: string;
+}
+
 export interface LocalInstallRequest {
   skill: SkillSummaryDto;
   version: SkillVersionDto;
@@ -173,6 +184,8 @@ export interface SkillInstaller {
 export interface LocalSkillService extends SkillInstaller {
   getAgentInstallationStatus(): Promise<AgentInstallationStatus>;
   scanSkills(): Promise<LocalSkillRecord[]>;
+  packageSkill(sourcePath: string, skillName: string): Promise<File>;
+  recordPublication(input: RecordLocalSkillPublicationInput): Promise<void>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
   removeEntries(input: RemoveLocalSkillEntriesInput): Promise<LocalSkillRecord[]>;

@@ -6,6 +6,7 @@ import {
   type LocalInstallResult,
   type LocalSkillRecord,
   type LocalSkillService,
+  type RecordLocalSkillPublicationInput,
   type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
@@ -136,6 +137,41 @@ export class TauriInstaller implements LocalSkillService {
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_SCAN_FAILED",
         commandError?.message ?? "本地 Skill 扫描失败",
+        commandError?.details,
+      );
+    }
+  }
+
+  /** 将扫描到的本地 Skill 本体打包为可复用现有上传流程的 ZIP。 */
+  async packageSkill(sourcePath: string, skillName: string): Promise<File> {
+    try {
+      const bytes = await invoke<ArrayBuffer>("package_local_skill", {
+        sourcePath,
+      });
+      return new File([bytes], `${skillName}.zip`, {
+        type: "application/zip",
+      });
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_PACKAGE_FAILED",
+        commandError?.message ?? "本地 Skill 打包失败",
+        commandError?.details,
+      );
+    }
+  }
+
+  /** 发布成功后将云端身份和最新内容哈希写回本地 Skill。 */
+  async recordPublication(
+    input: RecordLocalSkillPublicationInput,
+  ): Promise<void> {
+    try {
+      await invoke("record_local_skill_publication", { input });
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_METADATA_WRITE_FAILED",
+        commandError?.message ?? "无法保存 Skill 云端关联",
         commandError?.details,
       );
     }

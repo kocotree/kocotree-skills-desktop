@@ -25,6 +25,8 @@ pub fn run() {
             auth_callback::begin_desktop_auth_callback,
             installer::get_agent_installation_status,
             installer::install_skill,
+            installer::package_local_skill,
+            installer::record_local_skill_publication,
             installer::scan_local_skills,
             installer::set_local_skill_enabled,
             installer::remove_local_skill,
