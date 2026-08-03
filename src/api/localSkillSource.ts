@@ -231,6 +231,11 @@ export function getLocalSkillActivationState(
   if (directRecords.every((record) => isLegacyManagedLink(group, record))) {
     return "legacy";
   }
+  // Agent 扫描目录中真实存在的独立 Skill 已经生效；是否受 Kocotree
+  // 管理只决定开关能否操作，不应把实际的开启状态显示为关闭或冲突。
+  if (!getLocalSkillSourceRecord(group)) {
+    return "enabled";
+  }
   return "unmanaged";
 }
 
