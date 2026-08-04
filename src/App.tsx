@@ -45,7 +45,7 @@ type PageKey =
   | "local-all"
   | "local-claude"
   | "local-codex";
-type SortKey = "created" | "updated" | "popular";
+type SortKey = "created" | "updated" | "popular" | "installed";
 const BROWSE_PAGE_SIZE = 18;
 
 interface InstallPromptState {
@@ -315,6 +315,7 @@ function BrowsePage({
     if (!highlightedSkillId) return;
     setQuery("");
     setDepartmentKey("all");
+    setSort("popular");
     setPage(1);
   }, [highlightedSkillId]);
 
@@ -359,14 +360,49 @@ function BrowsePage({
     let active = true;
     setLoading(true);
     setError("");
-    const apiSort = sort === "popular" ? "INSTALLS_DESC" : sort === "created" ? "CREATED_DESC" : "UPDATED_DESC";
-    skillApi.listSkills({
-      query: debouncedQuery || undefined,
-      departmentKey: departmentKey === "all" ? undefined : departmentKey,
-      sort: apiSort,
-      page,
-      pageSize: BROWSE_PAGE_SIZE,
-    })
+    const request = sort === "installed"
+      ? Promise.all([...uninstallableSkillIds].map((skillId) =>
+          skillApi.getSkill(skillId),
+        )).then((installedSkills) => {
+          const normalizedQuery = debouncedQuery.trim().toLocaleLowerCase();
+          const filteredSkills = installedSkills
+            .filter((skill) =>
+              departmentKey === "all"
+              || JSON.stringify(skill.owner.departmentPath) === departmentKey,
+            )
+            .filter((skill) =>
+              !normalizedQuery
+              || [
+                skill.skillName,
+                skill.displayName,
+                skill.skillDescription,
+                skill.displayDescription,
+                ...skill.tags.map((tag) => tag.name),
+              ].join(" ").toLocaleLowerCase().includes(normalizedQuery),
+            )
+            .sort((left, right) =>
+              Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
+            );
+          return {
+            items: filteredSkills.slice(
+              (page - 1) * BROWSE_PAGE_SIZE,
+              page * BROWSE_PAGE_SIZE,
+            ),
+            total: filteredSkills.length,
+          };
+        })
+      : skillApi.listSkills({
+          query: debouncedQuery || undefined,
+          departmentKey: departmentKey === "all" ? undefined : departmentKey,
+          sort: sort === "popular"
+            ? "INSTALLS_DESC"
+            : sort === "created"
+              ? "CREATED_DESC"
+              : "UPDATED_DESC",
+          page,
+          pageSize: BROWSE_PAGE_SIZE,
+        });
+    request
       .then((result) => {
         if (!active) return;
         const pageCount = getSkillPageCount(result.total, BROWSE_PAGE_SIZE);
@@ -385,7 +421,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, sort]);
+  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, sort, uninstallableSkillIds]);
 
   if (!authResolved) {
     return (
@@ -426,7 +462,7 @@ function BrowsePage({
 
       <section className="filter-panel" aria-label="Skill 筛选条件">
         <div className="filter-first-row">
-          <div className="sort-tabs" role="group" aria-label="排序方式">
+          <div className="sort-tabs" role="group" aria-label="浏览方式">
             <button
               className={sort === "popular" ? "active" : ""}
               type="button"
@@ -460,6 +496,17 @@ function BrowsePage({
             >
               <AppIcon name="trend" size={16} />最近创建
             </button>
+            <button
+              className={sort === "installed" ? "active" : ""}
+              type="button"
+              aria-pressed={sort === "installed"}
+              onClick={() => {
+                setSort("installed");
+                setPage(1);
+              }}
+            >
+              <AppIcon name="check" size={16} />已安装
+            </button>
           </div>
 
           <label className="search-box">
@@ -489,7 +536,7 @@ function BrowsePage({
       </section>
 
       {loading ? (
-        <section className="empty-state"><span className="loading-dot" /><strong>正在加载 Skill</strong></section>
+        <section className="empty-state"><span className="loading-dot" /><strong>{sort === "installed" ? "正在加载已安装 Skill" : "正在加载 Skill"}</strong></section>
       ) : error ? (
         <section className="empty-state"><strong>暂时无法加载</strong><span>{error}</span></section>
       ) : skills.length > 0 ? (
@@ -525,9 +572,9 @@ function BrowsePage({
         </>
       ) : (
         <section className="empty-state">
-          <AppIcon name="search" size={30} />
-          <strong>没有找到匹配的 Skill</strong>
-          <span>换一个关键词或发布部门试试</span>
+          <AppIcon name={sort === "installed" ? "library" : "search"} size={30} />
+          <strong>{sort === "installed" && uninstallableSkillIds.size === 0 ? "还没有安装 Skill" : "没有找到匹配的 Skill"}</strong>
+          <span>{sort === "installed" && uninstallableSkillIds.size === 0 ? "从热门或最近更新中选择需要的 Skill" : "换一个关键词或发布部门试试"}</span>
         </section>
       )}
     </main>
@@ -1145,8 +1192,9 @@ function App() {
 
   const localFilter = localFilterForPage(activePage);
   const localSkillGroups = groupLocalSkills(localSkills);
-  const uninstallableSkillIds = new Set(
-    getUninstallableSkillRecords(localSkills).keys(),
+  const uninstallableSkillIds = useMemo(
+    () => new Set(getUninstallableSkillRecords(localSkills).keys()),
+    [localSkills],
   );
   const localSkillCounts = {
     all: filterWorkspaceSkillGroups(localSkillGroups).length,
