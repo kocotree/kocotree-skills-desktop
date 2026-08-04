@@ -178,13 +178,10 @@ export function getLocalSkillActivationState(
   if (agent === "agents") {
     return getLocalSkillSourceRecord(group) ? "enabled" : "disabled";
   }
-  if (group.workspaceRecord && !group.managerRecord) {
-    if (agent === "codex") {
-      return group.workspaceRecord.assignedAgents?.includes("codex")
-        ? "enabled"
-        : "disabled";
-    }
-    return "unmanaged";
+  if (group.workspaceRecord && !group.managerRecord && agent === "codex") {
+    return group.workspaceRecord.assignedAgents?.includes("codex")
+      ? "enabled"
+      : "disabled";
   }
   const directRecords = [group.agentRecords[agent]].filter(
     (record): record is LocalSkillRecord => Boolean(record),
@@ -245,7 +242,7 @@ export function canControlLocalSkill(
   agent: LocalSkillFilter,
 ): boolean {
   if (group.managerRecord?.entryKind === "DIRECTORY") return true;
-  return agent === "codex"
+  return (agent === "claude" || agent === "codex")
     && group.workspaceRecord?.entryKind === "DIRECTORY";
 }
 

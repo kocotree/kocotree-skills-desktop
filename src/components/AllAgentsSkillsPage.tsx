@@ -56,9 +56,6 @@ function activationDescription(
     return `未检测到 ${label}，安装后才能开启 Skill`;
   }
   if (state === "unmanaged") {
-    if (group.workspaceRecord && !group.managerRecord) {
-      return `${label} 暂不支持可靠控制 .agents/skills 中的外部 Skill；Skill 本体不会被移动`;
-    }
     return `${label} 中存在独立安装目录或其他连接，软件不会覆盖它`;
   }
   if (state === "legacy") {

@@ -1918,13 +1918,9 @@ fn set_local_skill_enabled_at_home(
             "Skill 名称与本体中的定义不一致",
         ));
     }
-    if source_is_shared {
-        if input.agent != "codex" {
-            return Err(InstallError::new(
-                "LOCAL_SKILL_EXTERNAL_AGENT_UNSUPPORTED",
-                ".agents/skills 中的外部 Skill 只能通过 Codex 原生配置开关",
-            ));
-        }
+    // Codex 原生读取 .agents/skills 并通过配置启停；Claude Code 需要继续走
+    // 下方的受管入口流程，在 ~/.claude/skills 中创建或移除连接。
+    if source_is_shared && input.agent == "codex" {
         set_external_codex_skill_enabled(home, &canonical_source, input.enabled)?;
         return scan_local_skills_from_home(home);
     }

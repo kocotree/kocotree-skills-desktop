@@ -75,9 +75,6 @@ function activationDescription(
   state: LocalSkillActivationState,
 ): string {
   if (state === "unmanaged") {
-    if (group.workspaceRecord && !group.managerRecord) {
-      return ".agents/skills 中的外部 Skill 不会被移动；当前 Agent 暂不支持可靠开关";
-    }
     return "Skill 是独立安装目录或指向其他位置的链接，为避免数据丢失不能通过开关关闭";
   }
   if (state === "legacy") {
@@ -445,7 +442,7 @@ export function LocalSkillsPage({
         closeOnEsc={!pendingControl}
         footer={
           <div className="local-skill-add-footer">
-            <span>还有 {availableGroups.length} 个私有 Skill 可开启</span>
+            <span>还有 {availableGroups.length} 个 Skill 可开启</span>
             <Button onClick={closeAddModal} disabled={Boolean(pendingControl)}>
               完成
             </Button>
@@ -455,14 +452,14 @@ export function LocalSkillsPage({
         <div className="local-skill-add-content">
           <p>
             开启后会在该 Agent 的扫描目录创建生效入口；关闭后入口会被完全移除，
-            Skill 本体仍保留在用户目录/.skills-manager/skills。
+            Skill 本体仍保留在原来的管理器仓库或用户目录/.agents/skills。
           </p>
           <input
             className="local-skill-add-search"
             type="search"
             value={addQuery}
             placeholder="搜索 Skill 名称"
-            aria-label="搜索私有 Skill 仓库"
+            aria-label="搜索可开启的 Skill"
             onChange={(event) => setAddQuery(event.target.value)}
           />
           <div className="local-skill-add-list">
@@ -496,7 +493,7 @@ export function LocalSkillsPage({
                 <span>
                   {normalizedAddQuery
                     ? "换一个名称继续搜索"
-                    : "私有仓库中的 Skill 已全部开启或被同名项占用"}
+                    : "可用的 Skill 已全部开启或被同名项占用"}
                 </span>
               </div>
             )}
