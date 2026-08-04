@@ -2387,25 +2387,82 @@ fn ignored_upload_path(relative_path: &Path) -> bool {
     let segments = relative_path
         .components()
         .filter_map(|component| component.as_os_str().to_str())
+        .map(str::to_ascii_lowercase)
         .collect::<Vec<_>>();
-    if segments
-        .iter()
-        .any(|segment| matches!(*segment, "__MACOSX" | ".git"))
+    if segments.iter().any(|segment| {
+        matches!(
+            segment.as_str(),
+            // Version control and operating-system metadata.
+            ".git"
+                | ".svn"
+                | ".hg"
+                | "__macosx"
+                // Local runtimes and dependency directories.
+                | ".venv"
+                | "venv"
+                | "node_modules"
+                | "bower_components"
+                | "jspm_packages"
+                | ".pnpm-store"
+                | ".npm"
+                // Python and test caches.
+                | "__pycache__"
+                | ".pytest_cache"
+                | ".mypy_cache"
+                | ".ruff_cache"
+                | ".tox"
+                | ".nox"
+                | ".hypothesis"
+                | ".ipynb_checkpoints"
+                // Build-tool caches and reports.
+                | ".cache"
+                | ".parcel-cache"
+                | ".vite"
+                | ".turbo"
+                | ".nyc_output"
+                | "coverage"
+                | "htmlcov"
+                | "target"
+                // Editor settings.
+                | ".idea"
+                | ".vscode"
+                // Runtime output and temporary directories.
+                | "output"
+                | "outputs"
+                | "tmp"
+                | "temp"
+                | "logs"
+        )
+    }) || segments
+        .windows(2)
+        .any(|pair| pair[0] == ".yarn" && matches!(pair[1].as_str(), "cache" | "unplugged"))
     {
         return true;
     }
-    let file_name = segments
-        .last()
-        .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
+    let file_name = segments.last().map(String::as_str).unwrap_or_default();
     matches!(
-        file_name.as_str(),
+        file_name,
         ".ds_store"
+            | ".localized"
+            | ".appledouble"
+            | ".lsoverride"
             | ".kocotree-skill.json"
             | ".kocotree-managed-copy.json"
             | "thumbs.db"
             | "desktop.ini"
+            | ".coverage"
+            | ".eslintcache"
+            | ".stylelintcache"
     ) || file_name.starts_with("._")
+        || file_name.starts_with(".coverage.")
+        || file_name.ends_with(".pyc")
+        || file_name.ends_with(".pyo")
+        || file_name.ends_with(".pyd")
+        || file_name.ends_with(".log")
+        || file_name.ends_with(".tmp")
+        || file_name.ends_with(".swp")
+        || file_name.ends_with(".tsbuildinfo")
+        || file_name.ends_with('~')
 }
 
 fn collect_upload_files(
