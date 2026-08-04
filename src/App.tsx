@@ -509,7 +509,6 @@ function BrowsePage({
 function App() {
   const [activePage, setActivePage] = useState<PageKey>("browse");
   const [selectedSkill, setSelectedSkill] = useState<SkillSummaryDto | null>(null);
-  const [selectedSkillContext, setSelectedSkillContext] = useState<"browse" | "manage">("browse");
   const [highlightedBrowseSkillId, setHighlightedBrowseSkillId] = useState<string | null>(null);
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
   const [uploadInitialPackage, setUploadInitialPackage] = useState<PreparedSkillUpload | null>(null);
@@ -755,13 +754,11 @@ function App() {
 
   function handleOpenSkill(skill: SkillSummaryDto): void {
     console.info("[KocotreeSkills] 准备打开 Skill 详情", { skillId: skill.id });
-    setSelectedSkillContext("browse");
     setSelectedSkill(skill);
   }
 
   function handleOpenManagedSkill(skill: SkillSummaryDto): void {
     console.info("[KocotreeSkills] 准备管理 Skill", { skillId: skill.id });
-    setSelectedSkillContext("manage");
     setSelectedSkill(skill);
   }
 
@@ -988,19 +985,6 @@ function App() {
     }
   }
 
-  function handleUploadVersion(skill: SkillSummaryDto): void {
-    requireAuth(() => {
-      console.info("[KocotreeSkills] 进入新版本上传流程", { skillId: skill.id });
-      setSelectedSkill(null);
-      setUploadTargetSkill(skill);
-      setUploadInitialPackage(null);
-      setUploadSourceRecord(null);
-      setUploadReturnPage("browse");
-      setUploadSessionKey((current) => current + 1);
-      setActivePage("upload");
-    });
-  }
-
   function handleSyncLocalSkill(record: LocalSkillRecord): void {
     requireAuth(() => {
       void syncLocalSkillToCloud(record);
@@ -1120,7 +1104,6 @@ function App() {
   const handleOpenNotificationSkill = useCallback((skillId: string) => {
     skillApi.getSkill(skillId).then((skill) => {
       setActivePage("browse");
-      setSelectedSkillContext("browse");
       setSelectedSkill(skill);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 通知关联 Skill 加载失败", reason);
@@ -1364,7 +1347,6 @@ function App() {
 
       <SkillDetailModal
         skill={selectedSkill}
-        context={selectedSkillContext}
         installedSkillIds={installedSkillIds}
         uninstallableSkillIds={uninstallableSkillIds}
         uninstallingSkillId={uninstallingSkillId}
@@ -1372,7 +1354,6 @@ function App() {
         onClose={() => setSelectedSkill(null)}
         onInstall={handleInstallVersion}
         onUninstall={prepareUninstall}
-        onUploadVersion={handleUploadVersion}
         onVersionDeleted={(skill) => {
           setSelectedSkill((current) =>
             current?.id === skill.id ? skill : current,

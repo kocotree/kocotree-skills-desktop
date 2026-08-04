@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Dropdown, Modal, Select, Spin, TabPane, Tabs, Tag, Toast, Tooltip } from "./ui";
+import { Button, Modal, Select, Spin, TabPane, Tabs, Tag, Toast } from "./ui";
 import {
   skillApi,
   SkillApiError,
@@ -14,7 +14,6 @@ import { AppIcon } from "./AppIcon";
 
 interface SkillDetailModalProps {
   skill: SkillSummaryDto | null;
-  context: "browse" | "manage";
   installedSkillIds: Set<string>;
   uninstallableSkillIds: Set<string>;
   uninstallingSkillId: string | null;
@@ -22,7 +21,6 @@ interface SkillDetailModalProps {
   onClose: () => void;
   onInstall: (skill: SkillSummaryDto, version: SkillVersionDto) => void;
   onUninstall: (skill: SkillSummaryDto) => void;
-  onUploadVersion: (skill: SkillSummaryDto) => void;
   onVersionDeleted: (skill: SkillDetailDto) => void;
   onOpenDerivedSource: (skillId: string) => void;
 }
@@ -76,7 +74,6 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
 /**
  * 功能说明：展示 Skill 平台信息、版本历史、版本文件树和文本文件预览。
  * @param skill - 当前打开的 Skill 摘要，为 null 时关闭模态框。
- * @param context - 详情来源；浏览场景只允许安装，管理场景才显示管理操作。
  * @param installedSkillIds - 客户端已安装 Skill 编号集合。
  * @param uninstallableSkillIds - 客户端可安全卸载的 Skill 编号集合。
  * @param uninstallingSkillId - 当前正在卸载的 Skill 编号。
@@ -84,14 +81,12 @@ function orderFileEntries(entries: FileEntryDto[]): FileEntryDto[] {
  * @param onClose - 关闭详情模态框的回调。
  * @param onInstall - 安装指定历史版本的回调。
  * @param onUninstall - 卸载当前 Skill 的回调。
- * @param onUploadVersion - 进入指定 Skill 新版本上传流程的回调。
  * @param onVersionDeleted - 云端版本删除后同步刷新上层页面的回调。
  * @param onOpenDerivedSource - 返回浏览页并定位来源 Skill 的回调。
  * @returns Skill 详情模态框。
  */
 export function SkillDetailModal({
   skill,
-  context,
   installedSkillIds,
   uninstallableSkillIds,
   uninstallingSkillId,
@@ -99,7 +94,6 @@ export function SkillDetailModal({
   onClose,
   onInstall,
   onUninstall,
-  onUploadVersion,
   onVersionDeleted,
   onOpenDerivedSource,
 }: SkillDetailModalProps) {
@@ -220,9 +214,7 @@ export function SkillDetailModal({
 
   const selectedFile = fileEntries.find((entry) => entry.path === selectedFilePath) ?? null;
   const orderedFileEntries = orderFileEntries(fileEntries);
-  const sortedCollaborators = [...(detail?.collaborators ?? [])].sort((left, right) => left.name.localeCompare(right.name, "zh-CN"));
   const canManageSkill = Boolean(detail && currentUser && detail.owner.id === currentUser.id);
-  const showManagementActions = context === "manage" && canManageSkill;
 
   function cancelVersionDelete(): void {
     if (deletingVersionId) return;
@@ -312,23 +304,6 @@ export function SkillDetailModal({
                   </Button>
                 )
               )}
-              {showManagementActions && detail.status === "ACTIVE" && (
-                <Dropdown
-                  className="detail-more-menu"
-                  contentClassName="detail-more-dropdown"
-                  position="top"
-                  trigger="click"
-                  render={(
-                    <Dropdown.Menu>
-                      {detail.status === "ACTIVE" && (
-                        <Dropdown.Item onClick={() => onUploadVersion(detail)}>上传新版本</Dropdown.Item>
-                      )}
-                    </Dropdown.Menu>
-                  )}
-                >
-                  <Button className="detail-more-trigger" aria-label="更多管理操作" tooltip="更多管理操作" icon={<AppIcon name="more" size={18} />} />
-                </Dropdown>
-              )}
             </>
           ) : <span className="detail-footer-placeholder" aria-hidden="true" />}
         </div>
@@ -408,29 +383,6 @@ export function SkillDetailModal({
                         </span>
                         <strong className="owner-name">{detail.owner.name}</strong>
                         <span className="owner-role">Owner</span>
-                        {sortedCollaborators.length > 0 && <span className="maintainer-divider" aria-hidden="true" />}
-                        <div className="collaborator-list" aria-label={`协作者 ${sortedCollaborators.length} 人`}>
-                          {sortedCollaborators.slice(0, 5).map((user) => (
-                            <Tooltip
-                              content={`${user.name} · ${user.departmentPath.join(" / ") || "部门信息暂无"}${user.status === "DISABLED" ? " · 账号已停用" : ""}`}
-                              key={user.id}
-                            >
-                              <span
-                                className={user.status === "DISABLED" ? "collaborator-avatar disabled" : "collaborator-avatar"}
-                                role="img"
-                                aria-label={`协作者：${user.name}`}
-                              >
-                                {user.name.slice(0, 1)}
-                              </span>
-                            </Tooltip>
-                          ))}
-                          {sortedCollaborators.length > 5 && (
-                            <Tooltip content={`另外 ${sortedCollaborators.length - 5} 位协作者`}>
-                              <span className="collaborator-more">+{sortedCollaborators.length - 5}</span>
-                            </Tooltip>
-                          )}
-                          {sortedCollaborators.length === 0 && <small>暂无协作者</small>}
-                        </div>
                       </div>
                     </dd>
                   </div>

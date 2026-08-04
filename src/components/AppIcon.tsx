@@ -18,7 +18,6 @@ export type AppIconName =
   | "agents"
   | "claude"
   | "codex"
-  | "more"
   | "logout";
 
 const iconPaths: Record<AppIconName, React.ReactNode> = {
@@ -45,7 +44,6 @@ const iconPaths: Record<AppIconName, React.ReactNode> = {
     fill="currentColor"
     stroke="none"
   />,
-  more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
   logout: <><path d="M10 5H5v14h5" /><path d="M13 8l4 4-4 4M8 12h9" /></>,
 };
 
