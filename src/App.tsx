@@ -1172,6 +1172,23 @@ function App() {
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
   }
 
+  async function handleOwnedSkillDeleted(skillId: string): Promise<void> {
+    setBrowseRefreshKey((current) => current + 1);
+    if (!usesRealInstaller) return;
+    try {
+      const items = await localSkillService.clearPublication(skillId);
+      setLocalSkills(items);
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
+    } catch (reason) {
+      console.error("[KocotreeSkills] 云端删除后解除本地 Skill 关联失败", reason);
+      Toast.error(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "云端 Skill 已删除，但本地关联清理失败",
+      );
+    }
+  }
+
   const handleUnreadChange = useCallback((count: number) => {
     setUnreadCount(count);
   }, []);
@@ -1384,6 +1401,7 @@ function App() {
             onLogin={() => setLoginVisible(true)}
             onOpenSkill={handleOpenManagedSkill}
             onEditSkill={(skill) => void handleEditManagedSkill(skill)}
+            onSkillDeleted={handleOwnedSkillDeleted}
             editingSkillId={editingSkillId}
             refreshKey={publishedRefreshKey}
           />

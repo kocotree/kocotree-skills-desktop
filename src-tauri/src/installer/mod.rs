@@ -2882,6 +2882,64 @@ fn record_local_skill_publication_on_disk(
     save_local_skill_manager_state(&home, &manager_state)
 }
 
+fn clear_local_skill_publication_at_home(
+    home: &Path,
+    skill_id: &str,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    if skill_id.trim().is_empty() {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_METADATA_CLEAR_FAILED",
+            "要清除的云端 Skill 编号不能为空",
+        ));
+    }
+
+    let private_root = private_skills_root(home);
+    match fs::read_dir(&private_root) {
+        Ok(entries) => {
+            for entry in entries {
+                let entry = entry.map_err(|error| io_error("读取 Skill 管理器仓库", error))?;
+                let metadata_path = entry.path().join(INSTALL_METADATA_FILE);
+                if !metadata_path.is_file() {
+                    continue;
+                }
+                let content = match fs::read_to_string(&metadata_path) {
+                    Ok(content) => content,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(io_error("读取本地 Skill 云端关联", error)),
+                };
+                let Ok(metadata) = serde_json::from_str::<InstalledSkillMetadata>(&content) else {
+                    continue;
+                };
+                if metadata.schema_version == 1 && metadata.skill_id == skill_id {
+                    fs::remove_file(&metadata_path)
+                        .map_err(|error| io_error("清除本地 Skill 云端关联", error))?;
+                }
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("读取 Skill 管理器仓库", error)),
+    }
+
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    let previous_publication_count = manager_state.publications.len();
+    manager_state
+        .publications
+        .retain(|_, metadata| metadata.skill_id != skill_id);
+    if manager_state.publications.len() != previous_publication_count {
+        save_local_skill_manager_state(home, &manager_state)?;
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn clear_local_skill_publication_on_disk(
+    skill_id: String,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    clear_local_skill_publication_at_home(&home, &skill_id)
+}
+
 /** 将指定本地 Skill 本体目录打包，并通过二进制 IPC 返回 ZIP 内容。 */
 #[tauri::command]
 pub async fn package_local_skill(
@@ -2910,6 +2968,21 @@ pub async fn record_local_skill_publication(
             InstallError::new(
                 "LOCAL_SKILL_METADATA_WRITE_FAILED",
                 format!("保存 Skill 云端关联失败：{error}"),
+            )
+        })?
+}
+
+/** 云端 Skill 永久删除后解除本机发布关联，不删除 Skill 本体。 */
+#[tauri::command]
+pub async fn clear_local_skill_publication(
+    skill_id: String,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    tauri::async_runtime::spawn_blocking(move || clear_local_skill_publication_on_disk(skill_id))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_METADATA_CLEAR_FAILED",
+                format!("清除本地 Skill 云端关联失败：{error}"),
             )
         })?
 }

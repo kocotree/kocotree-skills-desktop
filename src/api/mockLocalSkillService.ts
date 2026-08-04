@@ -209,6 +209,19 @@ export class MockLocalSkillService implements LocalSkillService {
     return Promise.resolve();
   }
 
+  async clearPublication(skillId: string): Promise<LocalSkillRecord[]> {
+    await this.wait();
+    for (const record of this.records) {
+      if (record.skillId !== skillId) continue;
+      record.skillId = null;
+      record.versionId = null;
+      record.version = null;
+      record.installedAt = null;
+      record.status = "LOCAL_UNKNOWN";
+    }
+    return structuredClone(this.records);
+  }
+
   async setSkillEnabled(
     input: SetLocalSkillEnabledInput,
   ): Promise<LocalSkillRecord[]> {

@@ -51,6 +51,7 @@ async function loadAllOwnedSkills(): Promise<SkillSummaryDto[]> {
  * @param currentUser - 当前登录用户，未登录时显示登录引导。
  * @param onLogin - 用户请求登录时触发。
  * @param onOpenSkill - 打开 Skill 详情的回调。
+ * @param onSkillDeleted - 云端永久删除成功后解除对应本地关联的回调。
  * @param refreshKey - 外部管理操作成功后触发重新加载的版本号。
  * @returns 当前用户拥有的 Skill 列表。
  */
@@ -59,6 +60,7 @@ export function MySkillsPage({
   onLogin,
   onOpenSkill,
   onEditSkill,
+  onSkillDeleted,
   editingSkillId,
   refreshKey,
 }: {
@@ -66,6 +68,7 @@ export function MySkillsPage({
   onLogin: () => void;
   onOpenSkill: (skill: SkillSummaryDto) => void;
   onEditSkill: (skill: SkillSummaryDto) => void;
+  onSkillDeleted: (skillId: string) => void | Promise<void>;
   editingSkillId: string | null;
   refreshKey: number;
 }) {
@@ -150,12 +153,14 @@ export function MySkillsPage({
     setDeleting(true);
     setDeleteError("");
     try {
-      const result = await skillApi.deleteSkill(deleteTarget.id);
+      const deletedSkillId = deleteTarget.id;
+      const result = await skillApi.deleteSkill(deletedSkillId);
       setSkills((current) =>
-        current.filter((skill) => skill.id !== deleteTarget.id),
+        current.filter((skill) => skill.id !== deletedSkillId),
       );
       setDeleteTarget(null);
       setDeleteConfirmation("");
+      await onSkillDeleted(deletedSkillId);
       if (result.ossCleaned) {
         Toast.success("Skill 已永久删除");
       } else {

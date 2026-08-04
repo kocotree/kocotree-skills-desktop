@@ -177,6 +177,23 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
+  /** 云端 Skill 永久删除后解除本机保存的发布关联，并返回最新扫描结果。 */
+  async clearPublication(skillId: string): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "clear_local_skill_publication",
+        { skillId },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_METADATA_CLEAR_FAILED",
+        commandError?.message ?? "无法清除本地 Skill 云端关联",
+        commandError?.details,
+      );
+    }
+  }
+
   async setSkillEnabled(
     input: SetLocalSkillEnabledInput,
   ): Promise<LocalSkillRecord[]> {

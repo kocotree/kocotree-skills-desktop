@@ -190,6 +190,7 @@ export interface LocalSkillService extends SkillInstaller {
   scanSkills(): Promise<LocalSkillRecord[]>;
   packageSkill(sourcePath: string, skillName: string): Promise<File>;
   recordPublication(input: RecordLocalSkillPublicationInput): Promise<void>;
+  clearPublication(skillId: string): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
   removeEntries(input: RemoveLocalSkillEntriesInput): Promise<LocalSkillRecord[]>;
