@@ -57,7 +57,7 @@ const AGENT_DETAILS: Record<
 const STATUS_LABELS: Record<LocalSkillStatus, string> = {
   PLATFORM_INSTALLED: "平台安装",
   PLATFORM_MODIFIED: "本地已修改",
-  PLATFORM_MATCHED: "已匹配平台",
+  PLATFORM_MATCHED: "本地 Skill",
   LOCAL_UNKNOWN: "本地 Skill",
   MISSING: "目录缺失",
 };
