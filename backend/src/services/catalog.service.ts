@@ -41,7 +41,7 @@ function toUserDto(user: User | null) {
     id: user.id,
     name: user.name,
     avatarUrl: user.avatarUrl,
-    departmentPath: [] as string[],
+    departmentPath: user.departmentPath,
     status: user.status,
     role: "USER" as const,
     syncedAt: user.updatedAt.toISOString(),

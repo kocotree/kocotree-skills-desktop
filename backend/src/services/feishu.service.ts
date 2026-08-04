@@ -6,8 +6,15 @@ export type FeishuUser = {
   name: string;
   email?: string | null;
   avatarUrl?: string | null;
+  departmentPath?: string[];
   isCompanyUser: boolean;
 };
+
+const FEISHU_USER_SCOPES = [
+  "contact:contact.base:readonly",
+  "contact:user.department:readonly",
+  "contact:user.department_path:readonly",
+].join(" ");
 
 type FeishuTokenResponse = {
   code?: number;
@@ -35,12 +42,107 @@ type FeishuUserInfoResponse = {
   };
 };
 
+type FeishuDepartmentPathName = {
+  name?: string;
+  i18n_name?: {
+    zh_cn?: string;
+    en_us?: string;
+    ja_jp?: string;
+  };
+};
+
+type FeishuContactUserResponse = {
+  code?: number;
+  msg?: string;
+  data?: {
+    user?: {
+      orders?: Array<{
+        department_id?: string;
+        is_primary_dept?: boolean;
+      }>;
+      department_path?: Array<{
+        department_id?: string;
+        department_name?: FeishuDepartmentPathName;
+        department_path?: {
+          department_ids?: string[];
+          department_path_name?: FeishuDepartmentPathName;
+        };
+      }>;
+    };
+  };
+};
+
 async function feishuFetch<T>(url: string, init: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     throw new Error(`Feishu request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function readDepartmentName(value?: FeishuDepartmentPathName): string {
+  return (
+    value?.name ||
+    value?.i18n_name?.zh_cn ||
+    value?.i18n_name?.en_us ||
+    value?.i18n_name?.ja_jp ||
+    ""
+  ).trim();
+}
+
+function splitDepartmentPath(value: string): string[] {
+  return value
+    .split(/\s*[/／>＞]\s*/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function resolvePrimaryDepartmentPath(
+  user?: NonNullable<FeishuContactUserResponse["data"]>["user"],
+): string[] {
+  const departmentDetails = user?.department_path || [];
+  const primaryDepartmentId = user?.orders?.find(
+    (order) => order.is_primary_dept,
+  )?.department_id;
+  const primaryDepartment =
+    departmentDetails.find(
+      (department) => department.department_id === primaryDepartmentId,
+    ) || departmentDetails[0];
+  if (!primaryDepartment) return [];
+
+  const pathName = readDepartmentName(
+    primaryDepartment.department_path?.department_path_name,
+  );
+  const path = splitDepartmentPath(pathName);
+  if (path.length > 0) return path;
+
+  const departmentName = readDepartmentName(
+    primaryDepartment.department_name,
+  );
+  return departmentName ? [departmentName] : [];
+}
+
+async function getDepartmentPath(
+  accessToken: string,
+  openId: string,
+): Promise<string[]> {
+  const url = new URL(
+    `https://open.feishu.cn/open-apis/contact/v3/users/${encodeURIComponent(openId)}`,
+  );
+  url.searchParams.set("user_id_type", "open_id");
+  url.searchParams.set("department_id_type", "open_department_id");
+  const response = await feishuFetch<FeishuContactUserResponse>(
+    url.toString(),
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  if (response.code && response.code !== 0) {
+    throw new Error(response.msg || "Feishu department lookup failed");
+  }
+  return resolvePrimaryDepartmentPath(response.data?.user);
 }
 
 export const feishuService = {
@@ -51,6 +153,7 @@ export const feishuService = {
     url.searchParams.set("app_id", config.feishuAppId);
     url.searchParams.set("redirect_uri", config.feishuRedirectUri);
     url.searchParams.set("state", state);
+    url.searchParams.set("scope", FEISHU_USER_SCOPES);
     return url.toString();
   },
 
@@ -93,6 +196,19 @@ export const feishuService = {
       );
     }
 
+    let departmentPath: string[] | undefined;
+    try {
+      departmentPath = await getDepartmentPath(
+        accessToken,
+        user.open_id,
+      );
+    } catch (error) {
+      console.warn(
+        "Feishu department sync failed; continuing without department information",
+        error instanceof Error ? error.message : error,
+      );
+    }
+
     return {
       feishuOpenId: user.open_id,
       feishuUnionId: user.union_id,
@@ -103,6 +219,7 @@ export const feishuService = {
         user.avatar_big ||
         user.avatar_middle ||
         user.avatar_thumb,
+      departmentPath,
       isCompanyUser: true,
     };
   },

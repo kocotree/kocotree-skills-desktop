@@ -10,6 +10,7 @@ export const authRepository = {
     name: string;
     email?: string | null;
     avatarUrl?: string | null;
+    departmentPath?: string[];
     isCompanyUser: boolean;
     status?: UserStatus;
   }) {
@@ -19,6 +20,7 @@ export const authRepository = {
       },
       create: {
         ...input,
+        departmentPath: input.departmentPath || [],
         status: input.status || "ACTIVE",
         lastLoginAt: new Date(),
       },
@@ -27,6 +29,9 @@ export const authRepository = {
         name: input.name,
         email: input.email,
         avatarUrl: input.avatarUrl,
+        ...(input.departmentPath !== undefined
+          ? { departmentPath: input.departmentPath }
+          : {}),
         isCompanyUser: input.isCompanyUser,
         lastLoginAt: new Date(),
       },

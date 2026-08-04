@@ -175,7 +175,7 @@
 | 前端需要 | 后端现有 | 等级 | 判断和改动 |
 | --- | --- | --- | --- |
 | `signIn()` | `device/start`、`feishu/login`、`device/poll` | A | 设备授权流程可直接复用；desktop 需要实现浏览器打开、轮询和 Token 保存 |
-| `GET /api/users/me` | `GET /api/me` | B | 用户 ID、姓名和头像可复用；需改路径和响应外层，并补 `departmentPath`、`role`、`syncedAt` |
+| `GET /api/users/me` | `GET /api/me` | B | 用户 ID、姓名和头像可复用；desktop 后端已补 `departmentPath`、`role`、`syncedAt` |
 | `signOut()` | `POST /api/auth/logout` | C | 当前接口只读取 Web Cookie，不能注销 desktop Bearer Token；需要支持注销当前 Bearer Token |
 | Bearer 鉴权 | `requireAuth` | A | 可以复用 |
 | 安全保存 Token | 后端不负责 | C | desktop 应使用系统凭据存储或 Rust 安全存储，不建议普通 `localStorage` |
@@ -190,8 +190,8 @@
 | `GET /api/users/me` | `GET /api/me` | B | 修改路径、外层和 User DTO |
 | `GET /api/users/me/skills?relation=...` | 可用 `GET /api/skills?createdBy=...` 查询创建者 | C | `OWNED` 可部分复用；`COLLABORATED` 和权限过滤必须新增 |
 
-现有 `User` 数据表有 `status`、姓名、邮箱和飞书标识，但没有 desktop DTO 中的
-`role`、`departmentPath` 和 `syncedAt`。这些字段需要增加，或明确调整 desktop 契约。
+desktop 后端将主部门路径同步到 `users.department_path`，并通过 User DTO 返回
+`departmentPath`；`role` 当前固定为 `USER`，`syncedAt` 使用用户记录更新时间。
 
 ### 7.3 Tag
 

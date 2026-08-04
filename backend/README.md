@@ -59,6 +59,23 @@ cd backend
 pnpm prisma:generate
 ```
 
+启用用户部门路径前，需要先为现有 PostgreSQL 数据库增加字段：
+
+```bash
+psql "$DATABASE_URL" -f prisma/add-user-department-path.sql
+```
+
+飞书应用需要开通并发布以下用户身份权限：
+
+```text
+contact:contact.base:readonly
+contact:user.department:readonly
+contact:user.department_path:readonly
+```
+
+用户重新登录后，后端会使用 OAuth 的 `user_access_token` 同步主部门路径。部门查询失败
+不会阻断登录：新用户暂时使用空数组，已有用户保留上次同步结果，并在下次登录时重新同步。
+
 客户端的 `eventId` 作为 `install_sessions.id`，是全局幂等键。相同事件重复上报不会重复
 增加 `skills.install_count`；复用事件编号上报不同内容会被拒绝。
 

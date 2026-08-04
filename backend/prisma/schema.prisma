@@ -62,6 +62,7 @@ model User {
   name          String
   email         String?
   avatarUrl     String?     @map("avatar_url")
+  departmentPath String[]    @default([]) @map("department_path")
   status        UserStatus  @default(ACTIVE)
   lastLoginAt   DateTime?   @map("last_login_at") @db.Timestamptz(6)
   createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
