@@ -1253,7 +1253,18 @@ function App() {
               )}
             >
               <button className="sidebar-user" type="button" aria-label={`${currentUser.name} 账户菜单`}>
-                <span className="user-avatar">{currentUser.name.slice(0, 1)}</span>
+                <span className="user-avatar">
+                  {currentUser.name.slice(0, 1)}
+                  {currentUser.avatarUrl && (
+                    <img
+                      src={currentUser.avatarUrl}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  )}
+                </span>
                 <span>
                   <strong>{currentUser.name}</strong>
                   <small>{currentUser.departmentPath?.join(" ") || "部门信息暂无"}</small>

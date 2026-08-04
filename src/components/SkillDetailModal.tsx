@@ -380,6 +380,15 @@ export function SkillDetailModal({
                           title={`${detail.owner.name} · ${detail.owner.departmentPath.join(" / ") || "部门信息暂无"}${detail.owner.status === "DISABLED" ? " · 账号已停用" : ""}`}
                         >
                           {detail.owner.name.slice(0, 1)}
+                          {detail.owner.avatarUrl && (
+                            <img
+                              src={detail.owner.avatarUrl}
+                              alt=""
+                              onError={(event) => {
+                                event.currentTarget.hidden = true;
+                              }}
+                            />
+                          )}
                         </span>
                         <strong className="owner-name">{detail.owner.name}</strong>
                         <span className="owner-role">Owner</span>
