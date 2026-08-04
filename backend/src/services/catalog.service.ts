@@ -25,6 +25,44 @@ type VersionHashFile = Awaited<
   ReturnType<typeof catalogRepository.listVersionHashFiles>
 >[number];
 
+function encodeDepartmentKey(path: string[]): string {
+  return Buffer.from(JSON.stringify(path), "utf8").toString("base64url");
+}
+
+function getDepartmentDisplayName(path: string[]): string {
+  const storedName = path[path.length - 1] || "";
+  const pathName = storedName
+    .split(/\s*[\\/／>＞]\s*/u)
+    .filter(Boolean)
+    .pop()
+    || storedName;
+  return pathName
+    .split(/\s*[-‐‑‒–—]\s*/u)
+    .filter(Boolean)
+    .pop()
+    || pathName;
+}
+
+export function decodeDepartmentKey(value: string): string[] | null {
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8"),
+    );
+    if (
+      !Array.isArray(parsed)
+      || parsed.length === 0
+      || parsed.some(
+        (item) => typeof item !== "string" || !item.trim(),
+      )
+    ) {
+      return null;
+    }
+    return parsed.map((item) => item.trim());
+  } catch {
+    return null;
+  }
+}
+
 function toUserDto(user: User | null) {
   if (!user) {
     return {
@@ -172,6 +210,29 @@ export const catalogService = {
       id: tag.id,
       name: tag.name,
     }));
+  },
+
+  async listPublishedSkillDepartments() {
+    const users =
+      await catalogRepository.listPublishedSkillDepartmentPaths();
+    const paths = new Map<string, string[]>();
+    for (const user of users) {
+      const path = user.departmentPath
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (path.length > 0) {
+        paths.set(JSON.stringify(path), path);
+      }
+    }
+    return [...paths.values()]
+      .map((path) => ({
+        id: encodeDepartmentKey(path),
+        name: getDepartmentDisplayName(path),
+        path,
+      }))
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, "zh-CN")
+      );
   },
 
   async listSkills(input: ListSkillsInput) {

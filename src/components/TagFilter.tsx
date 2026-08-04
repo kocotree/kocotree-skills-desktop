@@ -6,8 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { TagDto } from "../api";
 import { AppIcon } from "./AppIcon";
+
+interface FilterOption {
+  id: string;
+  name: string;
+}
 
 interface TagWidth {
   id: string;
@@ -84,10 +88,22 @@ export function TagFilter({
   tags,
   selectedTagId,
   onChange,
+  label = "标签",
+  allLabel = "全部标签",
+  moreAriaLabel = "更多标签",
+  searchPlaceholder = "搜索标签",
+  searchAriaLabel = "搜索更多标签",
+  emptyText = "没有匹配的标签",
 }: {
-  tags: TagDto[];
+  tags: FilterOption[];
   selectedTagId: string;
   onChange: (tagId: string) => void;
+  label?: string;
+  allLabel?: string;
+  moreAriaLabel?: string;
+  searchPlaceholder?: string;
+  searchAriaLabel?: string;
+  emptyText?: string;
 }) {
   const [visibleTagIds, setVisibleTagIds] = useState<string[]>([]);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -188,7 +204,7 @@ export function TagFilter({
 
   return (
     <div className="source-row tag-filter-row">
-      <span className="tag-filter-label">标签</span>
+      <span className="tag-filter-label">{label}</span>
       <div className="tag-filter-options" ref={optionsRef}>
         <button
           className={selectedTagId === "all" ? "source-chip active" : "source-chip"}
@@ -196,7 +212,7 @@ export function TagFilter({
           aria-pressed={selectedTagId === "all"}
           onClick={() => selectTag("all")}
         >
-          全部标签
+          {allLabel}
         </button>
         {visibleTags.map((tag) => (
           <button
@@ -230,15 +246,15 @@ export function TagFilter({
                 className="tag-filter-menu"
                 id={menuId}
                 role="dialog"
-                aria-label="更多标签"
+                aria-label={moreAriaLabel}
               >
                 <label className="tag-filter-search">
                   <AppIcon name="search" size={15} />
                   <input
                     ref={searchInputRef}
                     value={moreQuery}
-                    placeholder="搜索标签"
-                    aria-label="搜索更多标签"
+                    placeholder={searchPlaceholder}
+                    aria-label={searchAriaLabel}
                     onChange={(event) => setMoreQuery(event.currentTarget.value)}
                   />
                 </label>
@@ -256,7 +272,7 @@ export function TagFilter({
                     ))
                   ) : (
                     <span className="tag-filter-menu-empty">
-                      没有匹配的标签
+                      {emptyText}
                     </span>
                   )}
                 </div>
@@ -272,7 +288,7 @@ export function TagFilter({
         aria-hidden="true"
       >
         <button className="source-chip" type="button" tabIndex={-1} data-measure-all>
-          全部标签
+          {allLabel}
         </button>
         {tags.map((tag) => (
           <button

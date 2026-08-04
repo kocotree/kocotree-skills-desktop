@@ -2,6 +2,7 @@ import type {
   FileEntryDto,
   ListSkillsQuery,
   ListVersionsQuery,
+  PublishedSkillDepartmentDto,
   SkillDetailDto,
   SkillFileContentDto,
   SkillPageDto,
@@ -39,10 +40,17 @@ export class HttpCatalogApi {
       `/api/skills${queryString({
         query: query.query,
         tagId: query.tagId,
+        departmentKey: query.departmentKey,
         sort: query.sort,
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+
+  listPublishedSkillDepartments(): Promise<PublishedSkillDepartmentDto[]> {
+    return this.http.request<PublishedSkillDepartmentDto[]>(
+      "/api/skills/departments",
     );
   }
 

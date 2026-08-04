@@ -92,7 +92,7 @@ function readDepartmentName(value?: FeishuDepartmentPathName): string {
 
 function splitDepartmentPath(value: string): string[] {
   return value
-    .split(/\s*[/／>＞]\s*/u)
+    .split(/\s*[\\/／>＞]\s*/u)
     .map((segment) => segment.trim())
     .filter(Boolean);
 }

@@ -4,6 +4,7 @@ import { prisma } from "../db";
 export interface ListSkillsInput {
   query?: string;
   tagId?: string;
+  departmentPath?: string[];
   sort: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
   page: number;
   pageSize: number;
@@ -40,6 +41,27 @@ export const catalogRepository = {
     });
   },
 
+  listPublishedSkillDepartmentPaths() {
+    return prisma.user.findMany({
+      where: {
+        departmentPath: {
+          isEmpty: false,
+        },
+        createdSkills: {
+          some: {
+            status: "PUBLISHED",
+            latestVersionId: {
+              not: null,
+            },
+          },
+        },
+      },
+      select: {
+        departmentPath: true,
+      },
+    });
+  },
+
   async listSkills(input: ListSkillsInput) {
     const where: Prisma.SkillWhereInput = {
       status: "PUBLISHED",
@@ -69,6 +91,17 @@ export const catalogRepository = {
             tags: {
               some: {
                 tagId: input.tagId,
+              },
+            },
+          }
+        : {}),
+      ...(input.departmentPath
+        ? {
+            creator: {
+              is: {
+                departmentPath: {
+                  equals: input.departmentPath,
+                },
               },
             },
           }

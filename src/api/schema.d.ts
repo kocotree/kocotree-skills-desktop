@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/skills/departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取已发布 Skill 的发布部门 */
+        get: operations["listPublishedSkillDepartments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/skills/{skillId}": {
         parameters: {
             query?: never;
@@ -371,6 +388,11 @@ export interface components {
             id: string;
             name: string;
         };
+        PublishedSkillDepartment: {
+            id: string;
+            name: string;
+            path: string[];
+        };
         DerivedSource: {
             skillId: string;
             skillName: string;
@@ -578,6 +600,9 @@ export interface components {
         TagListResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["Tag"][];
         };
+        PublishedSkillDepartmentListResponse: components["schemas"]["ApiOkMeta"] & {
+            data: components["schemas"]["PublishedSkillDepartment"][];
+        };
         SkillDetailResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["SkillDetail"];
         };
@@ -741,6 +766,8 @@ export interface operations {
             query?: {
                 query?: string;
                 tagId?: string;
+                /** @description 已发布 Skill 部门列表返回的不透明部门标识 */
+                departmentKey?: string;
                 sort?: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
                 page?: components["parameters"]["Page"];
                 pageSize?: components["parameters"]["PageSize"];
@@ -783,6 +810,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SkillDetailCreatedResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listPublishedSkillDepartments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已发布 Skill 的发布部门列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedSkillDepartmentListResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

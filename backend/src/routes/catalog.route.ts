@@ -1,6 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
 import { failure, requireAuth, success } from "../http";
-import { catalogService } from "../services/catalog.service";
+import {
+  catalogService,
+  decodeDepartmentKey,
+} from "../services/catalog.service";
 
 const SORTS = new Set([
   "UPDATED_DESC",
@@ -51,19 +54,41 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       typeof query.query === "string" ? query.query.trim() : undefined;
     const tagId =
       typeof query.tagId === "string" ? query.tagId.trim() : undefined;
+    const departmentKey =
+      typeof query.departmentKey === "string"
+        ? query.departmentKey.trim()
+        : undefined;
 
     if (tagId && tagId.length > 100) {
       return failure(reply, 400, "INVALID_REQUEST", "Tag ID 无效");
+    }
+    if (departmentKey && departmentKey.length > 2_048) {
+      return failure(reply, 400, "INVALID_REQUEST", "发布部门无效");
+    }
+    const departmentPath = departmentKey
+      ? decodeDepartmentKey(departmentKey)
+      : undefined;
+    if (departmentKey && !departmentPath) {
+      return failure(reply, 400, "INVALID_REQUEST", "发布部门无效");
     }
 
     const result = await catalogService.listSkills({
       query: keyword || undefined,
       tagId: tagId || undefined,
+      departmentPath,
       sort,
       page,
       pageSize,
     });
     return success(result);
+  });
+
+  app.get("/skills/departments", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    const items = await catalogService.listPublishedSkillDepartments();
+    return success(items);
   });
 
   app.get("/skills/:skillId", async (request, reply) => {

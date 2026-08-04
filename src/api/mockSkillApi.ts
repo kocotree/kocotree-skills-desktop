@@ -15,6 +15,7 @@ import {
   type ListVersionsQuery,
   type NotificationPageDto,
   type PublishSkillVersionDto,
+  type PublishedSkillDepartmentDto,
   type SkillApi,
   type SkillDetailDto,
   type SkillFileContentDto,
@@ -166,7 +167,22 @@ export class MockSkillApi implements SkillApi {
   async listSkills(query: ListSkillsQuery = {}): Promise<SkillPageDto> {
     await this.wait();
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
-    let items = this.skills.filter((skill) => skill.status === "ACTIVE" && (!query.tagId || skill.tags.some((tag) => tag.id === query.tagId)) && [skill.skillName, skill.displayName, skill.skillDescription, skill.displayDescription, ...skill.tags.map((tag) => tag.name)].join(" ").toLocaleLowerCase().includes(keyword));
+    let items = this.skills.filter(
+      (skill) =>
+        skill.status === "ACTIVE"
+        && (!query.tagId || skill.tags.some((tag) => tag.id === query.tagId))
+        && (
+          !query.departmentKey
+          || JSON.stringify(skill.owner.departmentPath) === query.departmentKey
+        )
+        && [
+          skill.skillName,
+          skill.displayName,
+          skill.skillDescription,
+          skill.displayDescription,
+          ...skill.tags.map((tag) => tag.name),
+        ].join(" ").toLocaleLowerCase().includes(keyword),
+    );
     items = [...items].sort((left, right) => {
       if (query.sort === "INSTALLS_DESC") return comparePopularSkills(left, right);
       if (query.sort === "CREATED_DESC") return Date.parse(right.createdAt) - Date.parse(left.createdAt);
@@ -175,6 +191,38 @@ export class MockSkillApi implements SkillApi {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     return { items: clone(items.slice((page - 1) * pageSize, page * pageSize)), total: items.length, page, pageSize };
+  }
+
+  async listPublishedSkillDepartments(): Promise<
+    PublishedSkillDepartmentDto[]
+  > {
+    await this.wait();
+    const paths = new Map<string, string[]>();
+    for (const skill of this.skills) {
+      if (
+        skill.status !== "ACTIVE"
+        || skill.owner.departmentPath.length === 0
+      ) {
+        continue;
+      }
+      const path = skill.owner.departmentPath
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (path.length > 0) paths.set(JSON.stringify(path), path);
+    }
+    return clone(
+      [...paths.values()]
+        .map((path) => ({
+          id: JSON.stringify(path),
+          name: path[path.length - 1]
+            ?.split(/\s*[-‐‑‒–—]\s*/u)
+            .filter(Boolean)
+            .pop()
+            || "",
+          path,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name, "zh-CN")),
+    );
   }
 
   async listMySkills(query: ListMySkillsQuery): Promise<SkillPageDto> {

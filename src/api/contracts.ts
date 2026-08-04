@@ -9,6 +9,8 @@ export type ApiSuccessDto<T> = (
 export type ApiErrorDto = components["schemas"]["ErrorResponse"];
 export type UserDto = components["schemas"]["User"];
 export type TagDto = components["schemas"]["Tag"];
+export type PublishedSkillDepartmentDto =
+  components["schemas"]["PublishedSkillDepartment"];
 export type DerivedSourceDto = components["schemas"]["DerivedSource"];
 export type SkillSummaryDto = components["schemas"]["SkillSummary"];
 export type SkillDetailDto = components["schemas"]["SkillDetail"];
@@ -199,6 +201,7 @@ export interface LocalSkillService extends SkillInstaller {
  */
 export interface SkillApi {
   listSkills(query?: ListSkillsQuery): Promise<SkillPageDto>;
+  listPublishedSkillDepartments(): Promise<PublishedSkillDepartmentDto[]>;
   listMySkills(query: ListMySkillsQuery): Promise<SkillPageDto>;
   resolvePublishTarget(skillName: string): Promise<PublishTargetResolutionDto>;
   getSkill(skillId: string): Promise<SkillDetailDto>;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Dropdown, Modal, Spin, Tooltip, Toast, ToastViewport } from "./components/ui";
 import {
   AUTH_INVALIDATED_EVENT,
@@ -16,11 +16,11 @@ import {
   type LocalSkillFilter,
   type LocalSkillRecord,
   type PreparedSkillUpload,
+  type PublishedSkillDepartmentDto,
   type SetLocalSkillEnabledInput,
   type SkillDetailDto,
   type SkillSummaryDto,
   type SkillVersionDto,
-  type TagDto,
   type UserDto,
 } from "./api";
 import { AppIcon } from "./components/AppIcon";
@@ -61,6 +61,24 @@ interface UninstallPromptState {
   records: LocalSkillRecord[];
   managedRecord: LocalSkillRecord | null;
   completeRemoval: boolean;
+}
+
+function getDepartmentDisplayName(
+  department: PublishedSkillDepartmentDto,
+): string {
+  const storedName =
+    department.path[department.path.length - 1]
+    || department.name;
+  const pathName = storedName
+    .split(/\s*[\\/／>＞]\s*/u)
+    .filter(Boolean)
+    .pop()
+    || storedName;
+  return pathName
+    .split(/\s*[-‐‑‒–—]\s*/u)
+    .filter(Boolean)
+    .pop()
+    || pathName;
 }
 
 function localFilterForPage(page: PageKey): LocalSkillFilter | null {
@@ -275,12 +293,20 @@ function BrowsePage({
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [tagId, setTagId] = useState("all");
+  const [departmentKey, setDepartmentKey] = useState("all");
   const [sort, setSort] = useState<SortKey>("popular");
   const [page, setPage] = useState(1);
   const [totalSkills, setTotalSkills] = useState(0);
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
-  const [tags, setTags] = useState<TagDto[]>([]);
+  const [departments, setDepartments] =
+    useState<PublishedSkillDepartmentDto[]>([]);
+  const departmentOptions = useMemo(
+    () => departments.map((department) => ({
+      id: department.id,
+      name: getDepartmentDisplayName(department),
+    })),
+    [departments],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const highlightedCardRef = useRef<HTMLElement | null>(null);
@@ -288,7 +314,7 @@ function BrowsePage({
   useEffect(() => {
     if (!highlightedSkillId) return;
     setQuery("");
-    setTagId("all");
+    setDepartmentKey("all");
     setPage(1);
   }, [highlightedSkillId]);
 
@@ -310,17 +336,17 @@ function BrowsePage({
 
   useEffect(() => {
     if (!authenticated) {
-      setTags([]);
+      setDepartments([]);
       return;
     }
     let active = true;
-    skillApi.listTags().then((items) => {
-      if (active) setTags(items);
+    skillApi.listPublishedSkillDepartments().then((items) => {
+      if (active) setDepartments(items);
     }).catch((reason: unknown) => {
-      console.error("[KocotreeSkills] Tag 加载失败", reason);
+      console.error("[KocotreeSkills] 发布部门加载失败", reason);
     });
     return () => { active = false; };
-  }, [authenticated]);
+  }, [authenticated, refreshKey]);
 
   useEffect(() => {
     if (!authenticated) {
@@ -336,7 +362,7 @@ function BrowsePage({
     const apiSort = sort === "popular" ? "INSTALLS_DESC" : sort === "created" ? "CREATED_DESC" : "UPDATED_DESC";
     skillApi.listSkills({
       query: debouncedQuery || undefined,
-      tagId: tagId === "all" ? undefined : tagId,
+      departmentKey: departmentKey === "all" ? undefined : departmentKey,
       sort: apiSort,
       page,
       pageSize: BROWSE_PAGE_SIZE,
@@ -359,7 +385,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, page, refreshKey, sort, tagId]);
+  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, sort]);
 
   if (!authResolved) {
     return (
@@ -383,7 +409,7 @@ function BrowsePage({
         <section className="empty-state">
           <AppIcon name="library" size={30} />
           <strong>登录后浏览 Skill</strong>
-          <span>Skill 市场和标签数据仅对已登录用户开放。</span>
+          <span>Skill 市场仅对已登录用户开放。</span>
           <Button theme="solid" type="primary" onClick={onLogin}>
             使用飞书登录
           </Button>
@@ -447,10 +473,16 @@ function BrowsePage({
         </div>
 
         <TagFilter
-          tags={tags}
-          selectedTagId={tagId}
-          onChange={(nextTagId) => {
-            setTagId(nextTagId);
+          tags={departmentOptions}
+          selectedTagId={departmentKey}
+          label="发布部门"
+          allLabel="全部"
+          moreAriaLabel="更多发布部门"
+          searchPlaceholder="搜索发布部门"
+          searchAriaLabel="搜索更多发布部门"
+          emptyText="没有匹配的发布部门"
+          onChange={(nextDepartmentKey) => {
+            setDepartmentKey(nextDepartmentKey);
             setPage(1);
           }}
         />
@@ -495,7 +527,7 @@ function BrowsePage({
         <section className="empty-state">
           <AppIcon name="search" size={30} />
           <strong>没有找到匹配的 Skill</strong>
-          <span>换一个关键词或标签试试</span>
+          <span>换一个关键词或发布部门试试</span>
         </section>
       )}
     </main>
