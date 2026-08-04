@@ -45,7 +45,7 @@ pub struct InstallSkillInput {
     pub force: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InstalledSkillMetadata {
     schema_version: u8,
@@ -267,6 +267,8 @@ struct LocalSkillManagerState {
     connections: HashMap<String, ManagedConnectionState>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     legacy_sources: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    publications: HashMap<String, InstalledSkillMetadata>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -1116,6 +1118,7 @@ fn empty_local_skill_manager_state() -> LocalSkillManagerState {
         assignments: HashMap::new(),
         connections: HashMap::new(),
         legacy_sources: HashMap::new(),
+        publications: HashMap::new(),
     }
 }
 
@@ -1572,6 +1575,22 @@ fn refresh_managed_copies(home: &Path) -> Result<(), InstallError> {
     Ok(())
 }
 
+fn apply_managed_publication(
+    record: &mut LocalSkillRecord,
+    metadata: &InstalledSkillMetadata,
+) {
+    if metadata.schema_version != 1 || metadata.skill_name != record.skill_name {
+        return;
+    }
+    record.skill_id = Some(metadata.skill_id.clone());
+    record.version_id = Some(metadata.version_id.clone());
+    record.version = Some(metadata.version.clone());
+    record.display_name = metadata.display_name.clone();
+    record.content_hash = metadata.content_hash.clone();
+    record.installed_at = Some(metadata.installed_at.clone());
+    record.status = "PLATFORM_MATCHED".to_string();
+}
+
 fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, InstallError> {
     #[cfg(any(windows, test))]
     if let Err(error) = refresh_managed_copies(home) {
@@ -1597,6 +1616,11 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
         );
         empty_local_skill_manager_state()
     });
+    for record in &mut records {
+        if let Some(metadata) = manager_state.publications.get(&record.resolved_path) {
+            apply_managed_publication(record, metadata);
+        }
+    }
     let disabled_codex_skills = codex_disabled_skill_paths(home).unwrap_or_else(|error| {
         warn!(
             "读取 Codex Skill 开关状态失败，按开启状态继续：code={}, message={}",
@@ -2101,6 +2125,74 @@ fn uninstall_io_error(action: &str, error: std::io::Error) -> InstallError {
     InstallError::new("LOCAL_UNINSTALL_IO_ERROR", format!("{action}失败：{error}"))
 }
 
+#[cfg(target_os = "macos")]
+fn move_local_skill_path_to_trash(action: &str, path: &Path) -> Result<(), InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    let trash_root = home.join(".Trash");
+    fs::create_dir_all(&trash_root).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_TRASH_FAILED",
+            format!("{action}失败：无法访问用户废纸篓：{error}"),
+            serde_json::json!({ "path": path, "trashPath": trash_root }),
+        )
+    })?;
+    let file_name = path.file_name().ok_or_else(|| {
+        InstallError::with_details(
+            "LOCAL_TRASH_FAILED",
+            format!("{action}失败：目标名称无效"),
+            serde_json::json!({ "path": path }),
+        )
+    })?;
+    let mut destination = trash_root.join(file_name);
+    let destination_exists = match fs::symlink_metadata(&destination) {
+        Ok(_) => true,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            return Err(InstallError::with_details(
+                "LOCAL_TRASH_FAILED",
+                format!("{action}失败：无法检查废纸篓中的同名项目：{error}"),
+                serde_json::json!({ "path": path, "trashPath": destination }),
+            ));
+        }
+    };
+    if destination_exists {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let base_name = file_name.to_string_lossy();
+        destination = (0_u16..1_000)
+            .map(|attempt| {
+                trash_root.join(format!(
+                    "{base_name}-{timestamp}-{}-{attempt}",
+                    std::process::id()
+                ))
+            })
+            .find(|candidate| {
+                matches!(
+                    fs::symlink_metadata(candidate),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound
+                )
+            })
+            .ok_or_else(|| {
+                InstallError::with_details(
+                    "LOCAL_TRASH_FAILED",
+                    format!("{action}失败：废纸篓中无法生成不重复的名称"),
+                    serde_json::json!({ "path": path, "trashPath": trash_root }),
+                )
+            })?;
+    }
+    fs::rename(path, &destination).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_TRASH_FAILED",
+            format!("{action}失败：无法移动到用户废纸篓：{error}"),
+            serde_json::json!({ "path": path, "trashPath": destination }),
+        )
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
 fn move_local_skill_path_to_trash(action: &str, path: &Path) -> Result<(), InstallError> {
     trash::delete(path).map_err(|error| {
         InstallError::with_details(
@@ -2271,6 +2363,12 @@ fn remove_local_skill_at_home(
     }
 
     let mut state_changed = false;
+    if let Some(source_path) = &canonical_source {
+        state_changed |= manager_state
+            .publications
+            .remove(&source_path.to_string_lossy().into_owned())
+            .is_some();
+    }
     for agent in ["claude", "codex"] {
         if let Some(assignments) = manager_state.assignments.get_mut(agent) {
             let previous_length = assignments.len();
@@ -2347,6 +2445,16 @@ fn remove_local_skill_entries_at_home(
     let selected_paths = targets
         .iter()
         .map(|record| record.install_path.as_str())
+        .collect::<HashSet<_>>();
+    let removed_publication_paths = targets
+        .iter()
+        .filter(|target| {
+            !records.iter().any(|record| {
+                record.resolved_path == target.resolved_path
+                    && !requested_ids.contains(&record.id)
+            })
+        })
+        .map(|record| record.resolved_path.clone())
         .collect::<HashSet<_>>();
     for target in &targets {
         let target_path = PathBuf::from(&target.install_path);
@@ -2441,6 +2549,9 @@ fn remove_local_skill_entries_at_home(
 
     let mut manager_state = load_local_skill_manager_state(home)?;
     let mut state_changed = false;
+    for resolved_path in removed_publication_paths {
+        state_changed |= manager_state.publications.remove(&resolved_path).is_some();
+    }
     for target in &targets {
         let affected_agents: &[&str] = match target.location.as_str() {
             "CLAUDE" => &["claude"],
@@ -2758,8 +2869,21 @@ fn record_local_skill_publication_on_disk(
             format!("生成 Skill 云端关联失败：{error}"),
         )
     })?;
-    fs::write(source.join(INSTALL_METADATA_FILE), bytes)
-        .map_err(|error| io_error("保存 Skill 云端关联", error))
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    let source_is_manager_owned = private_skills_root(&home)
+        .canonicalize()
+        .ok()
+        .is_some_and(|root| source.parent() == Some(root.as_path()));
+    if source_is_manager_owned {
+        return fs::write(source.join(INSTALL_METADATA_FILE), bytes)
+            .map_err(|error| io_error("保存 Skill 云端关联", error));
+    }
+
+    let publication_key = source.to_string_lossy().into_owned();
+    let mut manager_state = load_local_skill_manager_state(&home)?;
+    manager_state.publications.insert(publication_key, metadata);
+    save_local_skill_manager_state(&home, &manager_state)
 }
 
 /** 将指定本地 Skill 本体目录打包，并通过二进制 IPC 返回 ZIP 内容。 */
