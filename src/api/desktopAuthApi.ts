@@ -12,7 +12,8 @@ const CALLBACK_SCHEME = "kocotree-skills:";
 const CALLBACK_HOST = "auth";
 const CUSTOM_CALLBACK_PATH = "/callback";
 const LOOPBACK_CALLBACK_PATH = "/auth/callback";
-const TOKEN_STORAGE_KEY = "kocotree.desktop.session-token";
+const SESSION_STORAGE_KEY = "kocotree.desktop.auth-session";
+const LEGACY_TOKEN_STORAGE_KEY = "kocotree.desktop.session-token";
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 const AUTH_STATUS_TIMEOUT_MS = 15_000;
 
@@ -20,6 +21,12 @@ interface ExchangeResult {
   user: UserDto;
   token: string;
   expiresAt: string;
+}
+
+interface StoredDesktopSession {
+  schemaVersion: 1;
+  token: string;
+  expiresAt: string | null;
 }
 
 interface DesktopAuthCallback {
@@ -44,12 +51,91 @@ function createLoginAttemptId(): string {
   ).join("");
 }
 
+function sessionIsExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const timestamp = Date.parse(expiresAt);
+  return Number.isFinite(timestamp) && timestamp <= Date.now();
+}
+
+function clearStoredSession(): void {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  } catch {
+    // WebView 禁用持久存储时仍允许当前会话继续运行。
+  }
+  try {
+    sessionStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  } catch {
+    // 兼容无 sessionStorage 的非浏览器环境。
+  }
+}
+
+function saveStoredSession(session: StoredDesktopSession): void {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  } catch {
+    // 持久化失败不影响本次登录会话。
+  }
+  try {
+    sessionStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
+  } catch {
+    // 兼容无 sessionStorage 的非浏览器环境。
+  }
+}
+
+function readStoredSession(): StoredDesktopSession | null {
+  let storedValue: string | null = null;
+  try {
+    storedValue = localStorage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    // 不可用时继续尝试读取旧会话存储。
+  }
+
+  if (storedValue) {
+    try {
+      const parsed = JSON.parse(storedValue) as Partial<StoredDesktopSession>;
+      if (
+        parsed.schemaVersion === 1 &&
+        typeof parsed.token === "string" &&
+        parsed.token.length > 0 &&
+        (typeof parsed.expiresAt === "string" || parsed.expiresAt === null)
+      ) {
+        const session: StoredDesktopSession = {
+          schemaVersion: 1,
+          token: parsed.token,
+          expiresAt: parsed.expiresAt,
+        };
+        if (!sessionIsExpired(session.expiresAt)) return session;
+      }
+    } catch {
+      // 损坏的会话数据按未登录处理。
+    }
+    clearStoredSession();
+    return null;
+  }
+
+  let legacyToken: string | null = null;
+  try {
+    legacyToken = sessionStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
+  } catch {
+    // 旧会话存储不可用时按未登录处理。
+  }
+  if (!legacyToken) return null;
+
+  const migratedSession: StoredDesktopSession = {
+    schemaVersion: 1,
+    token: legacyToken,
+    expiresAt: null,
+  };
+  saveStoredSession(migratedSession);
+  return migratedSession;
+}
+
 /** Tauri 桌面端飞书 OAuth 身份适配器。 */
 export class DesktopAuthApi {
-  private token =
-    typeof sessionStorage === "undefined"
-      ? null
-      : sessionStorage.getItem(TOKEN_STORAGE_KEY);
+  private token = readStoredSession()?.token ?? null;
   private initializePromise: Promise<void> | null = null;
   private currentUserPromise: Promise<UserDto | null> | null = null;
   private pendingLogin: PendingLogin | null = null;
@@ -130,7 +216,11 @@ export class DesktopAuthApi {
           continue;
         }
         this.token = result.token;
-        sessionStorage.setItem(TOKEN_STORAGE_KEY, result.token);
+        saveStoredSession({
+          schemaVersion: 1,
+          token: result.token,
+          expiresAt: result.expiresAt,
+        });
         if (activeAttemptId) {
           this.rememberAttempt(this.completedAttempts, activeAttemptId);
         }
@@ -379,8 +469,6 @@ export class DesktopAuthApi {
 
   private clearToken(): void {
     this.token = null;
-    if (typeof sessionStorage !== "undefined") {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    }
+    clearStoredSession();
   }
 }

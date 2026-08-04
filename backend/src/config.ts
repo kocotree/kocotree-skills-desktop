@@ -29,7 +29,7 @@ export const config = {
     ),
     desktopTokenTtlSeconds: readNumber(
         "DESKTOP_TOKEN_TTL_SECONDS",
-        60 * 60 * 24 * 180,
+        60 * 60 * 24 * 30,
     ),
     storageDriver: process.env.STORAGE_DRIVER || "aliyun-oss",
     ossRegion: process.env.OSS_REGION || "oss-cn-hangzhou",
