@@ -92,7 +92,7 @@ export function UploadPage({
 
   useEffect(() => {
     setVersion(targetSkill ? nextPatchVersion(targetSkill.currentVersion.version) : "1.0.0");
-    setChangelog(targetSkill ? "" : "首次发布");
+    setChangelog("");
     setNewTagNames([]);
     setNewTagDraft("");
     setNewTagInputVisible(false);
