@@ -1349,6 +1349,7 @@ function App() {
             onSetEnabled={setLocalSkillEnabled}
             deletingRecordId={uninstallingSkillId}
             onDelete={(records) => prepareLocalDelete(records, true)}
+            onDeleteEntry={(record) => prepareLocalDelete([record], false)}
             syncingRecordId={syncingRecordId}
             onSyncToCloud={handleSyncLocalSkill}
           />

@@ -976,7 +976,6 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
         let home = dirs::home_dir().ok_or_else(|| {
             InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
         })?;
-        migrate_shared_skills_to_private_store(&home)?;
         let manager_root = home.join(".skills-manager");
         let skills_root = manager_root.join("skills");
         let backups_root = manager_root.join("backups");
@@ -1167,218 +1166,330 @@ fn save_local_skill_manager_state(
     fs::write(state_path, content).map_err(|error| io_error("保存 Skill 管理状态", error))
 }
 
-/**
- * 将旧版共享扫描目录中的 Skill 本体迁移到私有仓库。
- *
- * `.agents/skills` 会被 Codex 等 Agent 直接扫描，不能作为可独立启停的本体目录。
- * 迁移时只移动实体 Skill 目录，并重建迁移前已经存在的受管 Agent 连接。
- */
-fn migrate_shared_skills_to_private_store(home: &Path) -> Result<(), InstallError> {
-    let shared_root = shared_skills_root(home);
-    let entries = match fs::read_dir(&shared_root) {
-        Ok(entries) => entries
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| io_error("读取旧版共享 Skill", error))?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(io_error("读取旧版共享 Skill 目录", error)),
-    };
-    let private_root = private_skills_root(home);
-    let mut state = load_local_skill_manager_state(home)?;
-    let mut state_changed = false;
-    let mut migrations = Vec::new();
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CodexSkillConfigState {
+    Missing,
+    Enabled,
+    Disabled,
+}
 
+fn codex_config_path(home: &Path) -> PathBuf {
+    home.join(".codex").join("config.toml")
+}
+
+fn write_codex_config(path: &Path, content: &str) -> Result<(), InstallError> {
+    if !content.trim().is_empty() {
+        toml::from_str::<toml::Value>(content).map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+                format!("修改后的 Codex 配置无效，未保存：{error}"),
+            )
+        })?;
+    }
+    let parent = path.parent().ok_or_else(|| {
+        InstallError::new("LOCAL_SKILL_CODEX_CONFIG_INVALID", "Codex 配置路径无效")
+    })?;
+    fs::create_dir_all(parent).map_err(|error| io_error("创建 Codex 配置目录", error))?;
+    let existing_permissions = fs::metadata(path).ok().map(|metadata| metadata.permissions());
+    let mut temporary = TempDirBuilder::new()
+        .prefix(".kocotree-codex-config-")
+        .tempfile_in(parent)
+        .map_err(|error| io_error("创建 Codex 配置临时文件", error))?;
+    if let Some(permissions) = existing_permissions {
+        temporary
+            .as_file()
+            .set_permissions(permissions)
+            .map_err(|error| io_error("保留 Codex 配置权限", error))?;
+    }
+    temporary
+        .write_all(content.as_bytes())
+        .map_err(|error| io_error("写入 Codex 配置临时文件", error))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|error| io_error("同步 Codex 配置", error))?;
+    temporary
+        .persist(path)
+        .map_err(|error| io_error("保存 Codex 配置", error.error))?;
+    Ok(())
+}
+
+fn skill_definition_path_text(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn codex_skill_config_state(
+    content: &str,
+    skill_definition_path: &str,
+) -> Result<CodexSkillConfigState, InstallError> {
+    if content.trim().is_empty() {
+        return Ok(CodexSkillConfigState::Missing);
+    }
+    let config = toml::from_str::<toml::Value>(content).map_err(|error| {
+        InstallError::new(
+            "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+            format!("Codex 配置文件格式无效，未进行修改：{error}"),
+        )
+    })?;
+    let Some(entries) = config
+        .get("skills")
+        .and_then(|skills| skills.get("config"))
+        .and_then(toml::Value::as_array)
+    else {
+        return Ok(CodexSkillConfigState::Missing);
+    };
+
+    let mut state = CodexSkillConfigState::Missing;
     for entry in entries {
-        let directory_name = entry.file_name();
-        if directory_name.to_string_lossy().starts_with('.') {
+        let Some(path) = entry.get("path").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        if skill_definition_path_text(Path::new(path)) != skill_definition_path {
             continue;
         }
-        let source = entry.path();
-        let metadata = fs::symlink_metadata(&source)
-            .map_err(|error| io_error("检查旧版 Skill 本体", error))?;
-        let link_kind = managed_directory_link_kind(&source, &metadata)
-            .map_err(|error| io_error("检查旧版 Skill 本体类型", error))?;
-        if link_kind.is_some() {
-            if source.join("SKILL.md").is_file() {
-                return Err(InstallError::with_details(
-                    "LOCAL_SKILL_MIGRATION_UNSAFE",
-                    "旧版共享目录中的 Skill 是链接，无法安全迁移",
-                    serde_json::json!({ "path": source }),
+        if entry
+            .get("enabled")
+            .and_then(toml::Value::as_bool)
+            == Some(false)
+        {
+            return Ok(CodexSkillConfigState::Disabled);
+        }
+        state = CodexSkillConfigState::Enabled;
+    }
+    Ok(state)
+}
+
+fn managed_codex_config_markers(skill_definition_path: &str) -> (String, String) {
+    let marker_id = sha256_hex(skill_definition_path.as_bytes());
+    (
+        format!("# kocotree-managed-skill:begin {marker_id}"),
+        format!("# kocotree-managed-skill:end {marker_id}"),
+    )
+}
+
+fn remove_managed_codex_config_block(
+    content: &str,
+    skill_definition_path: &str,
+) -> Option<String> {
+    let (begin_marker, end_marker) = managed_codex_config_markers(skill_definition_path);
+    let begin = content.find(&begin_marker)?;
+    let block_start = content[..begin].rfind('\n').map_or(0, |index| index + 1);
+    let end_marker_start = content[begin..].find(&end_marker)? + begin;
+    let block_end = content[end_marker_start..]
+        .find('\n')
+        .map_or(content.len(), |index| end_marker_start + index + 1);
+    let mut updated = String::with_capacity(content.len() - (block_end - block_start));
+    updated.push_str(&content[..block_start]);
+    updated.push_str(&content[block_end..]);
+    Some(updated)
+}
+
+fn external_codex_skill_definition_paths(
+    home: &Path,
+    source: &Path,
+) -> Result<Vec<String>, InstallError> {
+    let mut paths = vec![skill_definition_path_text(&source.join("SKILL.md"))];
+    let Some(directory_name) = source.file_name() else {
+        return Ok(paths);
+    };
+    let legacy_entry = home
+        .join(".codex")
+        .join("skills")
+        .join(directory_name);
+    let metadata = match fs::symlink_metadata(&legacy_entry) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(paths),
+        Err(error) => return Err(io_error("检查旧版 Codex Skill 连接", error)),
+    };
+    let link_kind = managed_directory_link_kind(&legacy_entry, &metadata)
+        .map_err(|error| io_error("检查旧版 Codex Skill 连接", error))?;
+    if link_kind.is_some()
+        && legacy_entry
+            .canonicalize()
+            .is_ok_and(|target| target == source)
+    {
+        paths.push(skill_definition_path_text(&legacy_entry.join("SKILL.md")));
+    }
+    Ok(paths)
+}
+
+fn potential_external_codex_definition_path(home: &Path, source: &Path) -> Option<String> {
+    Some(skill_definition_path_text(
+        &home
+            .join(".codex")
+            .join("skills")
+            .join(source.file_name()?)
+            .join("SKILL.md"),
+    ))
+}
+
+fn set_external_codex_skill_enabled(
+    home: &Path,
+    source: &Path,
+    enabled: bool,
+) -> Result<(), InstallError> {
+    let config_path = codex_config_path(home);
+    let mut content = match fs::read_to_string(&config_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(io_error("读取 Codex 配置", error)),
+    };
+    let mut skill_definition_paths = external_codex_skill_definition_paths(home, source)?;
+    if let Some(legacy_path) = potential_external_codex_definition_path(home, source) {
+        let (begin_marker, end_marker) = managed_codex_config_markers(&legacy_path);
+        if (content.contains(&begin_marker) || content.contains(&end_marker))
+            && !skill_definition_paths.contains(&legacy_path)
+        {
+            skill_definition_paths.push(legacy_path);
+        }
+    }
+
+    if enabled {
+        let original_content = content.clone();
+        for skill_definition_path in &skill_definition_paths {
+            let (begin_marker, end_marker) =
+                managed_codex_config_markers(skill_definition_path);
+            let has_begin = content.contains(&begin_marker);
+            let has_end = content.contains(&end_marker);
+            if has_begin != has_end {
+                return Err(InstallError::new(
+                    "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+                    "管理器写入的 Codex Skill 配置不完整，未进行修改",
                 ));
             }
-            continue;
-        }
-        if !metadata.is_dir() || !source.join("SKILL.md").is_file() {
-            continue;
-        }
-
-        let skill_md = fs::read_to_string(source.join("SKILL.md"))
-            .map_err(|error| io_error("读取旧版 Skill 定义", error))?;
-        let skill_name = parse_skill_name(&skill_md)?;
-        if directory_name.to_string_lossy() != skill_name {
-            return Err(InstallError::with_details(
-                "LOCAL_SKILL_MIGRATION_NAME_MISMATCH",
-                "旧版 Skill 目录名与 SKILL.md 中的名称不一致，未执行迁移",
-                serde_json::json!({
-                    "path": source,
-                    "skillName": skill_name,
-                }),
-            ));
-        }
-        let target = private_root.join(&directory_name);
-        if fs::symlink_metadata(&target).is_ok() {
-            return Err(InstallError::with_details(
-                "LOCAL_SKILL_MIGRATION_CONFLICT",
-                "私有仓库中已存在同名 Skill，未覆盖旧版共享目录",
-                serde_json::json!({
-                    "sourcePath": source,
-                    "targetPath": target,
-                }),
-            ));
-        }
-        migrations.push((source, target, directory_name, skill_name));
-    }
-
-    for (source, target, directory_name, skill_name) in migrations {
-        let canonical_source = source
-            .canonicalize()
-            .map_err(|error| io_error("定位旧版 Skill 本体", error))?;
-        let mut active_links = Vec::new();
-        let mut active_copies = Vec::new();
-        for agent in ["claude", "codex"] {
-            let agent_target = preferred_agent_skills_root(home, agent)?.join(&directory_name);
-            let Ok(target_metadata) = fs::symlink_metadata(&agent_target) else {
-                continue;
-            };
-            let target_link_kind = managed_directory_link_kind(&agent_target, &target_metadata)
-                .map_err(|error| io_error("检查 Agent Skill 连接", error))?;
-            if let Some(target_link_kind) = target_link_kind {
-                if agent_target
-                    .canonicalize()
-                    .is_ok_and(|path| path == canonical_source)
-                {
-                    active_links.push((agent.to_string(), agent_target, target_link_kind));
-                }
-                continue;
+            if has_begin {
+                content = remove_managed_codex_config_block(
+                    &content,
+                    skill_definition_path,
+                )
+                .ok_or_else(|| {
+                    InstallError::new(
+                        "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+                        "管理器写入的 Codex Skill 配置不完整，未进行修改",
+                    )
+                })?;
             }
-            let connection_key = managed_connection_key(agent, &skill_name);
-            if target_metadata.is_dir()
-                && state
-                    .connections
-                    .get(&connection_key)
-                    .is_some_and(|connection| {
-                        connection.mode == ManagedConnectionMode::Copy
-                            && PathBuf::from(&connection.source_path)
-                                .canonicalize()
-                                .is_ok_and(|path| path == canonical_source)
-                            && managed_copy_points_to(&agent_target, &canonical_source)
-                    })
+        }
+        for skill_definition_path in &skill_definition_paths {
+            if codex_skill_config_state(&content, skill_definition_path)?
+                == CodexSkillConfigState::Disabled
             {
-                active_copies.push((agent.to_string(), agent_target));
+                return Err(InstallError::new(
+                    "LOCAL_SKILL_CODEX_CONFIG_UNMANAGED",
+                    "该 Skill 仍被用户自己的 Codex 配置关闭，请先处理该配置",
+                ));
             }
         }
-
-        fs::create_dir_all(&private_root)
-            .map_err(|error| io_error("创建 Skill 私有仓库", error))?;
-        fs::rename(&source, &target).map_err(|error| io_error("迁移 Skill 本体", error))?;
-        let canonical_target = target
-            .canonicalize()
-            .map_err(|error| io_error("定位迁移后的 Skill 本体", error))?;
-
-        for (agent, agent_target, target_link_kind) in active_links {
-            remove_managed_directory_link(&agent_target, target_link_kind)
-                .map_err(|error| io_error("移除旧版 Agent Skill 连接", error))?;
-            let mode = create_managed_directory_link(&canonical_target, &agent_target)
-                .map_err(|error| io_error("重建 Agent Skill 连接", error))?;
-            let connection_key = managed_connection_key(&agent, &skill_name);
-            if mode == ManagedConnectionMode::Copy {
-                let source_hash = hash_skill_directory(&canonical_target)
-                    .map_err(|error| io_error("计算 Skill 摘要", error))?;
-                state.connections.insert(
-                    connection_key,
-                    ManagedConnectionState {
-                        source_path: canonical_target.to_string_lossy().into_owned(),
-                        target_path: agent_target.to_string_lossy().into_owned(),
-                        mode,
-                        source_hash,
-                    },
-                );
-                state_changed = true;
-            } else {
-                state_changed |= state.connections.remove(&connection_key).is_some();
-            }
-            let assignments = state.assignments.entry(agent).or_default();
-            if !assignments.iter().any(|name| name == &skill_name) {
-                assignments.push(skill_name.clone());
-                assignments.sort();
-                state_changed = true;
-            }
+        if content == original_content {
+            return Ok(());
         }
-        for (agent, agent_target) in active_copies {
-            copy_skill_directory(&canonical_target, &agent_target)
-                .map_err(|error| io_error("迁移 Agent Skill 副本", error))?;
-            let connection_key = managed_connection_key(&agent, &skill_name);
-            let source_hash = hash_skill_directory(&canonical_target)
-                .map_err(|error| io_error("计算 Skill 摘要", error))?;
-            state.connections.insert(
-                connection_key,
-                ManagedConnectionState {
-                    source_path: canonical_target.to_string_lossy().into_owned(),
-                    target_path: agent_target.to_string_lossy().into_owned(),
-                    mode: ManagedConnectionMode::Copy,
-                    source_hash,
-                },
-            );
-            let assignments = state.assignments.entry(agent).or_default();
-            if !assignments.iter().any(|name| name == &skill_name) {
-                assignments.push(skill_name.clone());
-                assignments.sort();
+    } else {
+        let mut paths_to_disable = Vec::new();
+        for skill_definition_path in &skill_definition_paths {
+            let (begin_marker, end_marker) =
+                managed_codex_config_markers(skill_definition_path);
+            let has_begin = content.contains(&begin_marker);
+            let has_end = content.contains(&end_marker);
+            if has_begin != has_end {
+                return Err(InstallError::new(
+                    "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+                    "管理器写入的 Codex Skill 配置不完整，未进行修改",
+                ));
             }
-            state_changed = true;
-        }
-        let active_agents = ["claude", "codex"]
-            .into_iter()
-            .filter(|agent| {
-                let target =
-                    preferred_agent_skills_root(home, agent).map(|root| root.join(&directory_name));
-                target.is_ok_and(|target| {
-                    fs::symlink_metadata(&target).is_ok()
-                        && target.join("SKILL.md").is_file()
-                        && (target
-                            .canonicalize()
-                            .is_ok_and(|path| path == canonical_target)
-                            || managed_copy_points_to(&target, &canonical_target))
-                })
-            })
-            .collect::<Vec<_>>();
-        for agent in ["claude", "codex"] {
-            if active_agents.contains(&agent) {
+            if has_begin {
                 continue;
             }
-            if let Some(assignments) = state.assignments.get_mut(agent) {
-                let previous_length = assignments.len();
-                assignments.retain(|name| name != &skill_name);
-                state_changed |= assignments.len() != previous_length;
+            match codex_skill_config_state(&content, skill_definition_path)? {
+                CodexSkillConfigState::Disabled => continue,
+                CodexSkillConfigState::Enabled => {
+                    return Err(InstallError::new(
+                        "LOCAL_SKILL_CODEX_CONFIG_CONFLICT",
+                        "Codex 配置中已有该 Skill 的启用项，未进行覆盖",
+                    ));
+                }
+                CodexSkillConfigState::Missing => {
+                    paths_to_disable.push(skill_definition_path);
+                }
             }
-            state_changed |= state
-                .connections
-                .remove(&managed_connection_key(agent, &skill_name))
-                .is_some();
         }
-        state_changed |= state.legacy_sources.remove(&skill_name).is_some();
-        info!(
-            "已将 Skill 本体迁移到私有仓库：skill_name={}, target={}",
-            skill_name,
-            target.display()
-        );
+        if paths_to_disable.is_empty() {
+            return Ok(());
+        }
+        for skill_definition_path in paths_to_disable {
+            if !content.is_empty() && !content.ends_with('\n') {
+                content.push('\n');
+            }
+            if !content.is_empty() && !content.ends_with("\n\n") {
+                content.push('\n');
+            }
+            let (begin_marker, end_marker) =
+                managed_codex_config_markers(skill_definition_path);
+            let quoted_path = serde_json::to_string(skill_definition_path).map_err(|_| {
+                InstallError::new(
+                    "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+                    "无法生成 Codex Skill 配置",
+                )
+            })?;
+            content.push_str(&begin_marker);
+            content.push('\n');
+            content.push_str("[[skills.config]]\npath = ");
+            content.push_str(&quoted_path);
+            content.push_str("\nenabled = false\n");
+            content.push_str(&end_marker);
+            content.push('\n');
+        }
     }
 
-    state
-        .assignments
-        .retain(|_, assignments| !assignments.is_empty());
-    if state_changed {
-        save_local_skill_manager_state(home, &state)?;
+    write_codex_config(&config_path, &content)
+}
+
+fn remove_owned_codex_disable_for_path(
+    home: &Path,
+    skill_definition_path: &str,
+) -> Result<(), InstallError> {
+    let config_path = codex_config_path(home);
+    let content = match fs::read_to_string(&config_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(io_error("读取 Codex 配置", error)),
+    };
+    let Some(updated) = remove_managed_codex_config_block(&content, skill_definition_path) else {
+        return Ok(());
+    };
+    write_codex_config(&config_path, &updated)
+}
+
+fn codex_disabled_skill_paths(home: &Path) -> Result<HashSet<String>, InstallError> {
+    let content = match fs::read_to_string(codex_config_path(home)) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
+        Err(error) => return Err(io_error("读取 Codex 配置", error)),
+    };
+    if content.trim().is_empty() {
+        return Ok(HashSet::new());
     }
-    Ok(())
+    let config = toml::from_str::<toml::Value>(&content).map_err(|error| {
+        InstallError::new(
+            "LOCAL_SKILL_CODEX_CONFIG_INVALID",
+            format!("Codex 配置文件格式无效：{error}"),
+        )
+    })?;
+    let disabled = config
+        .get("skills")
+        .and_then(|skills| skills.get("config"))
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .get("enabled")
+                .and_then(toml::Value::as_bool)
+                == Some(false)
+        })
+        .filter_map(|entry| entry.get("path").and_then(toml::Value::as_str))
+        .map(|path| skill_definition_path_text(Path::new(path)))
+        .collect();
+    Ok(disabled)
 }
 
 #[cfg(any(windows, test))]
@@ -1462,7 +1573,6 @@ fn refresh_managed_copies(home: &Path) -> Result<(), InstallError> {
 }
 
 fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    migrate_shared_skills_to_private_store(home)?;
     #[cfg(any(windows, test))]
     if let Err(error) = refresh_managed_copies(home) {
         warn!(
@@ -1487,6 +1597,25 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
         );
         empty_local_skill_manager_state()
     });
+    let disabled_codex_skills = codex_disabled_skill_paths(home).unwrap_or_else(|error| {
+        warn!(
+            "读取 Codex Skill 开关状态失败，按开启状态继续：code={}, message={}",
+            error.code, error.message
+        );
+        HashSet::new()
+    });
+    let mut legacy_codex_paths_by_source = HashMap::<String, Vec<String>>::new();
+    for record in records.iter().filter(|record| {
+        record.location == "CODEX"
+            && matches!(record.entry_kind.as_str(), "SYMLINK" | "JUNCTION")
+    }) {
+        legacy_codex_paths_by_source
+            .entry(record.resolved_path.clone())
+            .or_default()
+            .push(skill_definition_path_text(
+                &PathBuf::from(&record.install_path).join("SKILL.md"),
+            ));
+    }
     #[cfg(any(windows, test))]
     {
         for record in records
@@ -1524,10 +1653,7 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
             record.resolved_path = source_path.to_string_lossy().into_owned();
         }
     }
-    for record in records
-        .iter_mut()
-        .filter(|record| record.location == "MANAGER" || record.location == "AGENTS")
-    {
+    for record in records.iter_mut().filter(|record| record.location == "MANAGER") {
         record.assigned_agents = ["claude", "codex"]
             .iter()
             .filter(|agent| {
@@ -1538,6 +1664,20 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
             })
             .map(|agent| (*agent).to_string())
             .collect();
+    }
+    for record in records.iter_mut().filter(|record| record.location == "AGENTS") {
+        let mut discovered_paths = vec![skill_definition_path_text(
+            &PathBuf::from(&record.install_path).join("SKILL.md"),
+        )];
+        if let Some(legacy_paths) = legacy_codex_paths_by_source.get(&record.resolved_path) {
+            discovered_paths.extend(legacy_paths.iter().cloned());
+        }
+        if discovered_paths
+            .iter()
+            .any(|path| !disabled_codex_skills.contains(path))
+        {
+            record.assigned_agents.push("codex".to_string());
+        }
     }
     records.sort_by(|left, right| {
         left.display_name
@@ -1574,35 +1714,6 @@ fn preferred_agent_skills_root(home: &Path, agent: &str) -> Result<PathBuf, Inst
             "不支持的 Agent 类型",
         )),
     }
-}
-
-fn verified_legacy_shared_source(
-    home: &Path,
-    skill_name: &str,
-) -> Result<Option<PathBuf>, InstallError> {
-    let legacy_source = shared_skills_root(home).join(skill_name);
-    let metadata = match fs::symlink_metadata(&legacy_source) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(io_error("检查旧版 Skill 本体", error)),
-    };
-    let link_kind = managed_directory_link_kind(&legacy_source, &metadata)
-        .map_err(|error| io_error("检查旧版 Skill 本体类型", error))?;
-    if link_kind.is_some() || !metadata.is_dir() {
-        return Ok(None);
-    }
-    let skill_md = match fs::read_to_string(legacy_source.join("SKILL.md")) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(io_error("读取旧版 Skill 定义", error)),
-    };
-    if parse_skill_name(&skill_md).ok().as_deref() != Some(skill_name) {
-        return Ok(None);
-    }
-    legacy_source
-        .canonicalize()
-        .map(Some)
-        .map_err(|error| io_error("定位旧版 Skill 本体", error))
 }
 
 #[cfg(unix)]
@@ -1742,7 +1853,6 @@ fn set_local_skill_enabled_at_home(
     home: &Path,
     input: SetLocalSkillEnabledInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    migrate_shared_skills_to_private_store(home)?;
     if input.enabled && input.agent == "claude" && !claude_code_is_installed(home) {
         return Err(InstallError::new(
             "LOCAL_SKILL_AGENT_NOT_INSTALLED",
@@ -1761,17 +1871,18 @@ fn set_local_skill_enabled_at_home(
             format!("Skill 本体不存在：{error}"),
         )
     })?;
-    let allowed_source_roots = [private_skills_root(home)]
-        .into_iter()
-        .filter_map(|root| root.canonicalize().ok())
-        .collect::<Vec<_>>();
-    let source_is_direct_child = allowed_source_roots
-        .iter()
-        .any(|root| canonical_source.parent() == Some(root.as_path()));
-    if !source_is_direct_child || !canonical_source.join("SKILL.md").is_file() {
+    let private_root = private_skills_root(home).canonicalize().ok();
+    let shared_root = shared_skills_root(home).canonicalize().ok();
+    let source_is_private = private_root
+        .as_ref()
+        .is_some_and(|root| canonical_source.parent() == Some(root.as_path()));
+    let source_is_shared = shared_root
+        .as_ref()
+        .is_some_and(|root| canonical_source.parent() == Some(root.as_path()));
+    if (!source_is_private && !source_is_shared) || !canonical_source.join("SKILL.md").is_file() {
         return Err(InstallError::new(
             "LOCAL_SKILL_SOURCE_UNMANAGED",
-            "只能控制 Skill 私有仓库中的实体 Skill",
+            "只能控制管理器仓库或 .agents/skills 中的实体 Skill",
         ));
     }
     let skill_md = fs::read_to_string(canonical_source.join("SKILL.md"))
@@ -1782,6 +1893,16 @@ fn set_local_skill_enabled_at_home(
             "LOCAL_SKILL_NAME_MISMATCH",
             "Skill 名称与本体中的定义不一致",
         ));
+    }
+    if source_is_shared {
+        if input.agent != "codex" {
+            return Err(InstallError::new(
+                "LOCAL_SKILL_EXTERNAL_AGENT_UNSUPPORTED",
+                ".agents/skills 中的外部 Skill 只能通过 Codex 原生配置开关",
+            ));
+        }
+        set_external_codex_skill_enabled(home, &canonical_source, input.enabled)?;
+        return scan_local_skills_from_home(home);
     }
     let directory_name = source_path
         .file_name()
@@ -1794,8 +1915,6 @@ fn set_local_skill_enabled_at_home(
     let connection_key = managed_connection_key(&input.agent, &input.skill_name);
     let mut manager_state = load_local_skill_manager_state(home)?;
     let mut manager_state_changed = false;
-    let legacy_manager_source = verified_legacy_shared_source(home, &input.skill_name)?;
-    let mut legacy_links_to_replace = Vec::new();
     #[cfg(any(windows, test))]
     let stored_connection = manager_state.connections.get(&connection_key).cloned();
     #[cfg(any(windows, test))]
@@ -1823,19 +1942,9 @@ fn set_local_skill_enabled_at_home(
                             )
                         })?;
                         if current_target != canonical_source {
-                            if legacy_manager_source
-                                .as_ref()
-                                .is_some_and(|legacy_source| *legacy_source == current_target)
-                            {
-                                legacy_links_to_replace.push((
-                                    target_path.clone(),
-                                    connection_mode_from_link_kind(link_kind),
-                                ));
-                                continue;
-                            }
                             return Err(InstallError::new(
                                 "LOCAL_SKILL_TARGET_CONFLICT",
-                                "目标位置已有指向其他 Skill 的连接",
+                                "目标位置已有指向外部或其他 Skill 的连接，请先单独清理该连接",
                             ));
                         }
                         active_mode = Some(connection_mode_from_link_kind(link_kind));
@@ -1864,23 +1973,6 @@ fn set_local_skill_enabled_at_home(
                     return Err(io_error("检查 Agent Skill 入口", error));
                 }
             }
-        }
-        let migrated_legacy_connection = !legacy_links_to_replace.is_empty();
-        for (target_path, mode) in legacy_links_to_replace {
-            remove_managed_connection_target(&target_path, mode)
-                .map_err(|error| io_error("迁移旧版 Agent Skill 连接", error))?;
-        }
-        if migrated_legacy_connection {
-            let legacy_source = legacy_manager_source
-                .as_ref()
-                .expect("迁移旧连接前必须确认旧版 Skill 本体")
-                .to_string_lossy()
-                .into_owned();
-            manager_state_changed |=
-                manager_state.legacy_sources.get(&input.skill_name) != Some(&legacy_source);
-            manager_state
-                .legacy_sources
-                .insert(input.skill_name.clone(), legacy_source);
         }
         if active_mode.is_none() {
             let preferred_root = preferred_agent_skills_root(home, &input.agent)?;
@@ -2053,7 +2145,6 @@ fn remove_local_skill_at_home(
     home: &Path,
     input: RemoveLocalSkillInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    migrate_shared_skills_to_private_store(home)?;
     if !is_valid_skill_name(&input.skill_name) {
         return Err(InstallError::new(
             "INVALID_SKILL_NAME",
@@ -2094,8 +2185,6 @@ fn remove_local_skill_at_home(
     }
 
     let mut manager_state = load_local_skill_manager_state(home)?;
-    let legacy_manager_source = verified_legacy_shared_source(home, &input.skill_name)?;
-    let mut found_legacy_connection = false;
     let mut removal_targets = Vec::<(PathBuf, LocalRemovalKind)>::new();
     for agent in ["claude", "codex"] {
         let target = preferred_agent_skills_root(home, agent)?.join(&input.skill_name);
@@ -2117,17 +2206,13 @@ fn remove_local_skill_at_home(
             let points_to_current_source = canonical_source
                 .as_ref()
                 .is_some_and(|expected_source| &current_target == expected_source);
-            let points_to_legacy_source = legacy_manager_source
-                .as_ref()
-                .is_some_and(|legacy_source| &current_target == legacy_source);
-            if !points_to_current_source && !points_to_legacy_source {
+            if !points_to_current_source {
                 return Err(InstallError::with_details(
                     "LOCAL_UNINSTALL_CONNECTION_CONFLICT",
                     "Agent 中的同名连接指向其他位置，未执行删除",
                     serde_json::json!({ "path": target }),
                 ));
             }
-            found_legacy_connection |= points_to_legacy_source;
             removal_targets.push((target, LocalRemovalKind::ManagedLink(link_kind)));
             continue;
         }
@@ -2183,21 +2268,6 @@ fn remove_local_skill_at_home(
     }
     if source_owned {
         move_local_skill_path_to_trash("将 Skill 本体移到回收站", &source)?;
-    }
-    let legacy_was_migrated = legacy_manager_source.as_ref().is_some_and(|legacy_source| {
-        manager_state
-            .legacy_sources
-            .get(&input.skill_name)
-            .and_then(|path| PathBuf::from(path).canonicalize().ok())
-            .is_some_and(|path| path == *legacy_source)
-    });
-    if (found_legacy_connection || legacy_was_migrated) && legacy_manager_source.is_some() {
-        move_local_skill_path_to_trash(
-            "将旧版 Skill 本体移到回收站",
-            legacy_manager_source
-                .as_ref()
-                .expect("已确认存在旧版 Skill 本体"),
-        )?;
     }
 
     let mut state_changed = false;
@@ -2325,6 +2395,28 @@ fn remove_local_skill_entries_at_home(
             .and_then(|metadata| managed_directory_link_kind(&path, &metadata).ok().flatten())
             .is_none()
     });
+    let removed_codex_skill_definitions = targets
+        .iter()
+        .flat_map(|record| {
+            if record.location == "AGENTS" && record.entry_kind == "DIRECTORY" {
+                let source = PathBuf::from(&record.install_path);
+                let mut paths = vec![skill_definition_path_text(&source.join("SKILL.md"))];
+                if let Some(legacy_path) = potential_external_codex_definition_path(home, &source)
+                {
+                    paths.push(legacy_path);
+                }
+                paths
+            } else if record.location == "CODEX"
+                && matches!(record.entry_kind.as_str(), "SYMLINK" | "JUNCTION")
+            {
+                vec![skill_definition_path_text(
+                    &PathBuf::from(&record.install_path).join("SKILL.md"),
+                )]
+            } else {
+                Vec::new()
+            }
+        })
+        .collect::<HashSet<_>>();
     for target in &targets {
         let target_path = PathBuf::from(&target.install_path);
         let metadata = fs::symlink_metadata(&target_path)
@@ -2336,6 +2428,14 @@ fn remove_local_skill_entries_at_home(
             move_local_skill_path_to_trash("将本地 Skill 连接移到回收站", &target_path)?;
         } else {
             move_local_skill_path_to_trash("将本地 Skill 目录移到回收站", &target_path)?;
+        }
+    }
+    for skill_definition in removed_codex_skill_definitions {
+        if let Err(error) = remove_owned_codex_disable_for_path(home, &skill_definition) {
+            warn!(
+                "清理已删除 Skill 的 Codex 开关配置失败：path={}, code={}, message={}",
+                skill_definition, error.code, error.message
+            );
         }
     }
 
@@ -3071,83 +3171,6 @@ mod tests {
     }
 
     #[test]
-    fn enabling_migrates_a_shared_skill_and_rebuilds_its_agent_link() {
-        let home = tempfile::tempdir().unwrap();
-        let source = shared_skills_root(home.path()).join("test-skill");
-        let private_source = private_skills_root(home.path()).join("test-skill");
-        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
-        fs::create_dir_all(&source).unwrap();
-        fs::write(
-            source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: test\n---\n",
-        )
-        .unwrap();
-        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
-        create_managed_directory_link(&source, &codex_link).unwrap();
-
-        set_local_skill_enabled_at_home(
-            home.path(),
-            SetLocalSkillEnabledInput {
-                skill_name: "test-skill".to_string(),
-                source_path: source.to_string_lossy().into_owned(),
-                agent: "codex".to_string(),
-                enabled: true,
-            },
-        )
-        .unwrap();
-
-        assert!(!source.exists());
-        assert!(private_source.join("SKILL.md").is_file());
-        assert_eq!(
-            codex_link.canonicalize().unwrap(),
-            private_source.canonicalize().unwrap()
-        );
-        let state = load_local_skill_manager_state(home.path()).unwrap();
-        assert!(state
-            .assignments
-            .get("codex")
-            .is_some_and(|skills| skills.iter().any(|name| name == "test-skill")));
-        assert!(!state.legacy_sources.contains_key("test-skill"));
-    }
-
-    #[test]
-    fn disabling_after_migration_preserves_the_private_skill() {
-        let home = tempfile::tempdir().unwrap();
-        let shared_source = shared_skills_root(home.path()).join("test-skill");
-        let private_source = private_skills_root(home.path()).join("test-skill");
-        let codex_link = home.path().join(".codex").join("skills").join("test-skill");
-        fs::create_dir_all(&shared_source).unwrap();
-        fs::write(
-            shared_source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: test\n---\n",
-        )
-        .unwrap();
-        fs::create_dir_all(codex_link.parent().unwrap()).unwrap();
-        create_managed_directory_link(&shared_source, &codex_link).unwrap();
-
-        let records = set_local_skill_enabled_at_home(
-            home.path(),
-            SetLocalSkillEnabledInput {
-                skill_name: "test-skill".to_string(),
-                source_path: shared_source.to_string_lossy().into_owned(),
-                agent: "codex".to_string(),
-                enabled: false,
-            },
-        )
-        .unwrap();
-
-        assert!(!shared_source.exists());
-        assert!(private_source.join("SKILL.md").is_file());
-        assert!(matches!(
-            fs::symlink_metadata(&codex_link),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound
-        ));
-        assert!(!records
-            .iter()
-            .any(|record| record.location == "CODEX" && record.skill_name == "test-skill"));
-    }
-
-    #[test]
     fn enabling_still_refuses_a_link_to_an_unknown_location() {
         let home = tempfile::tempdir().unwrap();
         let source = private_skills_root(home.path()).join("test-skill");
@@ -3181,31 +3204,6 @@ mod tests {
             codex_link.canonicalize().unwrap(),
             unknown_source.canonicalize().unwrap()
         );
-    }
-
-    #[test]
-    fn migration_refuses_to_overwrite_a_private_skill() {
-        let home = tempfile::tempdir().unwrap();
-        let shared_source = shared_skills_root(home.path()).join("test-skill");
-        let private_source = private_skills_root(home.path()).join("test-skill");
-        fs::create_dir_all(&shared_source).unwrap();
-        fs::create_dir_all(&private_source).unwrap();
-        fs::write(
-            shared_source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: shared\n---\n",
-        )
-        .unwrap();
-        fs::write(
-            private_source.join("SKILL.md"),
-            "---\nname: test-skill\ndescription: private\n---\n",
-        )
-        .unwrap();
-
-        let error = migrate_shared_skills_to_private_store(home.path()).unwrap_err();
-
-        assert_eq!(error.code, "LOCAL_SKILL_MIGRATION_CONFLICT");
-        assert!(shared_source.join("SKILL.md").is_file());
-        assert!(private_source.join("SKILL.md").is_file());
     }
 
     #[test]

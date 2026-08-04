@@ -94,55 +94,12 @@ export function groupLocalSkills(
     groups.set(key, group);
   }
 
-  const groupedRecords = [...groups.values()];
-  const managerGroupsBySkillName = new Map(
-    groupedRecords
-      .filter((group) => group.managerRecord)
-      .map((group) => [group.managerRecord!.skillName, group]),
-  );
-  const mergedLegacyGroups = new Set<LocalSkillGroup>();
-  for (const legacyGroup of groupedRecords) {
-    if (!legacyGroup.workspaceRecord || legacyGroup.managerRecord) continue;
-    const managerGroup = managerGroupsBySkillName.get(
-      legacyGroup.workspaceRecord.skillName,
-    );
-    if (!managerGroup || managerGroup.workspaceRecord) continue;
-    const legacyAgentRecords = (["claude", "codex"] as const)
-      .map((agent) => [agent, legacyGroup.agentRecords[agent]] as const)
-      .filter(
-        (
-          entry,
-        ): entry is readonly [
-          "claude" | "codex",
-          LocalSkillRecord,
-        ] =>
-          Boolean(entry[1])
-          && isManagedConnectionRecord(entry[1]!)
-          && resolvedKey(entry[1]!) === resolvedKey(legacyGroup.workspaceRecord!),
-      );
-    if (
-      legacyAgentRecords.length === 0
-      || legacyAgentRecords.some(
-        ([agent]) => Boolean(managerGroup.agentRecords[agent]),
-      )
-    ) {
-      continue;
-    }
-    managerGroup.workspaceRecord = legacyGroup.workspaceRecord;
-    for (const [agent, record] of legacyAgentRecords) {
-      managerGroup.agentRecords[agent] = record;
-    }
-    mergedLegacyGroups.add(legacyGroup);
-  }
-
-  return groupedRecords
-    .filter((group) => !mergedLegacyGroups.has(group))
-    .sort((left, right) =>
+  return [...groups.values()].sort((left, right) =>
     left.primaryRecord.displayName.localeCompare(
       right.primaryRecord.displayName,
       "zh-CN",
     ),
-    );
+  );
 }
 
 /** 返回可由平台安全卸载的本地 Skill，并优先选取私有仓库中的本体记录。 */
@@ -221,6 +178,14 @@ export function getLocalSkillActivationState(
   if (agent === "agents") {
     return getLocalSkillSourceRecord(group) ? "enabled" : "disabled";
   }
+  if (group.workspaceRecord && !group.managerRecord) {
+    if (agent === "codex") {
+      return group.workspaceRecord.assignedAgents?.includes("codex")
+        ? "enabled"
+        : "disabled";
+    }
+    return "unmanaged";
+  }
   const directRecords = [group.agentRecords[agent]].filter(
     (record): record is LocalSkillRecord => Boolean(record),
   );
@@ -275,8 +240,27 @@ export function countActiveLocalSkills(
   ).length;
 }
 
-export function canControlLocalSkill(group: LocalSkillGroup): boolean {
-  return getLocalSkillSourceRecord(group) !== null;
+export function canControlLocalSkill(
+  group: LocalSkillGroup,
+  agent: LocalSkillFilter,
+): boolean {
+  if (group.managerRecord?.entryKind === "DIRECTORY") return true;
+  return agent === "codex"
+    && group.workspaceRecord?.entryKind === "DIRECTORY";
+}
+
+/** 返回指向外部 .agents Skill 的旧版 Codex 连接，供界面单独清理。 */
+export function getExternalCodexLegacyLink(
+  group: LocalSkillGroup,
+): LocalSkillRecord | null {
+  const record = group.agentRecords.codex;
+  return group.workspaceRecord
+    && !group.managerRecord
+    && record
+    && (record.entryKind === "SYMLINK" || record.entryKind === "JUNCTION")
+    && resolvedKey(record) === resolvedKey(group.workspaceRecord)
+    ? record
+    : null;
 }
 
 export function filterWorkspaceSkillGroups(

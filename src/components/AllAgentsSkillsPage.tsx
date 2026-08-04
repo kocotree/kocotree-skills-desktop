@@ -3,6 +3,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   canControlLocalSkill,
   filterWorkspaceSkillGroups,
+  getExternalCodexLegacyLink,
   getLocalSkillActivationState,
   getLocalSkillGroupRecords,
   getLocalSkillSourceRecord,
@@ -41,7 +42,7 @@ const ACTIVATION_LABELS: Record<LocalSkillActivationState, string> = {
   enabled: "已开启",
   disabled: "已关闭",
   legacy: "旧连接",
-  unmanaged: "存在冲突",
+  unmanaged: "不可控制",
 };
 
 function activationDescription(
@@ -55,13 +56,26 @@ function activationDescription(
     return `未检测到 ${label}，安装后才能开启 Skill`;
   }
   if (state === "unmanaged") {
+    if (group.workspaceRecord && !group.managerRecord) {
+      return `${label} 暂不支持可靠控制 .agents/skills 中的外部 Skill；Skill 本体不会被移动`;
+    }
     return `${label} 中存在独立安装目录或其他连接，软件不会覆盖它`;
   }
   if (state === "legacy") {
-    return "检测到旧版共享目录连接；点击后迁移到私有 Skill 本体";
+    return "检测到旧版共享连接；点击后切换为管理器维护的入口";
   }
-  if (!canControlLocalSkill(group)) {
+  if (!canControlLocalSkill(group, agent)) {
     return `已在 ${label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
+  }
+  if (group.workspaceRecord && !group.managerRecord && agent === "codex") {
+    const hasLegacyLink = Boolean(getExternalCodexLegacyLink(group));
+    return state === "enabled"
+      ? hasLegacyLink
+        ? "关闭后同时停用 .agents 本体路径和旧 Codex 软连接路径，不移动 Skill 本体"
+        : "关闭后通过 Codex 原生配置停用，Skill 本体仍保留在 .agents/skills"
+      : hasLegacyLink
+        ? "开启后撤销两个路径的受管禁用配置；可单独清理旧软连接"
+        : "开启后仅移除由本软件写入的 Codex 禁用配置；新任务或重启后刷新";
   }
   return state === "enabled"
     ? `关闭后会从 ${label} 的扫描目录移除入口；已运行会话需新建任务或重启后刷新`
@@ -91,7 +105,7 @@ function installationTimestamp(group: LocalSkillGroup): number {
 }
 
 /**
- * 功能说明：以私有仓库为 Skill 本体，并独立控制 Claude/Codex 是否可发现。
+ * 功能说明：统一展示管理器 Skill 与外部 Skill，并按来源提供可靠的 Agent 开关。
  */
 export function AllAgentsSkillsPage({
   skills,
@@ -102,6 +116,7 @@ export function AllAgentsSkillsPage({
   onSetEnabled,
   deletingRecordId,
   onDelete,
+  onDeleteEntry,
   syncingRecordId,
   onSyncToCloud,
 }: {
@@ -113,6 +128,7 @@ export function AllAgentsSkillsPage({
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
   deletingRecordId: string | null;
   onDelete: (records: LocalSkillRecord[]) => void;
+  onDeleteEntry: (record: LocalSkillRecord) => void;
   syncingRecordId: string | null;
   onSyncToCloud: (record: LocalSkillRecord) => void;
 }) {
@@ -150,7 +166,7 @@ export function AllAgentsSkillsPage({
     const state = getLocalSkillActivationState(group, agent);
     if (
       !sourceRecord
-      || !canControlLocalSkill(group)
+      || !canControlLocalSkill(group, agent)
       || !["enabled", "disabled", "legacy"].includes(state)
     ) {
       return;
@@ -240,10 +256,14 @@ export function AllAgentsSkillsPage({
           {visibleGroups.map((group) => {
             const record = getLocalSkillSourceRecord(group) ?? group.primaryRecord;
             const groupRecords = getLocalSkillGroupRecords(group);
+            const legacyCodexLink = getExternalCodexLegacyLink(group);
             const deleting = groupRecords.some(
               (item) => item.id === deletingRecordId,
             );
-            const statusLabel = record.entryKind !== "DIRECTORY"
+            const cleaningLegacyLink = deletingRecordId === legacyCodexLink?.id;
+            const statusLabel = legacyCodexLink
+              ? "含旧 Codex 连接"
+              : record.entryKind !== "DIRECTORY"
               ? record.status === "LOCAL_UNKNOWN"
                 ? "本地连接"
                 : "受管入口"
@@ -255,6 +275,20 @@ export function AllAgentsSkillsPage({
                   role="group"
                   aria-label={`${record.displayName} 文件操作`}
                 >
+                  {legacyCodexLink && (
+                    <Button
+                      className="local-skill-icon-action"
+                      size="small"
+                      type="tertiary"
+                      theme="borderless"
+                      icon={<AppIcon name="close" size={16} />}
+                      tooltip="清理旧 Codex 软连接"
+                      aria-label={`清理 ${record.displayName} 的旧 Codex 软连接`}
+                      loading={cleaningLegacyLink}
+                      disabled={deletingRecordId !== null}
+                      onClick={() => onDeleteEntry(legacyCodexLink)}
+                    />
+                  )}
                   <Button
                     className="local-skill-icon-action"
                     size="small"
@@ -273,7 +307,7 @@ export function AllAgentsSkillsPage({
                     icon={<AppIcon name="trash" size={16} />}
                     tooltip="移到回收站"
                     aria-label={`将 ${record.displayName} 移到回收站`}
-                    loading={deleting}
+                    loading={deleting && !cleaningLegacyLink}
                     disabled={deletingRecordId !== null}
                     onClick={() => onDelete(groupRecords)}
                   />
@@ -315,7 +349,7 @@ export function AllAgentsSkillsPage({
                         const controlKey = `${group.id}:${agent.id}`;
                         const pending = pendingControl === controlKey;
                         const interactive = installed
-                          && canControlLocalSkill(group)
+                          && canControlLocalSkill(group, agent.id)
                           && ["enabled", "disabled", "legacy"].includes(state);
                         return (
                           <div

@@ -148,38 +148,6 @@ describe("私有 Skill 仓库", () => {
     expect(filterLocalSkillGroups(groups, "codex")).toHaveLength(1);
   });
 
-  it("将指向旧版共享目录的连接标记为旧连接", () => {
-    const sharedPath = "/Users/test/.agents/skills/research";
-    const managerPath = "/Users/test/.skills-manager/skills/research";
-    const groups = groupLocalSkills([
-      record({
-        id: "shared-source",
-        installPath: sharedPath,
-        resolvedPath: sharedPath,
-        location: "AGENTS",
-      }),
-      record({
-        id: "manager-source",
-        installPath: managerPath,
-        resolvedPath: managerPath,
-        location: "MANAGER",
-      }),
-      record({
-        id: "legacy-codex-link",
-        installPath: "/Users/test/.codex/skills/research",
-        resolvedPath: sharedPath,
-        location: "CODEX",
-        entryKind: "SYMLINK",
-      }),
-    ]);
-
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.workspaceRecord?.id).toBe("shared-source");
-    expect(groups[0]?.managerRecord?.id).toBe("manager-source");
-    expect(groups[0]?.agentRecords.codex?.id).toBe("legacy-codex-link");
-    expect(getLocalSkillActivationState(groups[0]!, "codex")).toBe("legacy");
-  });
-
   it("通过 Mock 服务为私有本体创建和移除 Codex 入口", async () => {
     const service = new MockLocalSkillService(0);
     const initial = await service.scanSkills();
