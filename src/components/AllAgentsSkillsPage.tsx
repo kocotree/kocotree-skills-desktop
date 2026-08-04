@@ -30,6 +30,8 @@ const AGENTS: Array<{
   { id: "codex", label: "Codex", icon: "codex" },
 ];
 
+type AgentStatusFilter = "all" | LocalSkillFilter;
+
 const STATUS_LABELS: Record<LocalSkillStatus, string> = {
   PLATFORM_INSTALLED: "平台安装",
   PLATFORM_MODIFIED: "本地已修改",
@@ -130,6 +132,7 @@ export function AllAgentsSkillsPage({
   onSyncToCloud: (record: LocalSkillRecord) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("all");
   const [pendingControl, setPendingControl] = useState("");
   const groups = filterWorkspaceSkillGroups(groupLocalSkills(skills)).sort(
     (left, right) =>
@@ -141,6 +144,12 @@ export function AllAgentsSkillsPage({
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleGroups = groups.filter((group) => {
+    if (
+      statusFilter !== "all"
+      && getLocalSkillActivationState(group, statusFilter) !== "enabled"
+    ) {
+      return false;
+    }
     const record = getLocalSkillSourceRecord(group) ?? group.primaryRecord;
     return !normalizedQuery
       || record.displayName.toLocaleLowerCase().includes(normalizedQuery)
@@ -212,12 +221,39 @@ export function AllAgentsSkillsPage({
       <section className="my-skills-toolbar local-skills-toolbar agents-workspace-toolbar">
         <span>
           共 <strong>{groups.length}</strong> 个 Skill
-          <span className="workspace-connection-summary">
-            Claude {claudeInstalled ? connectedCounts.claude : "未安装"} · Codex{" "}
-            {connectedCounts.codex}
-          </span>
         </span>
         <div className="local-skills-toolbar-actions">
+          <div
+            className="agent-status-filter-group"
+            role="group"
+            aria-label="按 Agent 已启用状态筛选"
+          >
+            <button
+              className={`agent-status-filter filter-all${statusFilter === "all" ? " active" : ""}`}
+              type="button"
+              aria-pressed={statusFilter === "all"}
+              onClick={() => setStatusFilter("all")}
+            >
+              <span>全部</span>
+              <strong>{groups.length}</strong>
+            </button>
+            {AGENTS.map((agent) => (
+              <button
+                className={`agent-status-filter filter-${agent.id}${statusFilter === agent.id ? " active" : ""}`}
+                type="button"
+                aria-pressed={statusFilter === agent.id}
+                title={agent.id === "claude" && !claudeInstalled
+                  ? "未检测到 Claude Code"
+                  : `查看 ${agent.label} 已启用的 Skill`}
+                onClick={() => setStatusFilter(agent.id)}
+                key={agent.id}
+              >
+                <AppIcon name={agent.icon} size={13} />
+                <span>{agent.label} 已启用</span>
+                <strong>{connectedCounts[agent.id]}</strong>
+              </button>
+            ))}
+          </div>
           <label className="local-skills-search">
             <AppIcon name="search" size={15} />
             <input
@@ -408,11 +444,17 @@ export function AllAgentsSkillsPage({
               <strong>
                 {normalizedQuery
                   ? "没有匹配的本地 Skill"
+                  : statusFilter === "claude"
+                    ? "Claude Code 暂无已启用的 Skill"
+                    : statusFilter === "codex"
+                      ? "Codex 暂无已启用的 Skill"
                   : "还没有检测到本地 Skill"}
               </strong>
               <span>
                 {normalizedQuery
                   ? "换一个名称继续搜索"
+                  : statusFilter !== "all"
+                    ? "可以返回全部列表，在对应卡片上开启 Skill"
                   : "可以从技能市场安装，也可以手动放入 Claude Code 或 Codex 的 Skills 目录"}
               </span>
             </div>
