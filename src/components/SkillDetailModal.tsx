@@ -327,9 +327,11 @@ export function SkillDetailModal({
               )}
             </div>
           )}
-          <div className="detail-tags">
-            {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
-          </div>
+          {detail.tags.length > 0 && (
+            <div className="detail-tags">
+              {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
+            </div>
+          )}
           {detail.status !== "ACTIVE" && (
             <div className="detail-availability-notice" role="status">
               <strong>{detail.status === "ARCHIVED" ? "该 Skill 已归档" : "该 Skill 暂不可安装"}</strong>

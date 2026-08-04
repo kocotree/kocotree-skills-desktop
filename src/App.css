@@ -1611,12 +1611,17 @@ textarea:focus-visible,
   height: min(864px, calc(100vh - 48px));
 }
 
+.skill-detail-modal .ui-modal-header {
+  min-height: 52px;
+  padding: 0 32px;
+}
+
 .skill-detail-modal .ui-modal-body {
   height: auto;
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  padding: 16px 22px 12px;
+  padding: 0 22px 12px;
 }
 
 .detail-loading,
