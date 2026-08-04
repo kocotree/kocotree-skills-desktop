@@ -75,7 +75,7 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
     const result = await catalogService.listSkills({
       query: keyword || undefined,
       tagId: tagId || undefined,
-      departmentPath,
+      departmentPath: departmentPath ?? undefined,
       sort,
       page,
       pageSize,
