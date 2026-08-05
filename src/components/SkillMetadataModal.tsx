@@ -24,7 +24,7 @@ export function SkillMetadataModal({
   currentUser: UserDto | null;
   visible: boolean;
   onCancel: () => void;
-  onUpdated: (skill: SkillDetailDto) => void;
+  onUpdated: (skill: SkillDetailDto) => void | Promise<void>;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
@@ -105,7 +105,7 @@ export function SkillMetadataModal({
         newTagNames,
         confirmDuplicateDisplayName,
       });
-      onUpdated(updated);
+      await onUpdated(updated);
       Toast.success("平台展示信息已更新");
     } catch (reason) {
       console.error("[KocotreeSkills] 平台展示信息更新失败", reason);

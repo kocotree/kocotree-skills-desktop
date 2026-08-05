@@ -258,6 +258,13 @@ pub struct RecordLocalSkillPublicationInput {
     pub synced_at: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncLocalSkillDisplayNameInput {
+    pub skill_id: String,
+    pub display_name: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LocalSkillManagerState {
@@ -2932,6 +2939,82 @@ fn clear_local_skill_publication_at_home(
     scan_local_skills_from_home(home)
 }
 
+fn sync_local_skill_display_name_at_home(
+    home: &Path,
+    input: &SyncLocalSkillDisplayNameInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    if input.skill_id.trim().is_empty() || input.display_name.trim().is_empty() {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_METADATA_SYNC_FAILED",
+            "云端 Skill 编号和展示名称不能为空",
+        ));
+    }
+
+    let private_root = private_skills_root(home);
+    match fs::read_dir(&private_root) {
+        Ok(entries) => {
+            for entry in entries {
+                let entry = entry.map_err(|error| io_error("读取 Skill 管理器仓库", error))?;
+                let metadata_path = entry.path().join(INSTALL_METADATA_FILE);
+                if !metadata_path.is_file() {
+                    continue;
+                }
+                let content = match fs::read_to_string(&metadata_path) {
+                    Ok(content) => content,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(io_error("读取本地 Skill 云端关联", error)),
+                };
+                let Ok(mut metadata) = serde_json::from_str::<InstalledSkillMetadata>(&content)
+                else {
+                    continue;
+                };
+                if metadata.schema_version != 1
+                    || metadata.skill_id != input.skill_id
+                    || metadata.display_name == input.display_name
+                {
+                    continue;
+                }
+                metadata.display_name = input.display_name.clone();
+                let bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| {
+                    InstallError::new(
+                        "LOCAL_SKILL_METADATA_SYNC_FAILED",
+                        format!("生成本地 Skill 云端关联失败：{error}"),
+                    )
+                })?;
+                fs::write(&metadata_path, bytes)
+                    .map_err(|error| io_error("同步本地 Skill 展示名称", error))?;
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("读取 Skill 管理器仓库", error)),
+    }
+
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    let mut state_changed = false;
+    for metadata in manager_state.publications.values_mut() {
+        if metadata.schema_version == 1
+            && metadata.skill_id == input.skill_id
+            && metadata.display_name != input.display_name
+        {
+            metadata.display_name = input.display_name.clone();
+            state_changed = true;
+        }
+    }
+    if state_changed {
+        save_local_skill_manager_state(home, &manager_state)?;
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn sync_local_skill_display_name_on_disk(
+    input: SyncLocalSkillDisplayNameInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    sync_local_skill_display_name_at_home(&home, &input)
+}
+
 fn clear_local_skill_publication_on_disk(
     skill_id: String,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
@@ -2968,6 +3051,21 @@ pub async fn record_local_skill_publication(
             InstallError::new(
                 "LOCAL_SKILL_METADATA_WRITE_FAILED",
                 format!("保存 Skill 云端关联失败：{error}"),
+            )
+        })?
+}
+
+/** 云端展示名称变更后更新本机保存的关联元数据，并返回最新扫描结果。 */
+#[tauri::command]
+pub async fn sync_local_skill_display_name(
+    input: SyncLocalSkillDisplayNameInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    tauri::async_runtime::spawn_blocking(move || sync_local_skill_display_name_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_METADATA_SYNC_FAILED",
+                format!("同步本地 Skill 展示名称失败：{error}"),
             )
         })?
 }

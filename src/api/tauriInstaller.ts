@@ -10,6 +10,7 @@ import {
   type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
+  type SyncLocalSkillDisplayNameInput,
 } from "./contracts";
 
 interface InstallSkillCommandResult {
@@ -172,6 +173,25 @@ export class TauriInstaller implements LocalSkillService {
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_METADATA_WRITE_FAILED",
         commandError?.message ?? "无法保存 Skill 云端关联",
+        commandError?.details,
+      );
+    }
+  }
+
+  /** 云端展示名称变更后同步更新本机保存的 Skill 关联元数据。 */
+  async syncDisplayName(
+    input: SyncLocalSkillDisplayNameInput,
+  ): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "sync_local_skill_display_name",
+        { input },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_METADATA_SYNC_FAILED",
+        commandError?.message ?? "无法同步本地 Skill 展示名称",
         commandError?.details,
       );
     }

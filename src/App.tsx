@@ -1172,6 +1172,30 @@ function App() {
     Toast.success(`${skill.displayName} v${skill.currentVersion.version} 发布成功`);
   }
 
+  async function handleSkillMetadataUpdated(
+    skill: SkillDetailDto,
+  ): Promise<void> {
+    setMetadataSkill(null);
+    setSelectedSkill((current) =>
+      current?.id === skill.id ? skill : current,
+    );
+    setBrowseRefreshKey((current) => current + 1);
+    setPublishedRefreshKey((current) => current + 1);
+
+    if (!usesRealInstaller) return;
+    try {
+      const items = await localSkillService.syncDisplayName({
+        skillId: skill.id,
+        displayName: skill.displayName,
+      });
+      setLocalSkills(items);
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
+    } catch (reason) {
+      console.error("[KocotreeSkills] 同步本地 Skill 展示名称失败", reason);
+      Toast.error("平台展示信息已更新，但本地名称同步失败，请稍后重试");
+    }
+  }
+
   async function handleOwnedSkillDeleted(skillId: string): Promise<void> {
     setBrowseRefreshKey((current) => current + 1);
     if (!usesRealInstaller) return;
@@ -1479,14 +1503,7 @@ function App() {
         currentUser={currentUser}
         visible={metadataSkill !== null}
         onCancel={() => setMetadataSkill(null)}
-        onUpdated={(skill) => {
-          setMetadataSkill(null);
-          setSelectedSkill((current) =>
-            current?.id === skill.id ? skill : current,
-          );
-          setBrowseRefreshKey((current) => current + 1);
-          setPublishedRefreshKey((current) => current + 1);
-        }}
+        onUpdated={handleSkillMetadataUpdated}
       />
 
       <InstallConfirmModal

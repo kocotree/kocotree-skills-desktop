@@ -159,6 +159,11 @@ export interface RecordLocalSkillPublicationInput {
   syncedAt: string;
 }
 
+export interface SyncLocalSkillDisplayNameInput {
+  skillId: string;
+  displayName: string;
+}
+
 export interface LocalInstallRequest {
   skill: SkillSummaryDto;
   version: SkillVersionDto;
@@ -190,6 +195,7 @@ export interface LocalSkillService extends SkillInstaller {
   scanSkills(): Promise<LocalSkillRecord[]>;
   packageSkill(sourcePath: string, skillName: string): Promise<File>;
   recordPublication(input: RecordLocalSkillPublicationInput): Promise<void>;
+  syncDisplayName(input: SyncLocalSkillDisplayNameInput): Promise<LocalSkillRecord[]>;
   clearPublication(skillId: string): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;

@@ -27,6 +27,7 @@ pub fn run() {
             installer::install_skill,
             installer::package_local_skill,
             installer::record_local_skill_publication,
+            installer::sync_local_skill_display_name,
             installer::clear_local_skill_publication,
             installer::scan_local_skills,
             installer::set_local_skill_enabled,

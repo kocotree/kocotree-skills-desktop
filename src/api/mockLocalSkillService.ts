@@ -11,6 +11,7 @@ import {
   type RemoveLocalSkillInput,
   type RecordLocalSkillPublicationInput,
   type SetLocalSkillEnabledInput,
+  type SyncLocalSkillDisplayNameInput,
 } from "./contracts";
 import { mockInstallScenarios, skillIds } from "./mockData";
 
@@ -207,6 +208,18 @@ export class MockLocalSkillService implements LocalSkillService {
     _input: RecordLocalSkillPublicationInput,
   ): Promise<void> {
     return Promise.resolve();
+  }
+
+  async syncDisplayName(
+    input: SyncLocalSkillDisplayNameInput,
+  ): Promise<LocalSkillRecord[]> {
+    await this.wait();
+    for (const record of this.records) {
+      if (record.skillId === input.skillId) {
+        record.displayName = input.displayName;
+      }
+    }
+    return structuredClone(this.records);
   }
 
   async clearPublication(skillId: string): Promise<LocalSkillRecord[]> {
