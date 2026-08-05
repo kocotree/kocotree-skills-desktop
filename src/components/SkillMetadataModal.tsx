@@ -24,7 +24,7 @@ export function SkillMetadataModal({
   currentUser: UserDto | null;
   visible: boolean;
   onCancel: () => void;
-  onUpdated: (skill: SkillDetailDto) => void | Promise<void>;
+  onUpdated: (skill: SkillDetailDto) => boolean | Promise<boolean>;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
@@ -105,8 +105,10 @@ export function SkillMetadataModal({
         newTagNames,
         confirmDuplicateDisplayName,
       });
-      await onUpdated(updated);
-      Toast.success("平台展示信息已更新");
+      const fullyUpdated = await onUpdated(updated);
+      if (fullyUpdated) {
+        Toast.success("平台展示信息已更新");
+      }
     } catch (reason) {
       console.error("[KocotreeSkills] 平台展示信息更新失败", reason);
       if (reason instanceof SkillApiError && reason.code === "DISPLAY_NAME_CONFIRMATION_REQUIRED") setNeedsDuplicateConfirmation(true);

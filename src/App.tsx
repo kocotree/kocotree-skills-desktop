@@ -884,7 +884,6 @@ function App() {
     }
     setInstalling(true);
     setInstallingSkillId(skill.id);
-    Toast.info(`正在准备 ${skill.displayName} v${version.version}`);
     try {
       const ticket = await skillApi.getDownloadTicket(skill.id, version.id);
       const detail = await skillApi.getSkill(skill.id);
@@ -1076,7 +1075,6 @@ function App() {
       return;
     }
     setSyncingRecordId(record.id);
-    Toast.info(`正在检查 ${record.displayName} 的云端状态`);
     try {
       const resolution = await skillApi.resolvePublishTarget(
         record.skillName,
@@ -1099,13 +1097,11 @@ function App() {
         );
       }
 
-      Toast.info(`正在打包 ${record.displayName}`);
       const sourcePath = record.resolvedPath || record.installPath;
       const file = await localSkillService.packageSkill(
         sourcePath,
         record.skillName,
       );
-      Toast.info(`正在校验 ${record.displayName} 的发布信息`);
       const parsed = await inspectPreparedLocalSkillPackage(file);
       if (parsed.inspection.skillName !== record.skillName) {
         throw new SkillApiError(
@@ -1175,7 +1171,7 @@ function App() {
 
   async function handleSkillMetadataUpdated(
     skill: SkillDetailDto,
-  ): Promise<void> {
+  ): Promise<boolean> {
     setMetadataSkill(null);
     setSelectedSkill((current) =>
       current?.id === skill.id ? skill : current,
@@ -1183,7 +1179,7 @@ function App() {
     setBrowseRefreshKey((current) => current + 1);
     setPublishedRefreshKey((current) => current + 1);
 
-    if (!usesRealInstaller) return;
+    if (!usesRealInstaller) return true;
     try {
       const items = await localSkillService.syncMetadata({
         skillId: skill.id,
@@ -1192,9 +1188,11 @@ function App() {
       });
       setLocalSkills(items);
       setInstalledSkillIds(installedSkillIdsFromRecords(items));
+      return true;
     } catch (reason) {
       console.error("[KocotreeSkills] 同步本地 Skill 展示信息失败", reason);
       Toast.error("平台展示信息已更新，但本地展示信息同步失败，请稍后重试");
+      return false;
     }
   }
 
