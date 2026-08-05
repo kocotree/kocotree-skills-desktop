@@ -89,7 +89,7 @@ async function revealWorkspaceSkill(record: LocalSkillRecord): Promise<void> {
   try {
     await revealItemInDir(record.installPath);
   } catch (reason) {
-    console.error("[KocotreeSkills] 定位全部 Agents Skill 失败", reason);
+    console.error("[KocotreeSkills] 定位全部 Skill 失败", reason);
     Toast.error("无法在文件管理器中显示 Skill");
   }
 }
@@ -211,9 +211,9 @@ export function AllAgentsSkillsPage({
     <main className="page-content local-skills-page agents-workspace-page">
       <header className="page-heading">
         <div>
-          <h1>全部 Agents</h1>
+          <h1>全部 Skill</h1>
           <p>
-            查看电脑上检测到的全部 Skill，并管理它们在 Codex 和 Claude 中的使用状态
+            查看本机检测到的全部 Skill，并管理它们在 Claude Code 和 Codex 中的启用状态
           </p>
         </div>
       </header>
@@ -260,7 +260,7 @@ export function AllAgentsSkillsPage({
               type="search"
               value={query}
               placeholder="搜索本地 Skill"
-              aria-label="搜索全部 Agents Skill"
+              aria-label="搜索全部 Skill"
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>

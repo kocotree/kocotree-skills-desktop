@@ -1309,14 +1309,14 @@ function App() {
             <button
               className={`local-nav-parent ${activePage === "local-all" ? "active" : ""}`}
               type="button"
-              aria-label={`全部 Agents，${localSkillCounts.all} 个 Skill`}
-              title="全部 Agents"
+              aria-label={`全部 Skill，${localSkillCounts.all} 个`}
+              title="全部 Skill"
               onClick={() => setActivePage("local-all")}
             >
               <i className="local-nav-icon local-nav-icon-agents">
                 <AppIcon name="agents" size={16} />
               </i>
-              <span className="sidebar-nav-label">全部 Agents</span>
+              <span className="sidebar-nav-label">全部 Skill</span>
               <span className="local-nav-count">{localSkillCounts.all}</span>
             </button>
             <button
