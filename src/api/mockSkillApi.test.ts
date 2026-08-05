@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { SkillApiError } from "./contracts";
 import { MockSkillApi } from "./mockSkillApi";
+import { nextDateSkillVersion } from "./skillVersion";
 import { mockSkillDetails, mockUsers, skillIds } from "./mockData";
 import { MockLocalSkillService } from "./mockLocalSkillService";
 import { parseSkillPackage } from "./skillPackage";
@@ -82,7 +83,7 @@ describe("MockSkillApi", () => {
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "UNAUTHENTICATED"));
   });
 
-  it("新 Skill 首版本固定为 1.0.0", async () => {
+  it("新 Skill 首版本使用当天的第一个日期版本", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     await api.signIn();
     const created = await api.createSkill({
@@ -91,7 +92,9 @@ describe("MockSkillApi", () => {
       displayDescription: "验证创建流程。",
       newTagNames: ["测试"],
     });
-    expect(created.currentVersion.version).toBe("1.0.0");
+    expect(created.currentVersion.version).toMatch(
+      /^\d{4}\.\d{1,2}\.\d{1,2}-1$/,
+    );
     expect(created.owner.name).toBe("鸭腿");
     expect((await api.listVersionFiles(created.id, created.currentVersion.id)).some((item) => item.path === "SKILL.md")).toBe(true);
   });
@@ -127,18 +130,19 @@ describe("MockSkillApi", () => {
     await api.signIn();
     const target = (await api.listSkills()).items.find((skill) => skill.skillName === "code-review")!;
     expect(target.tags.length).toBeGreaterThan(0);
+    const nextVersion = nextDateSkillVersion(target.currentVersion.version);
 
     const updated = await api.publishSkillVersion(target.id, {
       file: await createSkillZip(target.skillName, "", "tag optional"),
       baseVersionId: target.currentVersion.id,
-      version: "9.0.0",
+      version: nextVersion,
       changelog: "验证 Tag 可选",
       tagIds: [],
       newTagNames: [],
     });
 
     expect(updated.tags).toEqual([]);
-    expect(updated.currentVersion.version).toBe("9.0.0");
+    expect(updated.currentVersion.version).toBe(nextVersion);
   });
 
   it("展示名称重复时要求用户明确确认", async () => {
@@ -158,7 +162,7 @@ describe("MockSkillApi", () => {
     await expect(api.publishSkillVersion(target.id, {
       file: await createSkillZip(target.skillName, "", "changed"),
       baseVersionId: "stale-version",
-      version: "9.0.0",
+      version: nextDateSkillVersion(target.currentVersion.version),
       changelog: "并发冲突测试",
     })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "VERSION_CONFLICT"));
   });

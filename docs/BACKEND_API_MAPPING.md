@@ -280,7 +280,7 @@ desktop 后端将主部门路径同步到 `users.department_path`，并通过 Us
 | 单个 `file` ZIP | 支持 ZIP 或多文件 |
 | `displayName` | `name` |
 | `displayDescription` | `description` |
-| 首版固定为 `1.0.0` | 接受客户端传入 `version` |
+| 首版由服务端按北京时间生成日期版本 | 接受客户端传入 `version` |
 | `tagIds[]`、`newTagNames[]` | 逗号分隔 `tags` |
 | 可选派生来源 | 无 |
 | 展示名称重复确认 | 无 |
@@ -312,7 +312,7 @@ desktop 领域规则。服务端仍应重新解析 ZIP，并以服务端计算�
 发布新版本需要新增：
 
 - `baseVersionId` 乐观并发检查。
-- SemVer 必须高于当前版本。
+- 日期版本必须等于服务端根据北京时间和历史版本计算出的下一版本。
 - 同一 Skill 下版本号唯一。
 - ZIP 内 `SKILL.md` 名称必须与目标 Skill 一致。
 - `contentHash` 重复检查。

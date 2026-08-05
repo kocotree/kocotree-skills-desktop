@@ -769,7 +769,8 @@ components:
           type: string
         version:
           type: string
-          pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$'
+          pattern: '^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}-[1-9][0-9]*$'
+          description: 北京时间日期版本；同一天发布时末尾序号依次递增，例如 2026.8.5-1、2026.8.5-2。
         status:
           type: string
           enum: [PUBLISHED, WITHDRAWN]
@@ -984,7 +985,8 @@ components:
           type: string
         version:
           type: string
-          pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$'
+          description: 按北京时间日期生成的版本号；同一天发布时末尾序号递增，例如 2026.8.5-1、2026.8.5-2
+          pattern: '^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}-[1-9][0-9]*$'
         changelog:
           type: string
           minLength: 1

@@ -40,8 +40,10 @@ import {
 } from "./mockData";
 import { parseSkillPackage } from "./skillPackage";
 import { readArchiveText, type SkillArchiveSource } from "./zipInspector";
-
-const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+import {
+  DATE_SKILL_VERSION_PATTERN,
+  nextDateSkillVersion,
+} from "./skillVersion";
 
 export interface MockSkillApiOptions {
   delayMs?: number;
@@ -75,6 +77,11 @@ function compareSemVer(left: string, right: string): number {
   const rightParts = right.split(/[+-]/)[0].split(".").map(Number);
   for (let index = 0; index < 3; index += 1) {
     if (leftParts[index] !== rightParts[index]) return leftParts[index] - rightParts[index];
+  }
+  const leftDateVersion = left.match(DATE_SKILL_VERSION_PATTERN);
+  const rightDateVersion = right.match(DATE_SKILL_VERSION_PATTERN);
+  if (leftDateVersion && rightDateVersion) {
+    return Number(leftDateVersion[4]) - Number(rightDateVersion[4]);
   }
   return left.localeCompare(right);
 }
@@ -320,7 +327,7 @@ export class MockSkillApi implements SkillApi {
     const skillId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
     const version: SkillVersionDto = {
-      id: versionId, skillId, version: "1.0.0", status: "PUBLISHED", skillName: parsed.inspection.skillName,
+      id: versionId, skillId, version: nextDateSkillVersion(), status: "PUBLISHED", skillName: parsed.inspection.skillName,
       skillDescription: parsed.inspection.skillDescription, changelog: input.changelog?.trim() || "首次发布", baseVersionId: null,
       packageSize: parsed.inspection.packageSize, packageSha256: parsed.inspection.packageSha256, contentHash: parsed.inspection.contentHash,
       uploadedBy: user, publishedAt: now, withdrawnBy: null, withdrawnAt: null, withdrawalReason: null,
@@ -445,9 +452,10 @@ export class MockSkillApi implements SkillApi {
     if (skill.status !== "ACTIVE") throw new SkillApiError("SKILL_UNAVAILABLE", "当前 Skill 状态不允许发布新版本");
     const parsed = await parseSkillPackage(input.file);
     if (parsed.inspection.skillName !== skill.skillName) throw new SkillApiError("SKILL_NAME_MISMATCH", "ZIP 中的 Skill 名称与目标 Skill 不一致，建议发布为新的 Skill", { expectedSkillName: skill.skillName, actualSkillName: parsed.inspection.skillName });
-    if (!SEMVER_PATTERN.test(input.version)) throw new SkillApiError("INVALID_SEMVER", "版本号必须使用 SemVer");
     const versions = this.versions.get(skillId) ?? [];
     if (input.baseVersionId !== skill.currentVersion.id) throw new SkillApiError("VERSION_CONFLICT", "发布期间已经出现新版本，请刷新后重试", { currentVersion: skill.currentVersion.version });
+    const expectedVersion = nextDateSkillVersion(skill.currentVersion.version);
+    if (input.version !== expectedVersion) throw new SkillApiError("VERSION_CONFLICT", "版本号已变化，请刷新后重试", { expectedVersion });
     if (versions.some((version) => version.version === input.version)) throw new SkillApiError("VERSION_ALREADY_EXISTS", "该版本号已经存在");
     if (compareSemVer(input.version, skill.currentVersion.version) <= 0) throw new SkillApiError("VERSION_NOT_GREATER", "新版本必须高于当前版本");
     if (versions.some((version) => version.contentHash === parsed.inspection.contentHash)) throw new SkillApiError("CONTENT_UNCHANGED", "ZIP 内容与历史版本一致，无需重复发布");

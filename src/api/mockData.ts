@@ -77,7 +77,7 @@ const contentHash = `sha256:${"b".repeat(64)}`;
  * 功能说明：创建符合最新接口契约的模拟版本。
  * @param skillId - 版本所属 Skill ID。
  * @param id - 版本 ID。
- * @param version - SemVer 版本号。
+ * @param version - Skill 版本号；历史数据可能仍使用旧版 SemVer。
  * @param skillName - SKILL.md 中的名称。
  * @param skillDescription - SKILL.md 中的简介。
  * @param publishedAt - 发布时间。

@@ -105,12 +105,12 @@ Tag 治理规则暂缓。单个 Skill 可以不关联 Tag，最多关联 5 个�
 | --- | --- | ---: | --- |
 | `id` | `string` | 是 | 版本标识。 |
 | `skillId` | `string` | 是 | 所属 Skill。 |
-| `version` | `string` | 是 | SemVer。 |
+| `version` | `string` | 是 | 北京时间日期版本，例如 `2026.8.5-1`。 |
 | `status` | `PUBLISHED \| WITHDRAWN` | 是 | 版本状态；`WITHDRAWN` 仅兼容历史数据。 |
 | `skillName` | `string` | 是 | 此版本 `SKILL.md` 的名称。 |
 | `skillDescription` | `string` | 是 | 此版本 `SKILL.md` 的描述。 |
 | `changelog` | `string` | 是 | 不可变更新说明。 |
-| `baseVersionId` | `string \| null` | 是 | 发布依据；`1.0.0` 为 `null`。 |
+| `baseVersionId` | `string \| null` | 是 | 发布依据；首版为 `null`。 |
 | `packageSize` | `integer` | 是 | ZIP 字节数。 |
 | `packageSha256` | `string` | 是 | ZIP SHA-256。 |
 | `contentHash` | `string` | 是 | 规范化目录内容哈希。 |
@@ -224,7 +224,7 @@ GET /api/skills/{skillId}
 GET /api/skills/{skillId}/versions?page=1&pageSize=20
 ```
 
-返回 `ApiResponse<VersionPage>`，按 SemVer 降序。正常数据均为 `PUBLISHED`；历史 `WITHDRAWN` 记录仅供兼容展示。
+返回 `ApiResponse<VersionPage>`，按发布时间降序。正常数据均为 `PUBLISHED`；历史 `WITHDRAWN` 记录仅供兼容展示。
 
 ### 7.4 版本详情
 
@@ -292,7 +292,7 @@ Authorization: Bearer <token>
 | `forkedFromSkillId` | `string` | 否 | 派生来源 Skill。 |
 | `forkedFromVersionId` | `string` | 否 | 派生来源版本。 |
 
-来源字段必须同时出现。Tag 为可选项，最多选择或创建 5 个。服务端固定创建 `1.0.0`；未填写首版说明时使用“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
+来源字段必须同时出现。Tag 为可选项，最多选择或创建 5 个。服务端按北京时间创建当天的 `年.月.日-1` 首版；未填写首版说明时使用“首次发布”。重名展示名称返回需要确认的业务错误，客户端确认后使用 `confirmDuplicateDisplayName=true` 重试。
 
 `tagIds` 与 `newTagNames` 使用重复表单字段传递，每个数组元素对应一个同名字段。例如：
 
@@ -314,7 +314,7 @@ Authorization: Bearer <token>
 | --- | --- | ---: | --- |
 | `file` | ZIP | 是 | 原始 ZIP。 |
 | `baseVersionId` | `string` | 是 | 当前版本标识。 |
-| `version` | `string` | 是 | 更高 SemVer。 |
+| `version` | `string` | 是 | 系统生成的北京时间日期版本；同一天发布时递增末尾序号。 |
 | `changelog` | `string` | 是 | 不可变更新说明。 |
 | `displayName` | `string` | 否 | 仅 Owner 可提交。 |
 | `displayDescription` | `string` | 否 | 仅 Owner 可提交。 |
@@ -480,7 +480,7 @@ POST /api/notifications/read-all
 | ---: | --- | --- |
 | 400 | `INVALID_REQUEST` | 请求字段不合法。 |
 | 400 | `INVALID_SKILL_PACKAGE` | ZIP 损坏、结构不合法或 `SKILL.md` 元数据无效。 |
-| 400 | `INVALID_SEMVER` | 版本号不是合法 SemVer。 |
+| 400 | `INVALID_SEMVER` | 版本号不是合法的日期版本，例如 `2026.8.5-1`。 |
 | 400 | `VERSION_NOT_GREATER` | 版本号未高于最高历史版本。 |
 | 400 | `CONTENT_UNCHANGED` | 内容与历史版本一致。 |
 | 401 | `UNAUTHENTICATED` | 当前请求没有可用的登录身份。 |
@@ -493,7 +493,7 @@ POST /api/notifications/read-all
 | 409 | `DUPLICATE_SKILL_NAME` | `skillName` 已被占用。 |
 | 409 | `DISPLAY_NAME_CONFIRMATION_REQUIRED` | 展示名称重名，需要确认。 |
 | 409 | `VERSION_CONFLICT` | `baseVersionId` 已过期。 |
-| 409 | `VERSION_ALREADY_EXISTS` | 相同 SemVer 版本号已经存在。 |
+| 409 | `VERSION_ALREADY_EXISTS` | 相同日期版本号已经存在。 |
 | 409 | `SKILL_NAME_MISMATCH` | 更新 ZIP 名称与目标 Skill 不一致。 |
 | 409 | `SKILL_UNAVAILABLE` | Skill 因名称冲突等原因不可用。 |
 | 409 | `INSTALLATION_UNAVAILABLE` | 当前 Skill 或版本不可安装。 |

@@ -13,6 +13,10 @@ import {
 import { readStoredVersionMetadata } from "./skill-metadata";
 import { computeVersionContentHash } from "./skill-version-hash";
 import { storageService } from "./storage.service";
+import {
+  DATE_SKILL_VERSION_PATTERN,
+  nextDateSkillVersion,
+} from "./skill-version";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -439,6 +443,7 @@ export const publishingService = {
 
     const skillId = randomUUID();
     const versionId = randomUUID();
+    const version = nextDateSkillVersion([]);
     const contentHash = getContentHash(prepared);
     const objectKey = `skills/${prepared.skillName}/${versionId}/package.zip`;
     const uploaded = await storageService.putObject(
@@ -456,7 +461,7 @@ export const publishingService = {
         newTags: tags.newTags,
         version: {
           id: versionId,
-          version: "1.0.0",
+          version,
           ossBucket: config.ossBucket,
           ossObjectKey: uploaded.objectKey,
           ossEtag: uploaded.etag,
@@ -584,11 +589,11 @@ export const publishingService = {
       );
     }
     const version = input.version.trim();
-    if (!SEMVER_PATTERN.test(version)) {
+    if (!DATE_SKILL_VERSION_PATTERN.test(version)) {
       throw new PublishingError(
         400,
         "INVALID_SEMVER",
-        "版本号必须使用 SemVer",
+        "版本号必须使用日期格式，例如 2026.8.5-1",
       );
     }
     const changelog = validateText(
@@ -643,6 +648,17 @@ export const publishingService = {
         409,
         "VERSION_CONFLICT",
         "发布期间已经出现新版本，请刷新后重试",
+      );
+    }
+    const expectedVersion = nextDateSkillVersion(
+      skill.versions.map((item) => item.version),
+    );
+    if (version !== expectedVersion) {
+      throw new PublishingError(
+        409,
+        "VERSION_CONFLICT",
+        "版本号已变化，请刷新后重试",
+        { expectedVersion },
       );
     }
     if (skill.versions.some((item) => item.version === version)) {

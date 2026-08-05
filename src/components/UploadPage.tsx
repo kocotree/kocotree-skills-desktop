@@ -13,6 +13,7 @@ import {
   type TagDto,
   type UserDto,
 } from "../api";
+import { nextDateSkillVersion } from "../api/skillVersion";
 import { AppIcon } from "./AppIcon";
 import { mergeTagNames, parseTagNames } from "./tagNames";
 
@@ -34,11 +35,6 @@ const folderInputAttributes = {
 
 // Tag 选择暂时不在上传页展示，保留完整实现便于后续恢复。
 const showTagSelection = false;
-
-function nextPatchVersion(version: string): string {
-  const [major = "1", minor = "0", patch = "0"] = version.split(/[+-]/)[0].split(".");
-  return `${major}.${minor}.${Number(patch) + 1}`;
-}
 
 /**
  * 功能说明：在本地解析 ZIP 或自动打包文件夹，并在用户确认后创建 Skill 或发布指定 Skill 新版本。
@@ -76,7 +72,9 @@ export function UploadPage({
   const [newTagInputVisible, setNewTagInputVisible] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
-  const [version, setVersion] = useState(targetSkill ? nextPatchVersion(targetSkill.currentVersion.version) : "1.0.0");
+  const [version, setVersion] = useState(() =>
+    nextDateSkillVersion(targetSkill?.currentVersion.version),
+  );
   const [changelog, setChangelog] = useState("");
   const [inspecting, setInspecting] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -91,7 +89,7 @@ export function UploadPage({
   }, []);
 
   useEffect(() => {
-    setVersion(targetSkill ? nextPatchVersion(targetSkill.currentVersion.version) : "1.0.0");
+    setVersion(nextDateSkillVersion(targetSkill?.currentVersion.version));
     setChangelog("");
     setNewTagNames([]);
     setNewTagDraft("");
@@ -363,7 +361,7 @@ export function UploadPage({
               <span className="section-number">2</span>
               <div>
                 <h2>{targetSkill ? "填写版本信息" : "确认发布信息"}</h2>
-                {targetSkill && <p>版本号由系统基于当前最新版本自动递增</p>}
+                <p>版本号按北京时间日期自动生成，同一天发布会自动递增</p>
               </div>
             </div>
 
