@@ -5,6 +5,7 @@ import {
   filterLocalSkillGroups,
   getExternalCodexLegacyLink,
   getLocalSkillActivationState,
+  getLocalSkillLocation,
   getLocalSkillSourceRecord,
   groupLocalSkills,
   SkillApiError,
@@ -79,6 +80,9 @@ function activationDescription(
   }
   if (state === "legacy") {
     return "检测到旧版共享连接；点击后切换为管理器维护的入口";
+  }
+  if (group.externalRecord && !getLocalSkillSourceRecord(group)) {
+    return "该 Skill 来自外部 skills-manager，Kocotree 不会修改其本体或通过开关调整状态";
   }
   if (!canControlLocalSkill(group, agent)) {
     return `已在 ${AGENT_DETAILS[agent].label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
@@ -293,7 +297,9 @@ export function LocalSkillsPage({
             const interactive = agentInstalled
               && canControlLocalSkill(group, filter)
               && ["enabled", "disabled", "legacy"].includes(state);
-            const statusLabel = legacyCodexLink && filter === "codex"
+            const statusLabel = getLocalSkillLocation(record) === "EXTERNAL"
+              ? "外部 Skill"
+              : legacyCodexLink && filter === "codex"
               ? "旧 Codex 连接"
               : record.entryKind !== "DIRECTORY"
               ? record.status === "LOCAL_UNKNOWN"

@@ -11,7 +11,9 @@ Kocotree Skills 当前包含在线 Skill 平台和平台版本安装两个领域
 - 本地安装成功后再向在线服务上报安装事件。
 - 在线上报失败不能回滚已经成功的本地安装。
 
-当前本地范围包含平台 Skill 的安装与受管目录控制。安装器会先完成下载、校验和安全解压；目标冲突时先停止并请求用户确认，确认后把旧目录移动到 `~/.skills-manager/backups`，再写入新版本。新版本最终写入失败时会自动恢复旧目录。备份列表和手动恢复仍不作为独立的本地管理功能提供。
+当前本地范围包含平台 Skill 的安装与受管目录控制。安装器会先完成下载、校验和安全解压；目标冲突时先停止并请求用户确认，确认后把旧目录移动到 `~/.kocotree-skills/backups`，再写入新版本。新版本最终写入失败时会自动恢复旧目录。备份列表和手动恢复仍不作为独立的本地管理功能提供。
+
+从旧版升级时，客户端只会把自身的 `.kocotree-skills-desktop.json` 状态文件从 `~/.skills-manager` 复制到新目录，不删除旧文件，也不迁移旧目录中的 Skill、数据库、缓存或备份。`~/.skills-manager` 继续由其他 Skill 管理器独立维护；其中已经投放到 Codex 或 Claude Code 的 Skill 仍可通过对应 Agent 目录被检测为外部条目。
 
 以下能力不在当前范围：
 
@@ -130,7 +132,7 @@ flowchart TB
 | 在线 Skill、版本和平台信息 | 在线服务 | 服务端 |
 | 下载凭证 | 在线服务 | 客户端短期内存 |
 | 下载缓存 | 安装流程 | 系统临时目录 |
-| Skill 私有本体 | 本地安装流程 | `~/.skills-manager/skills/<skillName>` |
+| Skill 私有本体 | 本地安装流程 | `~/.kocotree-skills/skills/<skillName>` |
 | Agent 生效入口 | 本地启停流程 | `~/.claude/skills/<skillName>` 或 `~/.codex/skills/<skillName>` |
 | 登录身份和令牌 | 身份适配器 | 由认证接入方定义 |
 
@@ -202,7 +204,7 @@ interface InstallationService {
 2. 客户端获取短期下载凭证。
 3. Tauri 安装器下载 ZIP 并校验 `packageSha256`。
 4. 安全解析 ZIP，校验结构、大小、路径和 `SKILL.md` 名称。
-5. 将内容写入 `~/.skills-manager/skills` 下的临时目录。
+5. 将内容写入 `~/.kocotree-skills/skills` 下的临时目录。
 6. 确认最终目标目录不存在。
 7. 将临时内容移动到最终目录。
 8. 使用唯一事件编号上报安装成功。
@@ -215,7 +217,7 @@ interface InstallationService {
 2. 目标目录存在时停止写入并返回 `LOCAL_SKILL_CONFLICT`。
 3. 页面展示冲突目录、备份与覆盖风险，等待用户明确确认。
 4. 用户取消时不改动旧目录；用户确认时携带 `force=true` 重新安装。
-5. 安装器完整校验并解压新包后，将旧目录移动到 `~/.skills-manager/backups`。
+5. 安装器完整校验并解压新包后，将旧目录移动到 `~/.kocotree-skills/backups`。
 6. 新版本写入原路径；写入失败时把备份移回原路径，并返回结构化回滚结果。
 
 ### 7.3 历史版本

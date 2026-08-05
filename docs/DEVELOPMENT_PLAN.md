@@ -2,7 +2,7 @@
 
 ## 1. 当前目标
 
-当前版本优先完成平台 Skill 的真实安装。桌面客户端负责下载平台版本、校验 ZIP、安全解压并写入私有仓库 `~/.skills-manager/skills/<skillName>`；浏览器开发环境继续使用 Mock 安装。
+当前版本优先完成平台 Skill 的真实安装。桌面客户端负责下载平台版本、校验 ZIP、安全解压并写入私有仓库 `~/.kocotree-skills/skills/<skillName>`；浏览器开发环境继续使用 Mock 安装。
 
 ## 2. 计划表
 
@@ -30,7 +30,7 @@
 
 ## 3. macOS 与 Windows 连接策略
 
-- Skill 本体统一保存在当前用户目录下的 `.skills-manager/skills/<skillName>`，该目录不被 Agent 自动扫描。
+- Skill 本体统一保存在当前用户目录下的 `.kocotree-skills/skills/<skillName>`，该目录不被 Agent 自动扫描。
 - macOS 和 Linux 使用目录软连接接入 Claude Code 与 Codex。
 - Windows 先尝试目录软连接；权限不足或开发者模式未开启时降级为无需管理员权限的 NTFS Junction。
 - 软连接与 Junction 都不可用（例如部分 UNC、WSL 或非 NTFS 路径）时，创建带管理标记的目录副本。
@@ -61,7 +61,7 @@ Artifact 保留 14 天；过期后需要重新运行 `Windows Installer` 工作�
 在 Windows PowerShell 中执行：
 
 ```powershell
-$skill = Join-Path $env:USERPROFILE ".skills-manager\skills\windows-test"
+$skill = Join-Path $env:USERPROFILE ".kocotree-skills\skills\windows-test"
 New-Item -ItemType Directory -Force $skill
 
 @"
@@ -81,7 +81,7 @@ description: Windows compatibility test
 3. 为同一个 Skill 开启 Claude Code，并确认 `%USERPROFILE%\.claude\skills\windows-test` 已出现。
 4. 关闭并重新启动软件，确认两个 Agent 的连接状态仍然正确。
 5. 分别关闭 Codex 和 Claude Code，确认对应 Agent 目录中的入口消失。
-6. 确认 `%USERPROFILE%\.skills-manager\skills\windows-test\SKILL.md` 始终存在，关闭不得删除私有本体。
+6. 确认 `%USERPROFILE%\.kocotree-skills\skills\windows-test\SKILL.md` 始终存在，关闭不得删除私有本体。
 7. 分别关闭 Claude Code 与 Codex，确认 `%USERPROFILE%\.claude\skills\windows-test` 和 `%USERPROFILE%\.codex\skills\windows-test` 完全不存在。
 
 可以用 PowerShell 查看 Windows 实际采用的连接类型：

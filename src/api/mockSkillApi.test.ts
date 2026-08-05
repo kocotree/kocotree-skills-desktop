@@ -235,7 +235,7 @@ describe("MockSkillApi", () => {
     await expect(localApi.install({ skill: conflictingSkill, version: conflictingVersion }))
       .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "LOCAL_SKILL_CONFLICT"));
     const result = await localApi.install({ skill: conflictingSkill, version: conflictingVersion, force: true });
-    expect(result.backupPath).toContain(".skills-manager/backups");
+    expect(result.backupPath).toContain(".kocotree-skills/backups");
   });
 
   it("安装异常演示卡片覆盖文档中的前端处理场景", async () => {

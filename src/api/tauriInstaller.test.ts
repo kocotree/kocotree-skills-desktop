@@ -22,9 +22,9 @@ describe("TauriInstaller", () => {
 
   it("确认覆盖时向桌面命令传递 force 并返回备份信息", async () => {
     invokeMock.mockResolvedValue({
-      installedPath: "/Users/test/.skills-manager/skills/research",
+      installedPath: "/Users/test/.kocotree-skills/skills/research",
       replacedSkillName: "research",
-      backupPath: "/Users/test/.skills-manager/backups/research-123",
+      backupPath: "/Users/test/.kocotree-skills/backups/research-123",
     });
     const skill = {
       id: "skill-1",
@@ -53,7 +53,7 @@ describe("TauriInstaller", () => {
     });
     expect(result.replacedSkillName).toBe("research");
     expect(result.backupPath).toBe(
-      "/Users/test/.skills-manager/backups/research-123",
+      "/Users/test/.kocotree-skills/backups/research-123",
     );
   });
 });

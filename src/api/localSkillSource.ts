@@ -16,6 +16,7 @@ export interface LocalSkillGroup {
   id: string;
   primaryRecord: LocalSkillRecord;
   managerRecord: LocalSkillRecord | null;
+  externalRecord: LocalSkillRecord | null;
   workspaceRecord: LocalSkillRecord | null;
   agentRecords: Partial<Record<LocalSkillAgent, LocalSkillRecord>>;
 }
@@ -29,7 +30,8 @@ export function getLocalSkillLocation(
 ): LocalSkillLocation {
   if (record.location) return record.location;
   const path = normalizedPath(record.installPath).toLowerCase();
-  if (path.includes("/.skills-manager/skills/")) return "MANAGER";
+  if (path.includes("/.kocotree-skills/skills/")) return "MANAGER";
+  if (path.includes("/.skills-manager/skills/")) return "EXTERNAL";
   if (path.includes("/.claude/skills/")) return "CLAUDE";
   if (path.includes("/.codex/skills/")) return "CODEX";
   return "AGENTS";
@@ -46,6 +48,14 @@ function locationToAgent(
 
 function resolvedKey(record: LocalSkillRecord): string {
   return normalizedPath(record.resolvedPath ?? record.installPath);
+}
+
+function isExternalSkillsManagerRecord(
+  record: LocalSkillRecord,
+): boolean {
+  return resolvedKey(record)
+    .toLowerCase()
+    .includes("/.skills-manager/skills/");
 }
 
 function isManagedConnectionRecord(record: LocalSkillRecord): boolean {
@@ -74,6 +84,7 @@ export function groupLocalSkills(
       id: `local-group-${key}`,
       primaryRecord: record,
       managerRecord: null,
+      externalRecord: null,
       workspaceRecord: null,
       agentRecords: {},
     };
@@ -81,6 +92,11 @@ export function groupLocalSkills(
     if (location === "MANAGER") {
       group.managerRecord = record;
       group.primaryRecord = record;
+    } else if (location === "EXTERNAL") {
+      group.externalRecord = record;
+      if (!group.managerRecord && !group.workspaceRecord) {
+        group.primaryRecord = record;
+      }
     } else {
       const agent = locationToAgent(location);
       if (agent && !group.agentRecords[agent]) {
@@ -111,11 +127,13 @@ export function getUninstallableSkillRecords(
     CLAUDE: 1,
     CODEX: 2,
     AGENTS: 3,
+    EXTERNAL: 4,
   };
   const candidates = records
     .filter(
       (record) =>
         Boolean(record.skillId)
+        && !isExternalSkillsManagerRecord(record)
         && (
           record.status === "PLATFORM_INSTALLED"
           || record.status === "PLATFORM_MODIFIED"
@@ -266,7 +284,7 @@ export function filterWorkspaceSkillGroups(
   return groups;
 }
 
-/** 返回一个聚合卡片中实际扫描到的全部本地条目，并按记录编号去重。 */
+/** 返回一个聚合卡片中可由 Kocotree 移除的本地条目，并按记录编号去重。 */
 export function getLocalSkillGroupRecords(
   group: LocalSkillGroup,
 ): LocalSkillRecord[] {

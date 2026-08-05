@@ -96,6 +96,7 @@ export type LocalSkillStatus =
 
 export type LocalSkillLocation =
   | "MANAGER"
+  | "EXTERNAL"
   | "AGENTS"
   | "CLAUDE"
   | "CODEX";

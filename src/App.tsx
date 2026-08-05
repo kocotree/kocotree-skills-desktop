@@ -891,7 +891,7 @@ function App() {
         skillId: skill.id,
         versionId: version.id,
         packageSha256: ticket.packageSha256,
-        target: "~/.skills-manager/skills",
+        target: "~/.kocotree-skills/skills",
       });
       const localResult = await installer.install({ skill: detail, version, ticket, force });
       await skillApi.recordInstallation({

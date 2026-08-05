@@ -20,9 +20,23 @@ const MAX_SKILL_MD_SIZE: u64 = 1024 * 1024;
 const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
 const MANAGER_STATE_FILE: &str = ".kocotree-skills-desktop.json";
 const MANAGED_COPY_METADATA_FILE: &str = ".kocotree-managed-copy.json";
+const KOCOTREE_SKILLS_DIRECTORY: &str = ".kocotree-skills";
+const LEGACY_KOCOTREE_SKILLS_DIRECTORY: &str = ".skills-manager";
+
+fn kocotree_skills_root(home: &Path) -> PathBuf {
+    home.join(KOCOTREE_SKILLS_DIRECTORY)
+}
 
 fn private_skills_root(home: &Path) -> PathBuf {
-    home.join(".skills-manager").join("skills")
+    kocotree_skills_root(home).join("skills")
+}
+
+fn private_backups_root(home: &Path) -> PathBuf {
+    kocotree_skills_root(home).join("backups")
+}
+
+fn external_skills_manager_root(home: &Path) -> PathBuf {
+    home.join(LEGACY_KOCOTREE_SKILLS_DIRECTORY).join("skills")
 }
 
 fn shared_skills_root(home: &Path) -> PathBuf {
@@ -1009,9 +1023,8 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
         let home = dirs::home_dir().ok_or_else(|| {
             InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录")
         })?;
-        let manager_root = home.join(".skills-manager");
-        let skills_root = manager_root.join("skills");
-        let backups_root = manager_root.join("backups");
+        let skills_root = private_skills_root(&home);
+        let backups_root = private_backups_root(&home);
         install_package_bytes(&input, &package_bytes, &skills_root, &backups_root)
     }
     .await;
@@ -1167,19 +1180,18 @@ fn empty_local_skill_manager_state() -> LocalSkillManagerState {
 }
 
 fn local_skill_manager_state_path(home: &Path) -> PathBuf {
-    home.join(".skills-manager").join(MANAGER_STATE_FILE)
+    kocotree_skills_root(home).join(MANAGER_STATE_FILE)
 }
 
-fn load_local_skill_manager_state(home: &Path) -> Result<LocalSkillManagerState, InstallError> {
-    let state_path = local_skill_manager_state_path(home);
-    let content = match fs::read_to_string(&state_path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(empty_local_skill_manager_state());
-        }
-        Err(error) => return Err(io_error("读取 Skill 管理状态", error)),
-    };
-    let state = serde_json::from_str::<LocalSkillManagerState>(&content).map_err(|_| {
+fn legacy_local_skill_manager_state_path(home: &Path) -> PathBuf {
+    home.join(LEGACY_KOCOTREE_SKILLS_DIRECTORY)
+        .join(MANAGER_STATE_FILE)
+}
+
+fn parse_local_skill_manager_state(
+    content: &str,
+) -> Result<LocalSkillManagerState, InstallError> {
+    let state = serde_json::from_str::<LocalSkillManagerState>(content).map_err(|_| {
         InstallError::new("LOCAL_SKILL_STATE_INVALID", "Skill 管理状态文件格式无效")
     })?;
     if state.schema_version != 1 {
@@ -1191,11 +1203,10 @@ fn load_local_skill_manager_state(home: &Path) -> Result<LocalSkillManagerState,
     Ok(state)
 }
 
-fn save_local_skill_manager_state(
-    home: &Path,
+fn write_local_skill_manager_state(
+    state_path: &Path,
     state: &LocalSkillManagerState,
 ) -> Result<(), InstallError> {
-    let state_path = local_skill_manager_state_path(home);
     let manager_directory = state_path.parent().ok_or_else(|| {
         InstallError::new(
             "LOCAL_SKILL_STATE_PATH_INVALID",
@@ -1211,6 +1222,48 @@ fn save_local_skill_manager_state(
         )
     })?;
     fs::write(state_path, content).map_err(|error| io_error("保存 Skill 管理状态", error))
+}
+
+fn load_local_skill_manager_state(home: &Path) -> Result<LocalSkillManagerState, InstallError> {
+    let state_path = local_skill_manager_state_path(home);
+    match fs::read_to_string(&state_path) {
+        Ok(content) => return parse_local_skill_manager_state(&content),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("读取 Skill 管理状态", error)),
+    }
+
+    let legacy_state_path = legacy_local_skill_manager_state_path(home);
+    let legacy_content = match fs::read_to_string(&legacy_state_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(empty_local_skill_manager_state());
+        }
+        Err(error) => return Err(io_error("读取旧版 Skill 管理状态", error)),
+    };
+    let state = parse_local_skill_manager_state(&legacy_content)?;
+    if let Err(error) = write_local_skill_manager_state(&state_path, &state) {
+        warn!(
+            "迁移旧版 Skill 管理状态失败，继续使用内存状态：from={}, to={}, code={}, message={}",
+            legacy_state_path.display(),
+            state_path.display(),
+            error.code,
+            error.message
+        );
+    } else {
+        info!(
+            "旧版 Skill 管理状态已复制到 Kocotree 私有目录：from={}, to={}",
+            legacy_state_path.display(),
+            state_path.display()
+        );
+    }
+    Ok(state)
+}
+
+fn save_local_skill_manager_state(
+    home: &Path,
+    state: &LocalSkillManagerState,
+) -> Result<(), InstallError> {
+    write_local_skill_manager_state(&local_skill_manager_state_path(home), state)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1646,6 +1699,7 @@ fn scan_local_skills_from_home(home: &Path) -> Result<Vec<LocalSkillRecord>, Ins
     }
     let roots = [
         ("MANAGER", private_skills_root(home)),
+        ("EXTERNAL", external_skills_manager_root(home)),
         ("AGENTS", shared_skills_root(home)),
         ("CLAUDE", home.join(".claude").join("skills")),
         ("CODEX", home.join(".codex").join("skills")),
@@ -3423,7 +3477,7 @@ mod tests {
             &input_for("test-skill", &bytes),
             &bytes,
             &skills_root,
-            &home.path().join(".skills-manager").join("backups"),
+            &private_backups_root(home.path()),
         )
         .unwrap();
         let source = skills_root.join("test-skill");
@@ -3483,7 +3537,7 @@ mod tests {
             &input_for("test-skill", &bytes),
             &bytes,
             &skills_root,
-            &home.path().join(".skills-manager").join("backups"),
+            &private_backups_root(home.path()),
         )
         .unwrap();
         let source = skills_root.join("test-skill");
@@ -3703,6 +3757,33 @@ mod tests {
         assert!(!target.exists());
         let state = fs::read_to_string(state_path).unwrap();
         assert!(!state.contains("codex:test-skill"));
+    }
+
+    #[test]
+    fn copies_legacy_manager_state_without_removing_the_old_file() {
+        let home = tempfile::tempdir().unwrap();
+        let legacy_state_path = legacy_local_skill_manager_state_path(home.path());
+        fs::create_dir_all(legacy_state_path.parent().unwrap()).unwrap();
+        fs::write(
+            &legacy_state_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaVersion": 1,
+                "assignments": {
+                    "codex": ["test-skill"]
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let state = load_local_skill_manager_state(home.path()).unwrap();
+
+        assert_eq!(
+            state.assignments.get("codex"),
+            Some(&vec!["test-skill".to_string()])
+        );
+        assert!(legacy_state_path.is_file());
+        assert!(local_skill_manager_state_path(home.path()).is_file());
     }
 
     #[test]

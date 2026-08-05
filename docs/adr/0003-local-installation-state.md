@@ -10,11 +10,11 @@
 ## 决策
 
 - 服务端 Skill DTO 不包含本地安装字段。
-- 客户端统一安装到私有仓库 `~/.skills-manager/skills`。
+- 客户端统一安装到私有仓库 `~/.kocotree-skills/skills`。
 - Claude Code 与 Codex 只有在用户开启后，才分别在 `~/.claude/skills`、`~/.codex/skills` 获得受管入口；关闭后对应 Agent 完全扫描不到。
 - 已运行的 Agent 会话可能保留启动时已加载的 Skill 上下文；关闭后的磁盘状态立即生效，但会话侧需要新建任务或重启才能刷新。
 - 旧版 `~/.agents/skills` 实体 Skill 在首次扫描时迁移到私有仓库，避免 Agent 绕过开关直接发现。
-- 安装凭证和备份保存在 `~/.skills-manager/`，不写入具体 Skill。
+- 安装凭证和备份保存在 `~/.kocotree-skills/`，不写入具体 Skill。
 - 平台版本保存 `packageSha256` 和规范化目录 `contentHash`。
 - 安装器通过内容哈希判断目标目录是否与待安装版本一致。
 - 目标目录内容与平台版本一致时返回已安装结果，不重复写入或增加安装次数。

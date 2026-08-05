@@ -151,7 +151,8 @@ const AGENT_LOCATIONS: Record<LocalSkillAgent, LocalSkillLocation> = {
 };
 
 function inferMockLocation(path: string): LocalSkillLocation {
-  if (path.includes("/.skills-manager/skills/")) return "MANAGER";
+  if (path.includes("/.kocotree-skills/skills/")) return "MANAGER";
+  if (path.includes("/.skills-manager/skills/")) return "EXTERNAL";
   if (path.includes("/.claude/skills/")) return "CLAUDE";
   if (path.includes("/.codex/skills/")) return "CODEX";
   return "AGENTS";
@@ -165,7 +166,7 @@ function inferMockAgent(path: string): LocalSkillAgent {
 }
 
 function managerPath(skillName: string): string {
-  return `~/.skills-manager/skills/${skillName}`;
+  return `~/.kocotree-skills/skills/${skillName}`;
 }
 
 const initialMockRecords: LocalSkillRecord[] = [
@@ -388,7 +389,7 @@ export class MockLocalSkillService implements LocalSkillService {
     return {
       record: structuredClone(record),
       replacedSkillName: conflict && input.force ? conflict.skillName : null,
-      backupPath: conflict && input.force ? `~/.skills-manager/backups/${conflict.skillName}-${Date.now()}` : null,
+      backupPath: conflict && input.force ? `~/.kocotree-skills/backups/${conflict.skillName}-${Date.now()}` : null,
       notices: [...(scenario?.completionNotices ?? [])],
     };
   }

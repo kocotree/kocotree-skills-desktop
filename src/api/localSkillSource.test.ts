@@ -23,13 +23,13 @@ function record(
     displayName: "Research",
     displayDescription: "",
     skillDescription: "Research topics using trusted sources.",
-    installPath: "/Users/test/.skills-manager/skills/research",
+    installPath: "/Users/test/.kocotree-skills/skills/research",
     contentHash: "sha256:test",
     installedAt: null,
     status: "LOCAL_UNKNOWN",
     location: "MANAGER",
     entryKind: "DIRECTORY",
-    resolvedPath: "/Users/test/.skills-manager/skills/research",
+    resolvedPath: "/Users/test/.kocotree-skills/skills/research",
     ...overrides,
   };
 }
@@ -69,6 +69,36 @@ describe("私有 Skill 仓库", () => {
     expect(filterWorkspaceSkillGroups(groups)).toHaveLength(1);
   });
 
+  it("将旧 skills-manager 仓库作为只读外部来源", () => {
+    const externalSource = record({
+      id: "external-source",
+      skillId: "external-skill-id",
+      installPath: "/Users/test/.skills-manager/skills/research",
+      resolvedPath: "/Users/test/.skills-manager/skills/research",
+      location: "EXTERNAL",
+      status: "PLATFORM_INSTALLED",
+    });
+    const groups = groupLocalSkills([
+      externalSource,
+      record({
+        id: "external-codex-link",
+        installPath: "/Users/test/.codex/skills/research",
+        resolvedPath: externalSource.resolvedPath,
+        location: "CODEX",
+        entryKind: "SYMLINK",
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].externalRecord).toBe(externalSource);
+    expect(getLocalSkillSourceRecord(groups[0])).toBeNull();
+    expect(getLocalSkillActivationState(groups[0], "codex")).toBe("enabled");
+    expect(getUninstallableSkillRecords([
+      externalSource,
+      groups[0].agentRecords.codex!,
+    ]).size).toBe(0);
+  });
+
   it("Agent 页面按展示名称和 Skill 名称搜索，不区分大小写并忽略首尾空格", () => {
     const groups = groupLocalSkills([
       record({ id: "research-source" }),
@@ -82,15 +112,15 @@ describe("私有 Skill 仓库", () => {
         id: "writer-source",
         skillName: "article-writer",
         displayName: "Article Writer",
-        installPath: "/Users/test/.skills-manager/skills/article-writer",
-        resolvedPath: "/Users/test/.skills-manager/skills/article-writer",
+        installPath: "/Users/test/.kocotree-skills/skills/article-writer",
+        resolvedPath: "/Users/test/.kocotree-skills/skills/article-writer",
       }),
       record({
         id: "writer-claude-link",
         skillName: "article-writer",
         displayName: "Article Writer",
         installPath: "/Users/test/.claude/skills/article-writer",
-        resolvedPath: "/Users/test/.skills-manager/skills/article-writer",
+        resolvedPath: "/Users/test/.kocotree-skills/skills/article-writer",
         location: "CLAUDE",
         entryKind: "SYMLINK",
       }),
@@ -107,7 +137,7 @@ describe("私有 Skill 仓库", () => {
   });
 
   it("将 Windows Junction 识别为受管 Agent 连接", () => {
-    const sourcePath = "C:\\Users\\test\\.skills-manager\\skills\\research";
+    const sourcePath = "C:\\Users\\test\\.kocotree-skills\\skills\\research";
     const groups = groupLocalSkills([
       record({
         id: "manager-source-windows",
@@ -129,7 +159,7 @@ describe("私有 Skill 仓库", () => {
   });
 
   it("将 Windows 复制降级目录识别为受管 Agent 连接", () => {
-    const sourcePath = "C:\\Users\\test\\.skills-manager\\skills\\research";
+    const sourcePath = "C:\\Users\\test\\.kocotree-skills\\skills\\research";
     const groups = groupLocalSkills([
       record({
         id: "manager-source-windows",

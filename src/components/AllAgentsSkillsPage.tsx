@@ -6,6 +6,7 @@ import {
   getExternalCodexLegacyLink,
   getLocalSkillActivationState,
   getLocalSkillGroupRecords,
+  getLocalSkillLocation,
   getLocalSkillSourceRecord,
   groupLocalSkills,
   SkillApiError,
@@ -62,6 +63,9 @@ function activationDescription(
   }
   if (state === "legacy") {
     return "检测到旧版共享连接；点击后切换为管理器维护的入口";
+  }
+  if (group.externalRecord && !getLocalSkillSourceRecord(group)) {
+    return "该 Skill 来自外部 skills-manager，Kocotree 不会修改其本体或通过开关调整状态";
   }
   if (!canControlLocalSkill(group, agent)) {
     return `已在 ${label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
@@ -273,11 +277,11 @@ export function AllAgentsSkillsPage({
       {loading ? (
         <section className="empty-state">
           <Spin />
-          <strong>正在扫描私有 Skill 仓库</strong>
+          <strong>正在扫描本地 Skill</strong>
         </section>
       ) : error ? (
         <section className="empty-state">
-          <strong>暂时无法读取私有 Skill 仓库</strong>
+          <strong>暂时无法读取本地 Skill</strong>
           <span>{error}</span>
           <Button size="small" onClick={onRefresh}>
             重试
@@ -296,7 +300,9 @@ export function AllAgentsSkillsPage({
               (item) => item.id === deletingRecordId,
             );
             const cleaningLegacyLink = deletingRecordId === legacyCodexLink?.id;
-            const statusLabel = legacyCodexLink
+            const statusLabel = getLocalSkillLocation(record) === "EXTERNAL"
+              ? "外部 Skill"
+              : legacyCodexLink
               ? "含旧 Codex 连接"
               : record.entryKind !== "DIRECTORY"
               ? record.status === "LOCAL_UNKNOWN"
@@ -334,18 +340,20 @@ export function AllAgentsSkillsPage({
                     aria-label={`打开 ${record.displayName} 的 Skill 位置`}
                     onClick={() => void revealWorkspaceSkill(record)}
                   />
-                  <Button
-                    className="local-skill-icon-action"
-                    size="small"
-                    type="danger"
-                    theme="borderless"
-                    icon={<AppIcon name="trash" size={16} />}
-                    tooltip="移到回收站"
-                    aria-label={`将 ${record.displayName} 移到回收站`}
-                    loading={deleting && !cleaningLegacyLink}
-                    disabled={deletingRecordId !== null}
-                    onClick={() => onDelete(groupRecords)}
-                  />
+                  {groupRecords.length > 0 && (
+                    <Button
+                      className="local-skill-icon-action"
+                      size="small"
+                      type="danger"
+                      theme="borderless"
+                      icon={<AppIcon name="trash" size={16} />}
+                      tooltip="移到回收站"
+                      aria-label={`将 ${record.displayName} 移到回收站`}
+                      loading={deleting && !cleaningLegacyLink}
+                      disabled={deletingRecordId !== null}
+                      onClick={() => onDelete(groupRecords)}
+                    />
+                  )}
                 </div>
                 <button
                   className="my-skill-card-open"
