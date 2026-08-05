@@ -31,13 +31,13 @@ const SOURCE_DETAILS: Record<
 > = {
   claude: {
     title: "Claude Code Skills",
-    description: "读取用户目录/.claude/skills；关闭后会删除生效入口和对应卡片",
+    description: "查看 Claude Code 中已启用的 Skill。关闭后，该 Skill 将不再出现在此页面，但本地文件仍会保留。",
     emptyTitle: "Claude Code 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从私有 Skill 仓库中选择",
   },
   codex: {
     title: "Codex Skills",
-    description: "读取 Codex Skill；外部 Skill 通过 Codex 原生配置启停，不移动本体",
+    description: "查看 Codex 中已启用的 Skill。关闭后只会停用，不会删除或移动本地文件。",
     emptyTitle: "Codex 还没有管理 Skill",
     emptyHint: "点击“添加 Skill”从私有 Skill 仓库中选择",
   },
