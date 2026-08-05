@@ -10,7 +10,7 @@ import {
   type RemoveLocalSkillEntriesInput,
   type RemoveLocalSkillInput,
   type SetLocalSkillEnabledInput,
-  type SyncLocalSkillDisplayNameInput,
+  type SyncLocalSkillMetadataInput,
 } from "./contracts";
 
 interface InstallSkillCommandResult {
@@ -83,6 +83,7 @@ export class TauriInstaller implements LocalSkillService {
           version: input.version.version,
           skillName: input.version.skillName,
           displayName: input.skill.displayName,
+          displayDescription: input.skill.displayDescription,
           contentHash: input.version.contentHash,
           installedAt,
           downloadUrl: input.ticket.url,
@@ -102,6 +103,8 @@ export class TauriInstaller implements LocalSkillService {
           version: input.version.version,
           skillName: input.version.skillName,
           displayName: input.skill.displayName,
+          displayDescription: input.skill.displayDescription,
+          skillDescription: input.skill.skillDescription,
           installPath: result.installedPath,
           contentHash: input.version.contentHash,
           installedAt,
@@ -178,20 +181,20 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  /** 云端展示名称变更后同步更新本机保存的 Skill 关联元数据。 */
-  async syncDisplayName(
-    input: SyncLocalSkillDisplayNameInput,
+  /** 云端展示信息变更后同步更新本机保存的 Skill 关联元数据。 */
+  async syncMetadata(
+    input: SyncLocalSkillMetadataInput,
   ): Promise<LocalSkillRecord[]> {
     try {
       return await invoke<LocalSkillRecord[]>(
-        "sync_local_skill_display_name",
+        "sync_local_skill_metadata",
         { input },
       );
     } catch (reason) {
       const commandError = parseCommandError(reason);
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_METADATA_SYNC_FAILED",
-        commandError?.message ?? "无法同步本地 Skill 展示名称",
+        commandError?.message ?? "无法同步本地 Skill 展示信息",
         commandError?.details,
       );
     }

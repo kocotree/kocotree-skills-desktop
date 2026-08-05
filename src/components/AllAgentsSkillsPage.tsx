@@ -288,6 +288,8 @@ export function AllAgentsSkillsPage({
           <section className="my-skills-list local-skills-list agents-workspace-list">
           {visibleGroups.map((group) => {
             const record = getLocalSkillSourceRecord(group) ?? group.primaryRecord;
+            const description = record.displayDescription
+              || record.skillDescription;
             const groupRecords = getLocalSkillGroupRecords(group);
             const legacyCodexLink = getExternalCodexLegacyLink(group);
             const deleting = groupRecords.some(
@@ -354,6 +356,11 @@ export function AllAgentsSkillsPage({
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
                       <code>{record.skillName}</code>
+                      {description && (
+                        <small title={description}>
+                          {description}
+                        </small>
+                      )}
                     </span>
                   </span>
                 </button>

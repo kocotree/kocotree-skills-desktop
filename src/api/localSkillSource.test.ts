@@ -21,6 +21,8 @@ function record(
     version: null,
     skillName: "research",
     displayName: "Research",
+    displayDescription: "",
+    skillDescription: "Research topics using trusted sources.",
     installPath: "/Users/test/.skills-manager/skills/research",
     contentHash: "sha256:test",
     installedAt: null,

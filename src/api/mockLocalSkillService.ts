@@ -11,7 +11,7 @@ import {
   type RemoveLocalSkillInput,
   type RecordLocalSkillPublicationInput,
   type SetLocalSkillEnabledInput,
-  type SyncLocalSkillDisplayNameInput,
+  type SyncLocalSkillMetadataInput,
 } from "./contracts";
 import { mockInstallScenarios, skillIds } from "./mockData";
 
@@ -23,6 +23,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.4.2",
     skillName: "code-review",
     displayName: "代码审查助手",
+    displayDescription: "分析代码质量、潜在缺陷并提供改进建议。",
+    skillDescription: "分析代码质量、潜在缺陷并提供改进建议。",
     installPath: "~/.codex/skills/code-review",
     contentHash: `sha256:${"b".repeat(64)}-1001`,
     installedAt: "2026-07-16T08:00:00.000Z",
@@ -35,6 +37,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: null,
     skillName: "personal-helper",
     displayName: "个人工作助手",
+    displayDescription: "",
+    skillDescription: "协助整理个人任务、资料和日常工作。",
     installPath: "~/.claude/skills/personal-helper",
     contentHash: `sha256:${"c".repeat(64)}`,
     installedAt: null,
@@ -47,6 +51,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.1.0",
     skillName: "legacy-helper",
     displayName: "旧项目说明助手",
+    displayDescription: "读取并解释旧项目的结构和实现。",
+    skillDescription: "读取并解释旧项目的结构和实现。",
     installPath: "~/.codex/skills/legacy-helper",
     contentHash: `sha256:${"b".repeat(64)}-1007`,
     installedAt: "2026-07-08T08:00:00.000Z",
@@ -59,6 +65,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.0.0",
     skillName: "reserved-name-demo",
     displayName: "演示：名称冲突不可安装",
+    displayDescription: "演示本地 Skill 名称冲突处理。",
+    skillDescription: "演示本地 Skill 名称冲突处理。",
     installPath: "~/.claude/skills/reserved-name-demo",
     contentHash: `sha256:${"b".repeat(64)}-1015`,
     installedAt: "2026-07-09T08:00:00.000Z",
@@ -71,6 +79,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.1.0",
     skillName: "withdrawn-version-demo",
     displayName: "演示：历史版本已撤回",
+    displayDescription: "演示云端历史版本不可用的状态。",
+    skillDescription: "演示云端历史版本不可用的状态。",
     installPath: "~/.codex/skills/withdrawn-version-demo",
     contentHash: `sha256:${"b".repeat(64)}-1116`,
     installedAt: "2026-07-10T08:00:00.000Z",
@@ -83,6 +93,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.0.0",
     skillName: "online-unavailable-demo",
     displayName: "演示：在线信息不可用",
+    displayDescription: "演示无法读取云端关联信息的状态。",
+    skillDescription: "演示无法读取云端关联信息的状态。",
     installPath: "~/.agents/skills/online-unavailable-demo",
     contentHash: `sha256:${"b".repeat(64)}-1199`,
     installedAt: "2026-07-11T08:00:00.000Z",
@@ -95,6 +107,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: null,
     skillName: "local-conflict-demo",
     displayName: "本地同名演示目录",
+    displayDescription: "",
+    skillDescription: "演示多个本地目录使用相同 Skill 名称。",
     installPath: "~/.agents/skills/local-conflict-demo",
     contentHash: `sha256:${"d".repeat(64)}`,
     installedAt: null,
@@ -107,6 +121,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: "1.1.0",
     skillName: "local-modified-demo",
     displayName: "演示：本地内容已修改",
+    displayDescription: "演示安装后本地内容发生变化的状态。",
+    skillDescription: "演示安装后本地内容发生变化的状态。",
     installPath: "~/.agents/skills/local-modified-demo",
     contentHash: `sha256:${"e".repeat(64)}`,
     installedAt: "2026-07-16T08:00:00.000Z",
@@ -119,6 +135,8 @@ const initialRecords: LocalSkillRecord[] = [
     version: null,
     skillName: "rollback-demo",
     displayName: "待恢复的本地 Skill",
+    displayDescription: "",
+    skillDescription: "演示安装失败后的本地恢复流程。",
     installPath: "~/.agents/skills/rollback-demo",
     contentHash: `sha256:${"f".repeat(64)}`,
     installedAt: null,
@@ -210,13 +228,14 @@ export class MockLocalSkillService implements LocalSkillService {
     return Promise.resolve();
   }
 
-  async syncDisplayName(
-    input: SyncLocalSkillDisplayNameInput,
+  async syncMetadata(
+    input: SyncLocalSkillMetadataInput,
   ): Promise<LocalSkillRecord[]> {
     await this.wait();
     for (const record of this.records) {
       if (record.skillId === input.skillId) {
         record.displayName = input.displayName;
+        record.displayDescription = input.displayDescription;
       }
     }
     return structuredClone(this.records);
@@ -352,6 +371,8 @@ export class MockLocalSkillService implements LocalSkillService {
       version: input.version.version,
       skillName: input.version.skillName,
       displayName: input.skill.displayName,
+      displayDescription: input.skill.displayDescription,
+      skillDescription: input.skill.skillDescription,
       installPath: managerPath(input.version.skillName),
       contentHash: input.version.contentHash,
       installedAt: new Date().toISOString(),

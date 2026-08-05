@@ -37,6 +37,7 @@ pub struct InstallSkillInput {
     pub version: String,
     pub skill_name: String,
     pub display_name: String,
+    pub display_description: String,
     pub content_hash: String,
     pub installed_at: String,
     pub download_url: String,
@@ -54,6 +55,8 @@ struct InstalledSkillMetadata {
     version: String,
     skill_name: String,
     display_name: String,
+    #[serde(default)]
+    display_description: String,
     content_hash: String,
     installed_at: String,
     #[serde(default)]
@@ -213,6 +216,8 @@ pub struct LocalSkillRecord {
     pub version: Option<String>,
     pub skill_name: String,
     pub display_name: String,
+    pub display_description: String,
+    pub skill_description: String,
     pub install_path: String,
     pub content_hash: String,
     pub installed_at: Option<String>,
@@ -254,15 +259,17 @@ pub struct RecordLocalSkillPublicationInput {
     pub version: String,
     pub skill_name: String,
     pub display_name: String,
+    pub display_description: String,
     pub content_hash: String,
     pub synced_at: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SyncLocalSkillDisplayNameInput {
+pub struct SyncLocalSkillMetadataInput {
     pub skill_id: String,
     pub display_name: String,
+    pub display_description: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -627,7 +634,7 @@ fn is_symbolic_link(unix_mode: Option<u32>) -> bool {
     unix_mode.is_some_and(|mode| mode & 0o170000 == 0o120000)
 }
 
-fn parse_skill_name(skill_md: &str) -> Result<String, InstallError> {
+fn parse_skill_frontmatter(skill_md: &str) -> Result<serde_yaml::Value, InstallError> {
     let normalized = skill_md.replace("\r\n", "\n");
     let Some(frontmatter) = normalized.strip_prefix("---\n") else {
         return Err(InstallError::new(
@@ -641,13 +648,16 @@ fn parse_skill_name(skill_md: &str) -> Result<String, InstallError> {
             "SKILL.md 缺少合法的 YAML frontmatter",
         ));
     };
-    let yaml: serde_yaml::Value =
-        serde_yaml::from_str(&frontmatter[..end_index]).map_err(|_| {
-            InstallError::new(
-                "INVALID_SKILL_PACKAGE",
-                "SKILL.md 的 YAML frontmatter 无法解析",
-            )
-        })?;
+    serde_yaml::from_str(&frontmatter[..end_index]).map_err(|_| {
+        InstallError::new(
+            "INVALID_SKILL_PACKAGE",
+            "SKILL.md 的 YAML frontmatter 无法解析",
+        )
+    })
+}
+
+fn parse_skill_name(skill_md: &str) -> Result<String, InstallError> {
+    let yaml = parse_skill_frontmatter(skill_md)?;
     yaml.get("name")
         .and_then(serde_yaml::Value::as_str)
         .map(str::trim)
@@ -659,6 +669,19 @@ fn parse_skill_name(skill_md: &str) -> Result<String, InstallError> {
                 "SKILL.md 的 frontmatter 必须包含非空 name",
             )
         })
+}
+
+fn parse_skill_description(skill_md: &str) -> String {
+    parse_skill_frontmatter(skill_md)
+        .ok()
+        .and_then(|yaml| {
+            yaml.get("description")
+                .and_then(serde_yaml::Value::as_str)
+                .map(str::trim)
+                .filter(|description| !description.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
 }
 
 /**
@@ -899,6 +922,7 @@ fn install_package_bytes(
         version: input.version.clone(),
         skill_name: input.skill_name.clone(),
         display_name: input.display_name.clone(),
+        display_description: input.display_description.clone(),
         content_hash: input.content_hash.clone(),
         installed_at: input.installed_at.clone(),
         origin: Some("INSTALLED".to_string()),
@@ -1068,6 +1092,7 @@ fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRec
             Err(_) => continue,
         };
         let skill_name = parse_skill_name(&skill_md).unwrap_or_else(|_| directory_name.clone());
+        let skill_description = parse_skill_description(&skill_md);
         let metadata = fs::read_to_string(skill_path.join(INSTALL_METADATA_FILE))
             .ok()
             .and_then(|content| serde_json::from_str::<InstalledSkillMetadata>(&content).ok())
@@ -1075,31 +1100,41 @@ fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRec
         let path_text = skill_path.to_string_lossy().into_owned();
         let local_id_hash = sha256_hex(path_text.as_bytes());
         let skill_md_hash = sha256_hex(skill_md.as_bytes());
-        let (skill_id, version_id, version, display_name, content_hash, installed_at, status) =
-            match metadata {
-                Some(metadata) => (
-                    Some(metadata.skill_id),
-                    Some(metadata.version_id),
-                    Some(metadata.version),
-                    metadata.display_name,
-                    metadata.content_hash,
-                    Some(metadata.installed_at),
-                    if metadata.origin.as_deref() == Some("PUBLISHED") {
-                        "PLATFORM_MATCHED".to_string()
-                    } else {
-                        "PLATFORM_INSTALLED".to_string()
-                    },
-                ),
-                None => (
-                    None,
-                    None,
-                    None,
-                    skill_name.clone(),
-                    format!("sha256:{skill_md_hash}"),
-                    None,
-                    "LOCAL_UNKNOWN".to_string(),
-                ),
-            };
+        let (
+            skill_id,
+            version_id,
+            version,
+            display_name,
+            display_description,
+            content_hash,
+            installed_at,
+            status,
+        ) = match metadata {
+            Some(metadata) => (
+                Some(metadata.skill_id),
+                Some(metadata.version_id),
+                Some(metadata.version),
+                metadata.display_name,
+                metadata.display_description,
+                metadata.content_hash,
+                Some(metadata.installed_at),
+                if metadata.origin.as_deref() == Some("PUBLISHED") {
+                    "PLATFORM_MATCHED".to_string()
+                } else {
+                    "PLATFORM_INSTALLED".to_string()
+                },
+            ),
+            None => (
+                None,
+                None,
+                None,
+                skill_name.clone(),
+                String::new(),
+                format!("sha256:{skill_md_hash}"),
+                None,
+                "LOCAL_UNKNOWN".to_string(),
+            ),
+        };
         records.push(LocalSkillRecord {
             id: format!("local-{}", &local_id_hash[..16]),
             skill_id,
@@ -1107,6 +1142,8 @@ fn scan_skills_root(root: &Path, location: &str, records: &mut Vec<LocalSkillRec
             version,
             skill_name,
             display_name,
+            display_description,
+            skill_description,
             install_path: path_text,
             content_hash,
             installed_at,
@@ -1593,6 +1630,7 @@ fn apply_managed_publication(
     record.version_id = Some(metadata.version_id.clone());
     record.version = Some(metadata.version.clone());
     record.display_name = metadata.display_name.clone();
+    record.display_description = metadata.display_description.clone();
     record.content_hash = metadata.content_hash.clone();
     record.installed_at = Some(metadata.installed_at.clone());
     record.status = "PLATFORM_MATCHED".to_string();
@@ -2862,6 +2900,7 @@ fn record_local_skill_publication_on_disk(
         version: input.version,
         skill_name: input.skill_name,
         display_name: input.display_name,
+        display_description: input.display_description,
         content_hash: input.content_hash,
         installed_at: input.synced_at,
         origin: Some("PUBLISHED".to_string()),
@@ -2939,14 +2978,17 @@ fn clear_local_skill_publication_at_home(
     scan_local_skills_from_home(home)
 }
 
-fn sync_local_skill_display_name_at_home(
+fn sync_local_skill_metadata_at_home(
     home: &Path,
-    input: &SyncLocalSkillDisplayNameInput,
+    input: &SyncLocalSkillMetadataInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    if input.skill_id.trim().is_empty() || input.display_name.trim().is_empty() {
+    if input.skill_id.trim().is_empty()
+        || input.display_name.trim().is_empty()
+        || input.display_description.trim().is_empty()
+    {
         return Err(InstallError::new(
             "LOCAL_SKILL_METADATA_SYNC_FAILED",
-            "云端 Skill 编号和展示名称不能为空",
+            "云端 Skill 编号、展示名称和展示简介不能为空",
         ));
     }
 
@@ -2970,11 +3012,16 @@ fn sync_local_skill_display_name_at_home(
                 };
                 if metadata.schema_version != 1
                     || metadata.skill_id != input.skill_id
-                    || metadata.display_name == input.display_name
+                {
+                    continue;
+                }
+                if metadata.display_name == input.display_name
+                    && metadata.display_description == input.display_description
                 {
                     continue;
                 }
                 metadata.display_name = input.display_name.clone();
+                metadata.display_description = input.display_description.clone();
                 let bytes = serde_json::to_vec_pretty(&metadata).map_err(|error| {
                     InstallError::new(
                         "LOCAL_SKILL_METADATA_SYNC_FAILED",
@@ -2982,7 +3029,7 @@ fn sync_local_skill_display_name_at_home(
                     )
                 })?;
                 fs::write(&metadata_path, bytes)
-                    .map_err(|error| io_error("同步本地 Skill 展示名称", error))?;
+                    .map_err(|error| io_error("同步本地 Skill 展示信息", error))?;
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -2994,10 +3041,14 @@ fn sync_local_skill_display_name_at_home(
     for metadata in manager_state.publications.values_mut() {
         if metadata.schema_version == 1
             && metadata.skill_id == input.skill_id
-            && metadata.display_name != input.display_name
         {
-            metadata.display_name = input.display_name.clone();
-            state_changed = true;
+            if metadata.display_name != input.display_name
+                || metadata.display_description != input.display_description
+            {
+                metadata.display_name = input.display_name.clone();
+                metadata.display_description = input.display_description.clone();
+                state_changed = true;
+            }
         }
     }
     if state_changed {
@@ -3007,12 +3058,12 @@ fn sync_local_skill_display_name_at_home(
     scan_local_skills_from_home(home)
 }
 
-fn sync_local_skill_display_name_on_disk(
-    input: SyncLocalSkillDisplayNameInput,
+fn sync_local_skill_metadata_on_disk(
+    input: SyncLocalSkillMetadataInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
     let home = dirs::home_dir()
         .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
-    sync_local_skill_display_name_at_home(&home, &input)
+    sync_local_skill_metadata_at_home(&home, &input)
 }
 
 fn clear_local_skill_publication_on_disk(
@@ -3055,17 +3106,17 @@ pub async fn record_local_skill_publication(
         })?
 }
 
-/** 云端展示名称变更后更新本机保存的关联元数据，并返回最新扫描结果。 */
+/** 云端展示信息变更后更新本机保存的关联元数据，并返回最新扫描结果。 */
 #[tauri::command]
-pub async fn sync_local_skill_display_name(
-    input: SyncLocalSkillDisplayNameInput,
+pub async fn sync_local_skill_metadata(
+    input: SyncLocalSkillMetadataInput,
 ) -> Result<Vec<LocalSkillRecord>, InstallError> {
-    tauri::async_runtime::spawn_blocking(move || sync_local_skill_display_name_on_disk(input))
+    tauri::async_runtime::spawn_blocking(move || sync_local_skill_metadata_on_disk(input))
         .await
         .map_err(|error| {
             InstallError::new(
                 "LOCAL_SKILL_METADATA_SYNC_FAILED",
-                format!("同步本地 Skill 展示名称失败：{error}"),
+                format!("同步本地 Skill 展示信息失败：{error}"),
             )
         })?
 }
@@ -3196,6 +3247,7 @@ mod tests {
             version: "1.0.0".to_string(),
             skill_name: skill_name.to_string(),
             display_name: skill_name.to_string(),
+            display_description: "测试安装流程".to_string(),
             content_hash: format!("sha256:{}", "1".repeat(64)),
             installed_at: "2026-01-01T00:00:00.000Z".to_string(),
             download_url: "data:application/zip;base64,".to_string(),

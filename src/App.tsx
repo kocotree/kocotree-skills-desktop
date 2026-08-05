@@ -1152,6 +1152,7 @@ function App() {
           version: skill.currentVersion.version,
           skillName: skill.skillName,
           displayName: skill.displayName,
+          displayDescription: skill.displayDescription,
           contentHash: skill.currentVersion.contentHash,
           syncedAt: new Date().toISOString(),
         });
@@ -1184,15 +1185,16 @@ function App() {
 
     if (!usesRealInstaller) return;
     try {
-      const items = await localSkillService.syncDisplayName({
+      const items = await localSkillService.syncMetadata({
         skillId: skill.id,
         displayName: skill.displayName,
+        displayDescription: skill.displayDescription,
       });
       setLocalSkills(items);
       setInstalledSkillIds(installedSkillIdsFromRecords(items));
     } catch (reason) {
-      console.error("[KocotreeSkills] 同步本地 Skill 展示名称失败", reason);
-      Toast.error("平台展示信息已更新，但本地名称同步失败，请稍后重试");
+      console.error("[KocotreeSkills] 同步本地 Skill 展示信息失败", reason);
+      Toast.error("平台展示信息已更新，但本地展示信息同步失败，请稍后重试");
     }
   }
 

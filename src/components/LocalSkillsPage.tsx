@@ -281,6 +281,8 @@ export function LocalSkillsPage({
           <section className="my-skills-list local-skills-list agent-skills-list">
           {visibleGroups.map((group) => {
             const record = group.primaryRecord;
+            const description = record.displayDescription
+              || record.skillDescription;
             const state = getLocalSkillActivationState(group, filter);
             const controlKey = `${group.id}:${filter}`;
             const pending = pendingControl === controlKey;
@@ -345,6 +347,11 @@ export function LocalSkillsPage({
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
                       <code>{record.skillName}</code>
+                      {description && (
+                        <small title={description}>
+                          {description}
+                        </small>
+                      )}
                     </span>
                   </span>
                 </button>
