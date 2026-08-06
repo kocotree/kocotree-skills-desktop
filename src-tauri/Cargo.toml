@@ -1,6 +1,6 @@
 [package]
 name = "kocotree-skills-desktop"
-version = "0.1.7"
+version = "0.1.8"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -35,7 +35,9 @@ trash = "5.2.6"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
+tauri-plugin-process = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+tauri-plugin-updater = "2"
 
 [target."cfg(windows)".dependencies]
 junction = "2.0"

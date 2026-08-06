@@ -119,6 +119,7 @@ SSH_PRIVATE_KEY
 DEPLOY_DIR
 REGISTRY_USERNAME
 REGISTRY_TOKEN
+TAURI_SIGNING_PRIVATE_KEY
 ```
 
 说明：
@@ -128,6 +129,13 @@ REGISTRY_TOKEN
 - `REGISTRY_USERNAME` 使用创建 GHCR PAT 的 GitHub 用户 `Sun-0102`。
 - `DEPLOY_DIR` 为 `/home/nangua/kocotree-skills-desktop`。
 - `REGISTRY_TOKEN` 用于生产服务器拉取 GHCR 私有镜像，至少需要 `read:packages`。
+- `TAURI_SIGNING_PRIVATE_KEY` 是 Tauri Updater 私钥的完整内容，只用于在
+  Release 构建中签署更新包，不能提交到仓库。当前密钥没有口令，因此不需要配置
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
+
+本机私钥默认位于 `~/.tauri/kocotree-skills.key`，公钥位于同目录的
+`kocotree-skills.key.pub`。把私钥文件的完整内容保存为 GitHub Secret 后，还必须把
+私钥安全备份到另一处；丢失私钥后，已经安装的客户端将无法验证后续更新。
 
 建议为部署创建独立 SSH 密钥，不要使用日常登录主密钥。
 
@@ -151,13 +159,16 @@ git push origin v0.1.0
 工作流会拒绝版本不一致的 Tag。
 
 当前 Release 默认创建为 Draft。检查安装包和发布说明后，再在 GitHub Releases 页面
-手动 Publish。
+手动 Publish。Draft Release 不会被客户端的 `/releases/latest/` 更新地址发现；发布后，
+客户端才会读取其中的 `latest.json`。
 
 ## 6. 当前签名策略
 
 - Windows 安装包暂时不签名，内部用户需要手动通过 SmartScreen 提示。
 - macOS 使用 Tauri Ad-hoc 签名，用户仍可能需要在“隐私与安全性”中手动允许。
-- 当前没有启用 Tauri 自动更新，因此 Release 工作流不生成 updater JSON。
+- Tauri Updater 使用独立的 minisign 密钥签署每个平台的更新包。客户端内置公钥，
+  Release 工作流使用 `TAURI_SIGNING_PRIVATE_KEY` 生成 `.sig` 和 `latest.json`。
+- 自动更新签名只负责验证更新来源和完整性，不能替代 Windows/macOS 的系统代码签名。
 
 正式公开发布前，再接入 Windows Code Signing 和 Apple Developer ID 公证。
 

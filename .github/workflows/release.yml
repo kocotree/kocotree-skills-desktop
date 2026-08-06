@@ -209,10 +209,19 @@ jobs:
 
     env:
       VITE_API_BASE_URL: https://skills-api.kktree.cn
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Verify updater signing secret
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "缺少 TAURI_SIGNING_PRIVATE_KEY Secret"
+            exit 1
+          fi
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -259,5 +268,6 @@ jobs:
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
           args: ${{ matrix.args }}

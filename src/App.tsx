@@ -36,6 +36,12 @@ import { InstallFeedbackModal, type InstallFeedbackState } from "./components/In
 import { TagFilter } from "./components/TagFilter";
 import { getSkillPageCount, SkillPagination } from "./components/LocalSkillPagination";
 import { UninstallConfirmModal } from "./components/UninstallConfirmModal";
+import { SettingsPage } from "./components/SettingsPage";
+import {
+  dismissAvailableAppUpdate,
+  startAutomaticAppUpdateChecks,
+  useAppUpdater,
+} from "./appUpdater";
 import "./App.css";
 
 type PageKey =
@@ -44,7 +50,8 @@ type PageKey =
   | "upload"
   | "local-all"
   | "local-claude"
-  | "local-codex";
+  | "local-codex"
+  | "settings";
 type SortKey = "created" | "updated" | "popular" | "installed";
 const BROWSE_PAGE_SIZE = 18;
 
@@ -587,6 +594,7 @@ function BrowsePage({
  */
 function App() {
   const [activePage, setActivePage] = useState<PageKey>("browse");
+  const appUpdate = useAppUpdater();
   const [selectedSkill, setSelectedSkill] = useState<SkillSummaryDto | null>(null);
   const [highlightedBrowseSkillId, setHighlightedBrowseSkillId] = useState<string | null>(null);
   const [uploadTargetSkill, setUploadTargetSkill] = useState<SkillSummaryDto | null>(null);
@@ -691,6 +699,8 @@ function App() {
   useEffect(() => {
     void refreshLocalSkills();
   }, [refreshLocalSkills]);
+
+  useEffect(() => startAutomaticAppUpdateChecks(), []);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1356,6 +1366,18 @@ function App() {
         </section>
 
         <div className="sidebar-user-area" ref={sidebarUserAreaRef}>
+          <nav className="sidebar-nav sidebar-utility-nav" aria-label="应用设置">
+            <button
+              className={activePage === "settings" ? "active" : ""}
+              type="button"
+              aria-label="设置与关于"
+              title="设置与关于"
+              onClick={() => setActivePage("settings")}
+            >
+              <AppIcon name="settings" size={19} />
+              <span>设置与关于</span>
+            </button>
+          </nav>
           {currentUser ? (
             <Dropdown
               contentClassName="sidebar-user-dropdown"
@@ -1403,6 +1425,29 @@ function App() {
       </aside>
 
       <div className="main-area">
+        {appUpdate.phase === "available"
+          && appUpdate.availableVersion
+          && activePage !== "settings" && (
+          <aside className="app-update-notice" aria-label="客户端更新提示">
+            <span className="app-update-notice-mark" aria-hidden="true">
+              <AppIcon name="update" size={18} />
+            </span>
+            <div>
+              <strong>新版本 v{appUpdate.availableVersion.replace(/^v/u, "")} 可用</strong>
+              <small>前往设置查看更新说明并安装</small>
+            </div>
+            <Button size="small" onClick={() => setActivePage("settings")}>查看更新</Button>
+            <button
+              className="app-update-notice-close"
+              type="button"
+              aria-label="稍后提醒"
+              title="稍后提醒"
+              onClick={dismissAvailableAppUpdate}
+            >
+              <AppIcon name="close" size={14} />
+            </button>
+          </aside>
+        )}
         {activePage === "browse" ? (
           <BrowsePage
             authenticated={currentUser !== null}
@@ -1457,6 +1502,8 @@ function App() {
             syncingRecordId={syncingRecordId}
             onSyncToCloud={handleSyncLocalSkill}
           />
+        ) : activePage === "settings" ? (
+          <SettingsPage />
         ) : null}
         {currentUser && (
           <div className="upload-page-host" hidden={activePage !== "upload"}>

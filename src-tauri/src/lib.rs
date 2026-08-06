@@ -7,10 +7,13 @@ pub fn run() {
 
     #[cfg(desktop)]
     {
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            log::info!("收到新的桌面应用实例参数: {argv:?}");
-            auth_callback::focus_main_window(app);
-        }));
+        builder = builder
+            .plugin(tauri_plugin_process::init())
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+                log::info!("收到新的桌面应用实例参数: {argv:?}");
+                auth_callback::focus_main_window(app);
+            }));
     }
 
     builder
