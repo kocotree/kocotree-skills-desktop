@@ -215,6 +215,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Load release notes
+        id: release_notes
+        shell: bash
+        run: |
+          {
+            echo "body<<KOCOTREE_RELEASE_NOTES"
+            cat 发布说明.md
+            echo "KOCOTREE_RELEASE_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Verify updater signing secret
         shell: bash
         run: |
@@ -261,10 +271,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Kocotree Skills ${{ github.ref_name }}
-          releaseBody: |
-            Kocotree Skills ${{ github.ref_name }} internal release.
-
-            The Windows installers are currently unsigned. macOS builds use ad-hoc signing.
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           generateReleaseNotes: true

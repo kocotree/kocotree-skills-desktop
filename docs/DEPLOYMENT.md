@@ -141,13 +141,20 @@ TAURI_SIGNING_PRIVATE_KEY
 
 ## 5. 发布版本
 
-发布前必须让以下三个文件的版本一致：
+完整发布步骤、更新说明规则和产物检查清单见
+[Kocotree Skills 发布手册](./发布流程.md)。
+
+发布前必须让以下版本信息保持一致：
 
 ```text
 package.json
 src-tauri/tauri.conf.json
 src-tauri/Cargo.toml
+src-tauri/Cargo.lock 中 kocotree-skills-desktop 包的版本
 ```
+
+同时更新仓库根目录的 `发布说明.md`，填写本次面向用户展示的中文更新说明。
+客户端页面已经包含“本次更新”标题，文件中只需填写具体条目。
 
 Tag 使用相同版本并带 `v` 前缀：
 
