@@ -201,11 +201,11 @@ jobs:
           - name: macOS Apple Silicon
             platform: macos-14
             rust_target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles dmg
+            args: --target aarch64-apple-darwin --bundles app,dmg
           - name: macOS Intel
             platform: macos-14
             rust_target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin --bundles dmg
+            args: --target x86_64-apple-darwin --bundles app,dmg
 
     env:
       VITE_API_BASE_URL: https://skills-api.kktree.cn
