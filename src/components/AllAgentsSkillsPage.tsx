@@ -4,6 +4,7 @@ import {
   canControlLocalSkill,
   filterWorkspaceSkillGroups,
   getExternalCodexLegacyLink,
+  getLocalSkillActivationSourceRecord,
   getLocalSkillActivationState,
   getLocalSkillGroupRecords,
   getLocalSkillLocation,
@@ -65,7 +66,9 @@ function activationDescription(
     return "检测到旧版共享连接；点击后切换为管理器维护的入口";
   }
   if (group.externalRecord && !getLocalSkillSourceRecord(group)) {
-    return "该 Skill 来自外部 skills-manager，Kocotree 不会修改其本体或通过开关调整状态";
+    return state === "enabled"
+      ? `关闭后只移除 ${label} 的生效入口，不会修改外部 Skill 本体`
+      : `开启后为 ${label} 创建生效入口，不会修改外部 Skill 本体`;
   }
   if (!canControlLocalSkill(group, agent)) {
     return `已在 ${label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
@@ -172,7 +175,7 @@ export function AllAgentsSkillsPage({
     group: LocalSkillGroup,
     agent: LocalSkillFilter,
   ): Promise<void> {
-    const sourceRecord = getLocalSkillSourceRecord(group);
+    const sourceRecord = getLocalSkillActivationSourceRecord(group);
     const state = getLocalSkillActivationState(group, agent);
     if (
       !sourceRecord

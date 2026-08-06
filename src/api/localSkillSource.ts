@@ -165,11 +165,21 @@ export function getLocalSkillSourceRecord(
     : null;
 }
 
+/** 返回可用于创建 Agent 入口的实体 Skill；外部仓库只作为只读来源。 */
+export function getLocalSkillActivationSourceRecord(
+  group: LocalSkillGroup,
+): LocalSkillRecord | null {
+  return getLocalSkillSourceRecord(group)
+    ?? (group.externalRecord?.entryKind === "DIRECTORY"
+      ? group.externalRecord
+      : null);
+}
+
 function isManagedLink(
   group: LocalSkillGroup,
   record: LocalSkillRecord,
 ): boolean {
-  const sourceRecord = getLocalSkillSourceRecord(group);
+  const sourceRecord = getLocalSkillActivationSourceRecord(group);
   return Boolean(
     sourceRecord
       && isManagedConnectionRecord(record)
@@ -259,7 +269,7 @@ export function canControlLocalSkill(
   group: LocalSkillGroup,
   agent: LocalSkillFilter,
 ): boolean {
-  if (group.managerRecord?.entryKind === "DIRECTORY") return true;
+  if (getLocalSkillActivationSourceRecord(group)) return true;
   return (agent === "claude" || agent === "codex")
     && group.workspaceRecord?.entryKind === "DIRECTORY";
 }

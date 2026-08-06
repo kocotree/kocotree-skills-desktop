@@ -267,14 +267,18 @@ export class MockLocalSkillService implements LocalSkillService {
     }
     const sourceRecord = this.records.find(
       (record) =>
-        (record.location === "MANAGER" || record.location === "AGENTS")
+        (
+          record.location === "MANAGER"
+          || record.location === "AGENTS"
+          || record.location === "EXTERNAL"
+        )
         && record.entryKind === "DIRECTORY"
         && record.installPath === input.sourcePath,
     );
     if (!sourceRecord) {
       throw new SkillApiError(
         "LOCAL_SKILL_SOURCE_UNMANAGED",
-        "只能控制管理器仓库或 .agents/skills 中的实体 Skill",
+        "只能控制管理器仓库、外部仓库或 .agents/skills 中的实体 Skill",
       );
     }
     const locations: LocalSkillLocation[] = [AGENT_LOCATIONS[input.agent]];

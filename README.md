@@ -15,7 +15,7 @@ Kocotree Skills 是使用 Tauri 2、React 和 TypeScript 开发的 Skill 浏览�
 
 Tauri 窗口中的安装会把 Mock 接口生成的 ZIP 写入私有仓库 `~/.kocotree-skills/skills/<skillName>`。只有用户分别开启 Claude Code 或 Codex 后，客户端才会在对应 Agent 的扫描目录创建生效入口；关闭后会彻底移除入口。目标目录存在时会先请求用户确认；确认覆盖后，旧目录备份到 `~/.kocotree-skills/backups`，再安装平台版本，写入失败时自动恢复旧目录。浏览器页面仍使用内存 Mock，不写入本地目录。
 
-旧 `~/.skills-manager/skills` 作为外部 Skill 仓库只读扫描，Kocotree 不会向其中安装、覆盖或删除 Skill。首次升级时只复制 Kocotree 自己的旧状态文件，不迁移或删除其他 Skill 管理器的数据。
+旧 `~/.skills-manager/skills` 作为外部 Skill 仓库只读扫描，Kocotree 不会向其中安装、覆盖或删除 Skill；用户仍可通过开关创建或移除 Claude Code/Codex 的生效入口。首次升级时只复制 Kocotree 自己的旧状态文件，不迁移或删除其他 Skill 管理器的数据。
 
 ## 本地运行
 

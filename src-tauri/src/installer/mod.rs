@@ -1995,6 +1995,7 @@ fn set_local_skill_enabled_at_home(
         )
     })?;
     let private_root = private_skills_root(home).canonicalize().ok();
+    let external_root = external_skills_manager_root(home).canonicalize().ok();
     let shared_root = shared_skills_root(home).canonicalize().ok();
     let source_is_private = private_root
         .as_ref()
@@ -2002,10 +2003,15 @@ fn set_local_skill_enabled_at_home(
     let source_is_shared = shared_root
         .as_ref()
         .is_some_and(|root| canonical_source.parent() == Some(root.as_path()));
-    if (!source_is_private && !source_is_shared) || !canonical_source.join("SKILL.md").is_file() {
+    let source_is_external = external_root
+        .as_ref()
+        .is_some_and(|root| canonical_source.parent() == Some(root.as_path()));
+    if (!source_is_private && !source_is_shared && !source_is_external)
+        || !canonical_source.join("SKILL.md").is_file()
+    {
         return Err(InstallError::new(
             "LOCAL_SKILL_SOURCE_UNMANAGED",
-            "只能控制管理器仓库或 .agents/skills 中的实体 Skill",
+            "只能控制管理器仓库、外部仓库或 .agents/skills 中的实体 Skill",
         ));
     }
     let skill_md = fs::read_to_string(canonical_source.join("SKILL.md"))
@@ -3694,6 +3700,47 @@ mod tests {
         assert!(source.is_dir());
         assert!(matches!(
             fs::symlink_metadata(&codex_link),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        ));
+    }
+
+    #[test]
+    fn external_skill_toggle_only_changes_the_agent_entry() {
+        let home = tempfile::tempdir().unwrap();
+        let source = external_skills_manager_root(home.path()).join("test-skill");
+        let codex_entry = home.path().join(".codex").join("skills").join("test-skill");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(
+            source.join("SKILL.md"),
+            "---\nname: test-skill\ndescription: external\n---\n",
+        )
+        .unwrap();
+        fs::write(source.join("keep.txt"), "keep").unwrap();
+        let input = |enabled| SetLocalSkillEnabledInput {
+            skill_name: "test-skill".to_string(),
+            source_path: source.to_string_lossy().into_owned(),
+            agent: "codex".to_string(),
+            enabled,
+        };
+
+        let enabled_records = set_local_skill_enabled_at_home(home.path(), input(true)).unwrap();
+
+        assert!(enabled_records.iter().any(|record| {
+            record.location == "CODEX"
+                && record.skill_name == "test-skill"
+                && PathBuf::from(&record.resolved_path) == source.canonicalize().unwrap()
+        }));
+        assert_eq!(
+            codex_entry.canonicalize().unwrap(),
+            source.canonicalize().unwrap()
+        );
+
+        set_local_skill_enabled_at_home(home.path(), input(false)).unwrap();
+
+        assert_eq!(fs::read_to_string(source.join("keep.txt")).unwrap(), "keep");
+        assert!(source.join("SKILL.md").is_file());
+        assert!(matches!(
+            fs::symlink_metadata(codex_entry),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound
         ));
     }

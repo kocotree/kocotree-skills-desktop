@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  canControlLocalSkill,
   countActiveLocalSkills,
   filterLocalSkillGroups,
   filterWorkspaceSkillGroups,
+  getLocalSkillActivationSourceRecord,
   getLocalSkillActivationState,
   getLocalSkillSourceRecord,
   getUninstallableSkillRecords,
@@ -92,6 +94,9 @@ describe("私有 Skill 仓库", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].externalRecord).toBe(externalSource);
     expect(getLocalSkillSourceRecord(groups[0])).toBeNull();
+    expect(getLocalSkillActivationSourceRecord(groups[0])).toBe(externalSource);
+    expect(canControlLocalSkill(groups[0], "claude")).toBe(true);
+    expect(canControlLocalSkill(groups[0], "codex")).toBe(true);
     expect(getLocalSkillActivationState(groups[0], "codex")).toBe("enabled");
     expect(getUninstallableSkillRecords([
       externalSource,

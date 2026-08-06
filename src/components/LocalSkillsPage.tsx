@@ -4,6 +4,7 @@ import {
   canControlLocalSkill,
   filterLocalSkillGroups,
   getExternalCodexLegacyLink,
+  getLocalSkillActivationSourceRecord,
   getLocalSkillActivationState,
   getLocalSkillLocation,
   getLocalSkillSourceRecord,
@@ -82,7 +83,9 @@ function activationDescription(
     return "检测到旧版共享连接；点击后切换为管理器维护的入口";
   }
   if (group.externalRecord && !getLocalSkillSourceRecord(group)) {
-    return "该 Skill 来自外部 skills-manager，Kocotree 不会修改其本体或通过开关调整状态";
+    return state === "enabled"
+      ? `关闭后只移除 ${AGENT_DETAILS[agent].label} 的生效入口，不会修改外部 Skill 本体`
+      : `开启后为 ${AGENT_DETAILS[agent].label} 创建生效入口，不会修改外部 Skill 本体`;
   }
   if (!canControlLocalSkill(group, agent)) {
     return `已在 ${AGENT_DETAILS[agent].label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
@@ -161,7 +164,7 @@ export function LocalSkillsPage({
   );
   const normalizedAddQuery = addQuery.trim().toLocaleLowerCase();
   const availableGroups = groups.filter((group) => {
-    const record = getLocalSkillSourceRecord(group);
+    const record = getLocalSkillActivationSourceRecord(group);
     if (
       !record
       || !canControlLocalSkill(group, filter)
@@ -180,7 +183,7 @@ export function LocalSkillsPage({
   }, [filter]);
 
   async function toggleSkill(group: LocalSkillGroup): Promise<void> {
-    const sourceRecord = getLocalSkillSourceRecord(group);
+    const sourceRecord = getLocalSkillActivationSourceRecord(group);
     const state = getLocalSkillActivationState(group, filter);
     if (
       !sourceRecord
@@ -477,7 +480,7 @@ export function LocalSkillsPage({
           />
           <div className="local-skill-add-list">
             {availableGroups.map((group) => {
-              const record = getLocalSkillSourceRecord(group)!;
+              const record = getLocalSkillActivationSourceRecord(group)!;
               const controlKey = `${group.id}:${filter}`;
               return (
                 <article className="local-skill-add-item" key={group.id}>

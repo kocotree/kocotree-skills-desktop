@@ -13,7 +13,7 @@ Kocotree Skills 当前包含在线 Skill 平台和平台版本安装两个领域
 
 当前本地范围包含平台 Skill 的安装与受管目录控制。安装器会先完成下载、校验和安全解压；目标冲突时先停止并请求用户确认，确认后把旧目录移动到 `~/.kocotree-skills/backups`，再写入新版本。新版本最终写入失败时会自动恢复旧目录。备份列表和手动恢复仍不作为独立的本地管理功能提供。
 
-从旧版升级时，客户端只会把自身的 `.kocotree-skills-desktop.json` 状态文件从 `~/.skills-manager` 复制到新目录，不删除旧文件，也不迁移旧目录中的 Skill、数据库、缓存或备份。`~/.skills-manager` 继续由其他 Skill 管理器独立维护；其中已经投放到 Codex 或 Claude Code 的 Skill 仍可通过对应 Agent 目录被检测为外部条目。
+从旧版升级时，客户端只会把自身的 `.kocotree-skills-desktop.json` 状态文件从 `~/.skills-manager` 复制到新目录，不删除旧文件，也不迁移旧目录中的 Skill、数据库、缓存或备份。`~/.skills-manager` 继续由其他 Skill 管理器独立维护；其中的 Skill 会被检测为外部条目，用户可通过开关创建或移除对应 Agent 的生效入口，但 Kocotree 不会修改或删除外部本体。
 
 以下能力不在当前范围：
 
