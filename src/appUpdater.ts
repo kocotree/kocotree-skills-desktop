@@ -31,6 +31,7 @@ export interface AppUpdateSnapshot {
 const AUTOMATIC_CHECKS_KEY = "kocotree.desktop.automatic-update-checks";
 const AUTO_CHECK_DELAY_MS = 4_000;
 const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000;
+const UPDATE_DOWNLOAD_INSTALL_TIMEOUT_MS = 60 * 60 * 1_000;
 
 function readAutomaticChecks(): boolean {
   if (typeof window === "undefined") return true;
@@ -200,7 +201,9 @@ export async function installAvailableAppUpdate(): Promise<void> {
 
   publish({ phase: "downloading", progress: 0, errorMessage: "" });
   try {
-    await update.downloadAndInstall(handleDownloadEvent, { timeout: 5 * 60_000 });
+    await update.downloadAndInstall(handleDownloadEvent, {
+      timeout: UPDATE_DOWNLOAD_INSTALL_TIMEOUT_MS,
+    });
     publish({ phase: "restarting", progress: 100 });
     await relaunch();
   } catch (reason) {
