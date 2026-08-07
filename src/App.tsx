@@ -88,6 +88,23 @@ function getDepartmentDisplayName(
     || pathName;
 }
 
+function getSidebarDepartmentDisplayName(
+  departmentPath: string[] | undefined,
+): string {
+  const segments = (departmentPath ?? [])
+    .flatMap((part) => part.split(/\s*(?:[\\/／>＞]|[-‐‑‒–—])\s*/u))
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const leaf = segments[segments.length - 1];
+  if (!leaf) return "部门信息暂无";
+
+  const parent = segments[segments.length - 2];
+  const needsParentContext = /(?:组|团队)$/u.test(leaf);
+  return parent && needsParentContext
+    ? `${parent} · ${leaf}`
+    : leaf;
+}
+
 function localFilterForPage(page: PageKey): LocalSkillFilter | null {
   if (page === "local-claude") return "claude";
   if (page === "local-codex") return "codex";
@@ -1410,7 +1427,9 @@ function App() {
                 </span>
                 <span>
                   <strong>{currentUser.name}</strong>
-                  <small>{currentUser.departmentPath?.join(" ") || "部门信息暂无"}</small>
+                  <small title={currentUser.departmentPath?.join(" / ") || "部门信息暂无"}>
+                    {getSidebarDepartmentDisplayName(currentUser.departmentPath)}
+                  </small>
                 </span>
                 {unreadCount > 0 && <span className="account-unread-dot" aria-label={`${unreadCount} 条未读通知`} />}
               </button>
