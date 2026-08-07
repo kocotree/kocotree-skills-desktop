@@ -673,7 +673,7 @@ textarea:focus-visible,
   display: grid;
   width: min(860px, 100%);
   margin: 0 auto;
-  gap: 18px;
+  gap: 14px;
 }
 
 .update-settings-card,
@@ -699,7 +699,7 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 22px 18px;
+  padding: 14px 22px;
   border-bottom: 1px solid #ecefec;
 }
 
@@ -749,18 +749,19 @@ textarea:focus-visible,
 
 .update-status-row {
   display: flex;
-  min-height: 88px;
+  min-height: 74px;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 18px 22px;
+  padding: 14px 22px;
 }
 
 .update-status-copy {
-  display: flex;
+  display: grid;
   min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: flex-start;
-  gap: 11px;
+  gap: 12px;
 }
 
 .update-status-copy > div,
@@ -783,24 +784,20 @@ textarea:focus-visible,
   line-height: 17px;
 }
 
-.update-status-dot {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  margin-top: 5px;
-  border-radius: 50%;
-  background: #aeb4ae;
-  box-shadow: 0 0 0 4px #f0f2ef;
+.update-row-icon {
+  display: grid;
+  width: 42px;
+  height: 36px;
+  place-items: center;
+  color: #7d867f;
 }
 
-.update-status-dot.available {
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
+.update-status-icon.available {
+  color: var(--accent-deep);
 }
 
-.update-status-dot.error {
-  background: #d8654e;
-  box-shadow: 0 0 0 4px #fff0ec;
+.update-status-icon.error {
+  color: #d8654e;
 }
 
 .update-check-button {
@@ -938,12 +935,12 @@ textarea:focus-visible,
 }
 
 .settings-preference-row {
-  display: flex;
-  min-height: 76px;
+  display: grid;
+  min-height: 64px;
+  grid-template-columns: 42px minmax(0, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 16px 22px;
+  gap: 12px;
+  padding: 12px 22px;
   border-bottom: 1px solid #ecefec;
 }
 

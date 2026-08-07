@@ -10,6 +10,7 @@ export type AppIconName =
   | "hot"
   | "download"
   | "check"
+  | "checkCircle"
   | "plus"
   | "close"
   | "folder"
@@ -35,6 +36,7 @@ const iconPaths: Record<AppIconName, React.ReactNode> = {
   hot: <><path d="M13.4 3.5c.3 3-1.3 4.2-2.8 5.8-1.2 1.3-1.8 2.4-1.2 4.2.7-1.4 1.7-2.2 3-2.7-.2 1.8.8 2.8 2 4 1.1 1.1 1.6 2.4 1.4 4-4.7-.5-7.8-3.5-7.8-7.7 0-3.3 1.9-6.4 5.3-8.8Z" /></>,
   download: <><path d="M12 4v10m0 0 4-4m-4 4-4-4" /><path d="M5 18.5h14" /></>,
   check: <><path d="m5 12.5 4.2 4.2L19 7" /></>,
+  checkCircle: <><circle cx="12" cy="12" r="8" /><path d="m8.5 12.2 2.4 2.4 4.8-5.2" /></>,
   plus: <><path d="M12 5v14M5 12h14" /></>,
   close: <><path d="M6 6l12 12M18 6 6 18" /></>,
   folder: <><path d="M3.5 7.5h6l2-2h9v13h-17z" /></>,

@@ -60,6 +60,13 @@ function updateStatusDescription(
 export function SettingsPage() {
   const update = useAppUpdater();
   const busy = ["checking", "downloading", "installing", "restarting"].includes(update.phase);
+  const statusIcon = update.phase === "error"
+    ? "close"
+    : update.phase === "unsupported"
+      ? "help"
+      : update.phase === "idle" || update.phase === "current"
+        ? "checkCircle"
+        : "update";
   const showAvailablePanel = Boolean(update.availableVersion) && [
     "available",
     "downloading",
@@ -92,6 +99,9 @@ export function SettingsPage() {
           </header>
 
           <div className="settings-preference-row">
+            <span className="update-row-icon" aria-hidden="true">
+              <AppIcon name="clock" size={18} />
+            </span>
             <div>
               <strong>自动检查更新</strong>
               <small>客户端启动后静默检查，有新版本时再提醒你。</small>
@@ -110,7 +120,9 @@ export function SettingsPage() {
 
           <div className="update-status-row" aria-live="polite">
             <div className="update-status-copy">
-              <span className={`update-status-dot ${showAvailablePanel ? "available" : ""} ${update.phase === "error" ? "error" : ""}`} />
+              <span className={`update-row-icon update-status-icon ${showAvailablePanel ? "available" : ""} ${update.phase === "error" ? "error" : ""}`}>
+                <AppIcon name={statusIcon} size={18} />
+              </span>
               <div>
                 <strong>{updateStatusTitle(update.phase, update.availableVersion)}</strong>
                 <small>{updateStatusDescription(
