@@ -55,7 +55,7 @@ function updateStatusDescription(
 
 /**
  * 功能说明：展示客户端设置与真实版本更新入口。
- * @returns 设置与关于页面。
+ * @returns 设置页面。
  */
 export function SettingsPage() {
   const update = useAppUpdater();
@@ -73,7 +73,7 @@ export function SettingsPage() {
     <main className="page-content settings-page">
       <header className="page-heading settings-heading">
         <div>
-          <h1>设置与关于</h1>
+          <h1>设置</h1>
           <p>管理客户端更新，查看当前安装版本。</p>
         </div>
       </header>
@@ -90,6 +90,23 @@ export function SettingsPage() {
             </div>
             <span className="current-version-badge">v{packageJson.version}</span>
           </header>
+
+          <div className="settings-preference-row">
+            <div>
+              <strong>自动检查更新</strong>
+              <small>客户端启动后静默检查，有新版本时再提醒你。</small>
+            </div>
+            <button
+              className={`settings-switch ${update.automaticChecks ? "enabled" : ""}`}
+              type="button"
+              role="switch"
+              aria-checked={update.automaticChecks}
+              aria-label="自动检查更新"
+              onClick={() => setAutomaticUpdateChecks(!update.automaticChecks)}
+            >
+              <span />
+            </button>
+          </div>
 
           <div className="update-status-row" aria-live="polite">
             <div className="update-status-copy">
@@ -146,34 +163,22 @@ export function SettingsPage() {
               )}
             </div>
           )}
-
-          <div className="settings-preference-row">
-            <div>
-              <strong>自动检查更新</strong>
-              <small>客户端启动后静默检查，有新版本时再提醒你。</small>
-            </div>
-            <button
-              className={`settings-switch ${update.automaticChecks ? "enabled" : ""}`}
-              type="button"
-              role="switch"
-              aria-checked={update.automaticChecks}
-              aria-label="自动检查更新"
-              onClick={() => setAutomaticUpdateChecks(!update.automaticChecks)}
-            >
-              <span />
-            </button>
-          </div>
         </section>
 
         <section className="about-settings-card">
-          <div>
-            <span className="settings-eyebrow">关于</span>
-            <h2>Kocotree 技能广场</h2>
-            <p>浏览、发布并管理提供给 Claude Code 和 Codex 使用的 Skill。</p>
+          <div className="about-card-intro">
+            <span className="about-card-mark" aria-hidden="true">
+              <AppIcon name="info" size={21} />
+            </span>
+            <div className="about-card-copy">
+              <span className="settings-eyebrow">关于</span>
+              <h2>Kocotree 技能广场</h2>
+              <p>浏览、发布并管理提供给 Claude Code 和 Codex 使用的 Skill。</p>
+            </div>
           </div>
           <dl>
-            <div><dt>客户端版本</dt><dd>v{packageJson.version}</dd></div>
-            <div><dt>更新渠道</dt><dd>正式版</dd></div>
+            <dt>客户端版本</dt><dd>v{packageJson.version}</dd>
+            <dt>更新渠道</dt><dd>正式版</dd>
           </dl>
         </section>
 

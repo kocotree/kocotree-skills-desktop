@@ -944,7 +944,7 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: 18px;
   padding: 16px 22px;
-  border-top: 1px solid #ecefec;
+  border-bottom: 1px solid #ecefec;
 }
 
 .settings-switch {
@@ -992,14 +992,27 @@ textarea:focus-visible,
   padding: 21px 22px;
 }
 
-.about-settings-card > div {
+.about-card-intro {
   display: grid;
-  gap: 3px;
+  min-width: 0;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.about-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0;
+}
+
+.about-card-copy h2 {
+  margin-top: 4px;
 }
 
 .about-settings-card p {
   max-width: 520px;
-  margin: 5px 0 0;
+  margin: 1px 0 0;
   color: #777e77;
   font-size: 12px;
   line-height: 19px;
@@ -1007,14 +1020,11 @@ textarea:focus-visible,
 
 .about-settings-card dl {
   display: grid;
+  grid-template-columns: max-content max-content;
+  justify-content: end;
+  column-gap: 24px;
+  row-gap: 8px;
   margin: 0;
-  gap: 8px;
-}
-
-.about-settings-card dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
   font-size: 11px;
 }
 
@@ -1036,6 +1046,7 @@ textarea:focus-visible,
   padding: 18px 22px;
 }
 
+.about-card-mark,
 .support-card-mark {
   display: grid;
   width: 42px;

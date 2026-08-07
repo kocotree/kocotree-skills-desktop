@@ -1324,7 +1324,7 @@ function App() {
               onClick={() => setActivePage("local-all")}
             >
               <i className="local-nav-icon local-nav-icon-agents">
-                <AppIcon name="agents" size={16} />
+                <AppIcon name="agents" size={20} />
               </i>
               <span className="sidebar-nav-label">全部 Skill</span>
               <span className="local-nav-count">{localSkillCounts.all}</span>
@@ -1342,7 +1342,7 @@ function App() {
               onClick={() => setActivePage("local-claude")}
             >
               <i className="local-nav-icon local-nav-icon-claude">
-                <AppIcon name="claude" size={15} />
+                <AppIcon name="claude" size={20} />
               </i>
               <span className="sidebar-nav-label">Claude Code</span>
               <span className="local-nav-count">
@@ -1357,7 +1357,7 @@ function App() {
               onClick={() => setActivePage("local-codex")}
             >
               <i className="local-nav-icon local-nav-icon-codex">
-                <AppIcon name="codex" size={15} />
+                <AppIcon name="codex" size={20} />
               </i>
               <span className="sidebar-nav-label">Codex</span>
               <span className="local-nav-count">{localSkillCounts.codex}</span>
@@ -1370,12 +1370,12 @@ function App() {
             <button
               className={activePage === "settings" ? "active" : ""}
               type="button"
-              aria-label="设置与关于"
-              title="设置与关于"
+              aria-label="设置"
+              title="设置"
               onClick={() => setActivePage("settings")}
             >
               <AppIcon name="settings" size={19} />
-              <span>设置与关于</span>
+              <span>设置</span>
             </button>
           </nav>
           {currentUser ? (
