@@ -243,10 +243,6 @@ textarea:focus-visible,
   color: inherit;
 }
 
-.sidebar-local-nav .local-nav-parent {
-  font-weight: 620;
-}
-
 .sidebar-local-nav .local-nav-child {
   position: relative;
   width: 100%;
