@@ -3184,6 +3184,57 @@ button.my-skill-card:hover {
   gap: 0;
 }
 
+.skill-agent-adopt-button.ui-button {
+  height: 24px;
+  padding: 0 10px;
+  border-color: var(--accent-border);
+  border-radius: 7px;
+  background: var(--accent-surface);
+  color: var(--accent-deep);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.skill-agent-adopt-button.ui-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--accent-border));
+  background: var(--accent-soft);
+}
+
+.local-skill-adopt-content {
+  display: grid;
+  gap: 12px;
+}
+
+.local-skill-adopt-content > p {
+  margin: 0;
+  color: #4f554f;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.local-skill-adopt-content > span {
+  color: #858b85;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.local-skill-adopt-error {
+  padding: 9px 11px;
+  border: 1px solid #efc7bd;
+  border-radius: 8px;
+  background: #fff5f2;
+  color: #a54734;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.local-skill-adopt-footer {
+  display: flex;
+  width: 100%;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .compact-agent-controls .skill-agent-state {
   position: absolute;
   width: 1px;

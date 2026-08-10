@@ -120,6 +120,7 @@ export function AllAgentsSkillsPage({
   error,
   onRefresh,
   onSetEnabled,
+  onAdopt,
   deletingRecordId,
   onDelete,
   onDeleteEntry,
@@ -132,6 +133,7 @@ export function AllAgentsSkillsPage({
   error: string;
   onRefresh: () => void;
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
+  onAdopt: (record: LocalSkillRecord) => void;
   deletingRecordId: string | null;
   onDelete: (records: LocalSkillRecord[]) => void;
   onDeleteEntry: (record: LocalSkillRecord) => void;
@@ -299,6 +301,19 @@ export function AllAgentsSkillsPage({
               || record.skillDescription;
             const groupRecords = getLocalSkillGroupRecords(group);
             const legacyCodexLink = getExternalCodexLegacyLink(group);
+            const claudeRecord = group.agentRecords.claude;
+            const codexRecord = group.agentRecords.codex;
+            const adoptableRecord = claudeRecord
+              && claudeRecord.entryKind === "DIRECTORY"
+              && getLocalSkillLocation(claudeRecord) === "CLAUDE"
+              && !canControlLocalSkill(group, "claude")
+                ? claudeRecord
+                : codexRecord
+                  && codexRecord.entryKind === "DIRECTORY"
+                  && getLocalSkillLocation(codexRecord) === "CODEX"
+                  && !canControlLocalSkill(group, "codex")
+                    ? codexRecord
+                    : null;
             const deleting = groupRecords.some(
               (item) => item.id === deletingRecordId,
             );
@@ -392,6 +407,22 @@ export function AllAgentsSkillsPage({
                     </div>
                   )}
                   <div className="my-skill-card-footer-actions compact-skill-footer-actions">
+                    {adoptableRecord && (
+                      <Button
+                        className="skill-agent-adopt-button"
+                        size="small"
+                        type="tertiary"
+                        tooltip="之后可以随时为 Agent 开启或关闭"
+                        disabled={
+                          Boolean(pendingControl)
+                          || deletingRecordId !== null
+                          || syncingRecordId !== null
+                        }
+                        onClick={() => onAdopt(adoptableRecord)}
+                      >
+                        设为可管理
+                      </Button>
+                    )}
                     <div className="skill-agent-controls compact-agent-controls">
                       {AGENTS.map((agent) => {
                         const state = getLocalSkillActivationState(group, agent.id);
@@ -399,9 +430,12 @@ export function AllAgentsSkillsPage({
                           agent.id !== "claude" || claudeInstalled;
                         const controlKey = `${group.id}:${agent.id}`;
                         const pending = pendingControl === controlKey;
-                        const interactive = installed
-                          && canControlLocalSkill(group, agent.id)
-                          && ["enabled", "disabled", "legacy"].includes(state);
+                        const controlSupported = canControlLocalSkill(
+                          group,
+                          agent.id,
+                        ) && ["enabled", "disabled", "legacy"].includes(state);
+                        if (!controlSupported) return null;
+                        const interactive = installed;
                         return (
                           <div
                             className={`skill-agent-control skill-agent-control-${agent.id}${installed ? "" : " agent-not-installed"}`}

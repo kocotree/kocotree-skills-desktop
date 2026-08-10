@@ -1,5 +1,6 @@
 import {
   SkillApiError,
+  type AdoptLocalSkillInput,
   type AgentInstallationStatus,
   type LocalInstallRequest,
   type LocalInstallResult,
@@ -252,6 +253,48 @@ export class MockLocalSkillService implements LocalSkillService {
       record.installedAt = null;
       record.status = "LOCAL_UNKNOWN";
     }
+    return structuredClone(this.records);
+  }
+
+  async adoptSkill(
+    input: AdoptLocalSkillInput,
+  ): Promise<LocalSkillRecord[]> {
+    await this.wait();
+    const sourceRecord = this.records.find(
+      (record) =>
+        record.id === input.recordId
+        && (record.location === "CLAUDE" || record.location === "CODEX")
+        && record.entryKind === "DIRECTORY"
+    );
+    if (!sourceRecord) {
+      throw new SkillApiError(
+        "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+        "这个技能已经发生变化，请重新扫描后再试",
+      );
+    }
+    if (this.records.some(
+      (record) =>
+        record.location === "MANAGER"
+        && record.skillName === sourceRecord.skillName,
+    )) {
+      throw new SkillApiError(
+        "LOCAL_SKILL_ADOPTION_NAME_CONFLICT",
+        "Kocotree 中已经存在同名技能，本次没有修改任何文件",
+      );
+    }
+    const agent = sourceRecord.location === "CLAUDE" ? "claude" : "codex";
+    const managedPath = managerPath(sourceRecord.skillName);
+    this.records.push({
+      ...structuredClone(sourceRecord),
+      id: `manager-${sourceRecord.skillName}`,
+      installPath: managedPath,
+      location: "MANAGER",
+      entryKind: "DIRECTORY",
+      resolvedPath: managedPath,
+      assignedAgents: [agent],
+    });
+    sourceRecord.entryKind = "SYMLINK";
+    sourceRecord.resolvedPath = managedPath;
     return structuredClone(this.records);
   }
 

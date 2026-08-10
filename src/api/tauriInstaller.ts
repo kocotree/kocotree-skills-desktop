@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import {
   SkillApiError,
+  type AdoptLocalSkillInput,
   type AgentInstallationStatus,
   type LocalInstallRequest,
   type LocalInstallResult,
@@ -212,6 +213,25 @@ export class TauriInstaller implements LocalSkillService {
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_METADATA_CLEAR_FAILED",
         commandError?.message ?? "无法清除本地 Skill 云端关联",
+        commandError?.details,
+      );
+    }
+  }
+
+  /** 将 Agent 目录中的独立实体 Skill 安全迁移到 Kocotree 私有仓库。 */
+  async adoptSkill(
+    input: AdoptLocalSkillInput,
+  ): Promise<LocalSkillRecord[]> {
+    try {
+      return await invoke<LocalSkillRecord[]>(
+        "adopt_local_skill",
+        { input },
+      );
+    } catch (reason) {
+      const commandError = parseCommandError(reason);
+      throw new SkillApiError(
+        commandError?.code ?? "LOCAL_SKILL_ADOPTION_FAILED",
+        commandError?.message ?? "无法将这个技能设为可管理",
         commandError?.details,
       );
     }

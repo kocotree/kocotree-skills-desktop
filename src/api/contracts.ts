@@ -141,6 +141,11 @@ export interface SetLocalSkillEnabledInput {
   enabled: boolean;
 }
 
+/** 将 Agent 用户目录中的独立 Skill 纳入 Kocotree 管理。 */
+export interface AdoptLocalSkillInput {
+  recordId: string;
+}
+
 export interface RemoveLocalSkillInput {
   skillId: string;
   skillName: string;
@@ -202,6 +207,7 @@ export interface LocalSkillService extends SkillInstaller {
   recordPublication(input: RecordLocalSkillPublicationInput): Promise<void>;
   syncMetadata(input: SyncLocalSkillMetadataInput): Promise<LocalSkillRecord[]>;
   clearPublication(skillId: string): Promise<LocalSkillRecord[]>;
+  adoptSkill(input: AdoptLocalSkillInput): Promise<LocalSkillRecord[]>;
   setSkillEnabled(input: SetLocalSkillEnabledInput): Promise<LocalSkillRecord[]>;
   remove(input: RemoveLocalSkillInput): Promise<LocalSkillRecord[]>;
   removeEntries(input: RemoveLocalSkillEntriesInput): Promise<LocalSkillRecord[]>;

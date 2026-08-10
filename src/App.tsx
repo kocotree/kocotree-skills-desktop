@@ -644,6 +644,9 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
   const [installFeedback, setInstallFeedback] = useState<InstallFeedbackState | null>(null);
   const [uninstallPrompt, setUninstallPrompt] = useState<UninstallPromptState | null>(null);
+  const [adoptPrompt, setAdoptPrompt] = useState<LocalSkillRecord | null>(null);
+  const [adoptingLocalSkill, setAdoptingLocalSkill] = useState(false);
+  const [adoptLocalSkillError, setAdoptLocalSkillError] = useState("");
   const [installing, setInstalling] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
   const [uninstallingSkillId, setUninstallingSkillId] = useState<string | null>(null);
@@ -687,6 +690,41 @@ function App() {
     },
     [],
   );
+
+  const prepareLocalSkillAdoption = useCallback((record: LocalSkillRecord) => {
+    setAdoptLocalSkillError("");
+    setAdoptPrompt(record);
+  }, []);
+
+  const closeLocalSkillAdoption = useCallback(() => {
+    if (adoptingLocalSkill) return;
+    setAdoptPrompt(null);
+    setAdoptLocalSkillError("");
+  }, [adoptingLocalSkill]);
+
+  const adoptLocalSkill = useCallback(async () => {
+    if (!adoptPrompt || adoptingLocalSkill) return;
+    setAdoptingLocalSkill(true);
+    setAdoptLocalSkillError("");
+    try {
+      const items = await localSkillService.adoptSkill({
+        recordId: adoptPrompt.id,
+      });
+      setLocalSkills(items);
+      setInstalledSkillIds(installedSkillIdsFromRecords(items));
+      setAdoptPrompt(null);
+      Toast.success("这个技能已设为可管理");
+    } catch (reason) {
+      console.error("[KocotreeSkills] 设置本地 Skill 管理状态失败", reason);
+      setAdoptLocalSkillError(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "暂时无法完成设置，请稍后再试",
+      );
+    } finally {
+      setAdoptingLocalSkill(false);
+    }
+  }, [adoptPrompt, adoptingLocalSkill]);
 
   useEffect(() => {
     skillApi.getCurrentUser().then(setCurrentUser).catch((reason: unknown) => {
@@ -1501,6 +1539,7 @@ function App() {
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
             onSetEnabled={setLocalSkillEnabled}
+            onAdopt={prepareLocalSkillAdoption}
             deletingRecordId={uninstallingSkillId}
             onDelete={(records) => prepareLocalDelete(records, true)}
             onDeleteEntry={(record) => prepareLocalDelete([record], false)}
@@ -1516,6 +1555,7 @@ function App() {
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
             onSetEnabled={setLocalSkillEnabled}
+            onAdopt={prepareLocalSkillAdoption}
             deletingRecordId={uninstallingSkillId}
             onDelete={(records) => prepareLocalDelete(records, false)}
             syncingRecordId={syncingRecordId}
@@ -1597,6 +1637,49 @@ function App() {
         }}
         onConfirm={() => void uninstallSkill()}
       />
+
+      <Modal
+        className="local-skill-adopt-modal"
+        title="要让本软件管理这个技能吗？"
+        visible={Boolean(adoptPrompt)}
+        width={440}
+        onCancel={closeLocalSkillAdoption}
+        maskClosable={!adoptingLocalSkill}
+        closeOnEsc={!adoptingLocalSkill}
+        footer={
+          <div className="local-skill-adopt-footer">
+            <Button
+              disabled={adoptingLocalSkill}
+              onClick={closeLocalSkillAdoption}
+            >
+              取消
+            </Button>
+            <Button
+              type="primary"
+              theme="solid"
+              loading={adoptingLocalSkill}
+              onClick={() => void adoptLocalSkill()}
+            >
+              设为可管理
+            </Button>
+          </div>
+        }
+      >
+        <div className="local-skill-adopt-content">
+          <p>
+            设置后，这个技能仍可正常使用。以后你可以在本软件中随时开启或关闭它。
+          </p>
+          <p>技能内容会完整保留，不会被删除。</p>
+          <span>
+            如果本软件中已有同名技能，本次设置会停止，原文件保持不变。
+          </span>
+          {adoptLocalSkillError && (
+            <div className="local-skill-adopt-error" role="alert">
+              {adoptLocalSkillError}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         className="login-modal"

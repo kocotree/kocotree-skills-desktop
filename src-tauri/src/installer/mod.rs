@@ -253,6 +253,12 @@ pub struct SetLocalSkillEnabledInput {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AdoptLocalSkillInput {
+    pub record_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoveLocalSkillInput {
     pub skill_id: String,
     pub skill_name: String,
@@ -2216,6 +2222,256 @@ fn set_local_skill_enabled_on_disk(
     set_local_skill_enabled_at_home(&home, input)
 }
 
+fn rollback_local_skill_adoption(
+    source: &Path,
+    managed_source: &Path,
+    connection_mode: Option<ManagedConnectionMode>,
+) -> Result<(), InstallError> {
+    if let Some(mode) = connection_mode {
+        remove_managed_connection_target(source, mode).map_err(|error| {
+            InstallError::with_details(
+                "LOCAL_SKILL_ADOPTION_ROLLBACK_FAILED",
+                format!("恢复技能失败：无法移除新建入口：{error}"),
+                serde_json::json!({
+                    "sourcePath": source,
+                    "managedPath": managed_source,
+                }),
+            )
+        })?;
+    } else if fs::symlink_metadata(source).is_ok() {
+        return Err(InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_ROLLBACK_FAILED",
+            "恢复技能失败：原位置出现了新的文件，请不要手动移动相关目录",
+            serde_json::json!({
+                "sourcePath": source,
+                "managedPath": managed_source,
+            }),
+        ));
+    }
+    fs::rename(managed_source, source).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_ROLLBACK_FAILED",
+            format!("恢复技能失败：{error}"),
+            serde_json::json!({
+                "sourcePath": source,
+                "managedPath": managed_source,
+            }),
+        )
+    })
+}
+
+fn adopt_local_skill_at_home(
+    home: &Path,
+    input: AdoptLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let claude_root = home.join(".claude").join("skills");
+    let codex_root = home.join(".codex").join("skills");
+    let mut agent_records = Vec::new();
+    scan_skills_root(&claude_root, "CLAUDE", &mut agent_records);
+    scan_skills_root(&codex_root, "CODEX", &mut agent_records);
+    let source_record = agent_records
+        .into_iter()
+        .find(|record| record.id == input.record_id)
+        .ok_or_else(|| {
+            InstallError::new(
+                "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+                "这个技能已经发生变化，请重新扫描后再试",
+            )
+        })?;
+    let (agent, agent_label, expected_root) = match source_record.location.as_str() {
+        "CLAUDE" => ("claude", "Claude Code", claude_root),
+        "CODEX" => ("codex", "Codex", codex_root),
+        _ => {
+            return Err(InstallError::new(
+                "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+                "只能设置 Claude Code 或 Codex 中独立安装的技能",
+            ));
+        }
+    };
+    let skill_name = source_record.skill_name;
+    if !is_valid_skill_name(&skill_name) {
+        return Err(InstallError::new(
+            "INVALID_SKILL_NAME",
+            "技能名称格式无效，暂时无法设为可管理",
+        ));
+    }
+
+    let source = PathBuf::from(source_record.install_path);
+    if source.parent() != Some(expected_root.as_path())
+        || source.file_name().and_then(|name| name.to_str()) != Some(skill_name.as_str())
+        || source_record.entry_kind != "DIRECTORY"
+    {
+        return Err(InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+            "只能设置 Agent 技能目录中独立安装的技能",
+            serde_json::json!({ "path": source }),
+        ));
+    }
+    let source_metadata = fs::symlink_metadata(&source).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+            "这个技能已经发生变化，请重新扫描后再试",
+            serde_json::json!({ "path": source, "reason": error.to_string() }),
+        )
+    })?;
+    let source_link_kind = managed_directory_link_kind(&source, &source_metadata)
+        .map_err(|error| io_error("检查 Agent 技能", error))?;
+    if source_link_kind.is_some() || !source_metadata.is_dir() {
+        return Err(InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+            "这个技能已经可以管理，或者其文件已经发生变化，请重新扫描后再试",
+            serde_json::json!({ "path": source }),
+        ));
+    }
+    let skill_definition = source.join("SKILL.md");
+    let skill_md = fs::read_to_string(&skill_definition).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_SOURCE_INVALID",
+            "无法读取这个技能的定义文件，本次没有修改任何文件",
+            serde_json::json!({ "path": skill_definition, "reason": error.to_string() }),
+        )
+    })?;
+    let parsed_skill_name = parse_skill_name(&skill_md)?;
+    if parsed_skill_name != skill_name {
+        return Err(InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_NAME_MISMATCH",
+            "技能文件夹名称与技能定义不一致，本次没有修改任何文件",
+            serde_json::json!({
+                "path": source,
+                "folderName": skill_name,
+                "skillName": parsed_skill_name,
+            }),
+        ));
+    }
+
+    let managed_source = private_skills_root(home).join(&skill_name);
+    match fs::symlink_metadata(&managed_source) {
+        Ok(_) => {
+            return Err(InstallError::with_details(
+                "LOCAL_SKILL_ADOPTION_NAME_CONFLICT",
+                "Kocotree 中已经存在同名技能，本次没有修改任何文件",
+                serde_json::json!({
+                    "sourcePath": source,
+                    "managedPath": managed_source,
+                }),
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error("检查 Kocotree 中的同名技能", error)),
+    }
+
+    let original_canonical_path = source
+        .canonicalize()
+        .map_err(|error| io_error("定位 Agent 技能", error))?
+        .to_string_lossy()
+        .into_owned();
+    let mut manager_state = load_local_skill_manager_state(home)?;
+    fs::create_dir_all(private_skills_root(home))
+        .map_err(|error| io_error("创建 Kocotree 技能目录", error))?;
+    fs::rename(&source, &managed_source).map_err(|error| {
+        InstallError::with_details(
+            "LOCAL_SKILL_ADOPTION_MOVE_FAILED",
+            format!("无法安全移动这个技能，本次没有修改任何文件：{error}"),
+            serde_json::json!({
+                "sourcePath": source,
+                "managedPath": managed_source,
+            }),
+        )
+    })?;
+
+    let managed_canonical_path = match managed_source.canonicalize() {
+        Ok(path) => path.to_string_lossy().into_owned(),
+        Err(error) => {
+            if let Err(rollback_error) =
+                rollback_local_skill_adoption(&source, &managed_source, None)
+            {
+                return Err(rollback_error);
+            }
+            return Err(io_error("定位 Kocotree 技能", error));
+        }
+    };
+
+    let connection_mode = match create_managed_directory_link(&managed_source, &source) {
+        Ok(mode) => mode,
+        Err(error) => {
+            if let Err(rollback_error) =
+                rollback_local_skill_adoption(&source, &managed_source, None)
+            {
+                return Err(rollback_error);
+            }
+            return Err(InstallError::with_details(
+                "LOCAL_SKILL_ADOPTION_LINK_FAILED",
+                format!("无法为 {agent_label} 恢复技能入口，本次操作已撤销：{error}"),
+                serde_json::json!({
+                    "sourcePath": source,
+                    "managedPath": managed_source,
+                }),
+            ));
+        }
+    };
+    let assigned_skills = manager_state
+        .assignments
+        .entry(agent.to_string())
+        .or_default();
+    if !assigned_skills.iter().any(|name| name == &skill_name) {
+        assigned_skills.push(skill_name.clone());
+        assigned_skills.sort();
+    }
+    let connection_key = managed_connection_key(agent, &skill_name);
+    if connection_mode == ManagedConnectionMode::Copy {
+        let source_hash = match hash_skill_directory(&managed_source) {
+            Ok(hash) => hash,
+            Err(error) => {
+                if let Err(rollback_error) = rollback_local_skill_adoption(
+                    &source,
+                    &managed_source,
+                    Some(connection_mode),
+                ) {
+                    return Err(rollback_error);
+                }
+                return Err(io_error("计算技能摘要", error));
+            }
+        };
+        manager_state.connections.insert(
+            connection_key,
+            ManagedConnectionState {
+                source_path: managed_canonical_path.clone(),
+                target_path: source.to_string_lossy().into_owned(),
+                mode: connection_mode,
+                source_hash,
+            },
+        );
+    } else {
+        manager_state.connections.remove(&connection_key);
+    }
+    if let Some(publication) = manager_state.publications.remove(&original_canonical_path) {
+        manager_state
+            .publications
+            .insert(managed_canonical_path, publication);
+    }
+
+    if let Err(state_error) = save_local_skill_manager_state(home, &manager_state) {
+        if let Err(rollback_error) = rollback_local_skill_adoption(
+            &source,
+            &managed_source,
+            Some(connection_mode),
+        ) {
+            return Err(rollback_error);
+        }
+        return Err(state_error);
+    }
+
+    scan_local_skills_from_home(home)
+}
+
+fn adopt_local_skill_on_disk(
+    input: AdoptLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let home = dirs::home_dir()
+        .ok_or_else(|| InstallError::new("HOME_DIRECTORY_UNAVAILABLE", "无法获取当前用户主目录"))?;
+    adopt_local_skill_at_home(&home, input)
+}
+
 #[derive(Clone, Copy, Debug)]
 enum LocalRemovalKind {
     ManagedLink(ManagedDirectoryLinkKind),
@@ -3207,6 +3463,31 @@ pub async fn scan_local_skills() -> Result<Vec<LocalSkillRecord>, InstallError> 
                 format!("扫描本地 Skill 失败：{error}"),
             )
         })?
+}
+
+/** 将 Agent 用户目录中的独立 Skill 安全迁移到 Kocotree 私有仓库。 */
+#[tauri::command]
+pub async fn adopt_local_skill(
+    input: AdoptLocalSkillInput,
+) -> Result<Vec<LocalSkillRecord>, InstallError> {
+    let record_id = input.record_id.clone();
+    info!("开始将 Agent Skill 设为可管理：record_id={record_id}");
+    let result = tauri::async_runtime::spawn_blocking(move || adopt_local_skill_on_disk(input))
+        .await
+        .map_err(|error| {
+            InstallError::new(
+                "LOCAL_SKILL_ADOPTION_FAILED",
+                format!("设置技能管理状态失败：{error}"),
+            )
+        })?;
+    match &result {
+        Ok(_) => info!("Agent Skill 已设为可管理：record_id={record_id}"),
+        Err(adoption_error) => error!(
+            "Agent Skill 设置管理失败：record_id={}, code={}, message={}",
+            record_id, adoption_error.code, adoption_error.message
+        ),
+    }
+    result
 }
 
 /** 通过创建或移除 Agent 专属目录连接，开启或彻底关闭指定 Agent 的 Skill。 */

@@ -33,6 +33,7 @@ pub fn run() {
             installer::sync_local_skill_metadata,
             installer::clear_local_skill_publication,
             installer::scan_local_skills,
+            installer::adopt_local_skill,
             installer::set_local_skill_enabled,
             installer::remove_local_skill,
             installer::remove_local_skill_entries

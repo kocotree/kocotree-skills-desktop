@@ -88,7 +88,7 @@ function activationDescription(
       : `开启后为 ${AGENT_DETAILS[agent].label} 创建生效入口，不会修改外部 Skill 本体`;
   }
   if (!canControlLocalSkill(group, agent)) {
-    return `已在 ${AGENT_DETAILS[agent].label} 扫描目录中检测到独立安装的 Skill，因此显示为已开启；如需移除请使用右侧“移到回收站”`;
+    return `这是 ${AGENT_DETAILS[agent].label} 中独立安装的技能；设为可管理后即可安全开启或关闭`;
   }
   if (group.workspaceRecord && !group.managerRecord && agent === "codex") {
     const hasLegacyLink = Boolean(getExternalCodexLegacyLink(group));
@@ -129,6 +129,7 @@ export function LocalSkillsPage({
   error,
   onRefresh,
   onSetEnabled,
+  onAdopt,
   deletingRecordId,
   onDelete,
   syncingRecordId,
@@ -141,6 +142,7 @@ export function LocalSkillsPage({
   error: string;
   onRefresh: () => void;
   onSetEnabled: (input: SetLocalSkillEnabledInput) => Promise<void>;
+  onAdopt: (record: LocalSkillRecord) => void;
   deletingRecordId: string | null;
   onDelete: (records: LocalSkillRecord[]) => void;
   syncingRecordId: string | null;
@@ -297,9 +299,13 @@ export function LocalSkillsPage({
             const agentRecord = group.agentRecords[filter] ?? record;
             const syncRecord = getLocalSkillSourceRecord(group) ?? agentRecord;
             const deleting = agentRecord.id === deletingRecordId;
-            const interactive = agentInstalled
-              && canControlLocalSkill(group, filter)
+            const controlSupported = canControlLocalSkill(group, filter)
               && ["enabled", "disabled", "legacy"].includes(state);
+            const adoptable = !controlSupported
+              && getLocalSkillLocation(agentRecord) === (
+                filter === "claude" ? "CLAUDE" : "CODEX"
+              )
+              && agentRecord.entryKind === "DIRECTORY";
             const statusLabel = getLocalSkillLocation(record) === "EXTERNAL"
               ? "外部 Skill"
               : legacyCodexLink && filter === "codex"
@@ -395,22 +401,40 @@ export function LocalSkillsPage({
                           />
                           {AGENT_DETAILS[filter].label}
                         </span>
-                        <button
-                          className={`skill-agent-toggle state-${state}`}
-                          type="button"
-                          role="switch"
-                          aria-checked={state === "enabled"}
-                          aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
-                          disabled={!interactive || Boolean(pendingControl)}
-                          onClick={() => void toggleSkill(group)}
-                        >
-                          <span className="skill-agent-toggle-track">
-                            <span className="skill-agent-toggle-knob" />
-                          </span>
-                          <span className="skill-agent-state">
-                            {pending ? "处理中" : ACTIVATION_LABELS[state]}
-                          </span>
-                        </button>
+                        {controlSupported && (
+                          <button
+                            className={`skill-agent-toggle state-${state}`}
+                            type="button"
+                            role="switch"
+                            aria-checked={state === "enabled"}
+                            aria-label={`${AGENT_DETAILS[filter].label}：${ACTIVATION_LABELS[state]}`}
+                            disabled={!agentInstalled || Boolean(pendingControl)}
+                            onClick={() => void toggleSkill(group)}
+                          >
+                            <span className="skill-agent-toggle-track">
+                              <span className="skill-agent-toggle-knob" />
+                            </span>
+                            <span className="skill-agent-state">
+                              {pending ? "处理中" : ACTIVATION_LABELS[state]}
+                            </span>
+                          </button>
+                        )}
+                        {adoptable && (
+                          <Button
+                            className="skill-agent-adopt-button"
+                            size="small"
+                            type="tertiary"
+                            tooltip="之后可以随时开启或关闭"
+                            disabled={
+                              Boolean(pendingControl)
+                              || deletingRecordId !== null
+                              || syncingRecordId !== null
+                            }
+                            onClick={() => onAdopt(agentRecord)}
+                          >
+                            设为可管理
+                          </Button>
+                        )}
                       </div>
                     </div>
                     <CloudSyncButton
