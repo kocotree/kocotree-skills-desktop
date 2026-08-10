@@ -202,10 +202,10 @@ textarea:focus-visible,
 }
 
 .sidebar-local-nav button {
-  height: 38px;
+  height: 44px;
   gap: 9px;
   padding: 0 10px;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .local-nav-icon {
@@ -249,8 +249,8 @@ textarea:focus-visible,
 
 .sidebar-local-nav .local-nav-child {
   position: relative;
-  width: calc(100% - 13px);
-  margin-left: 13px;
+  width: 100%;
+  padding-left: 10px;
 }
 
 .sidebar-local-nav button:disabled {
@@ -258,16 +258,6 @@ textarea:focus-visible,
   color: #a0a59f;
   cursor: default;
   opacity: 0.72;
-}
-
-.sidebar-local-nav .local-nav-child::before {
-  position: absolute;
-  top: -4px;
-  bottom: -4px;
-  left: -7px;
-  width: 1px;
-  background: #d9dcd8;
-  content: "";
 }
 
 .sidebar-nav-label {
@@ -3931,10 +3921,7 @@ button.my-skill-card:hover {
   .sidebar-local-nav .local-nav-child {
     width: 100%;
     margin-left: 0;
-  }
-
-  .sidebar-local-nav .local-nav-child::before {
-    display: none;
+    padding-left: 0;
   }
 
   .sidebar-user-area {
