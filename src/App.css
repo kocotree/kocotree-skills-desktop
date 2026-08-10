@@ -2124,7 +2124,7 @@ textarea:focus-visible,
   min-height: 0;
   flex: 1;
   overflow: hidden;
-  padding: 0 22px 12px;
+  padding: 10px 22px 12px;
 }
 
 .detail-loading,
@@ -2162,6 +2162,10 @@ textarea:focus-visible,
   flex-direction: column;
 }
 
+.detail-tags + .ui-tabs {
+  margin-top: -6px;
+}
+
 .detail-body > .ui-tabs > .ui-tabs-list {
   width: 100%;
   overflow: visible;
@@ -2182,6 +2186,7 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 12px;
+  padding-left: 10px;
 }
 
 .detail-identity code {

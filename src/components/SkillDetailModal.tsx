@@ -315,18 +315,14 @@ export function SkillDetailModal({
         <div className="detail-error"><strong>暂时无法显示详情</strong><span>{error}</span></div>
       ) : detail ? (
         <div className="detail-body">
-          {(detail.displayName !== detail.skillName || detail.status !== "ACTIVE") && (
-            <div className="detail-identity">
-              {detail.displayName !== detail.skillName && (
-                <code>{detail.skillName}</code>
-              )}
-              {detail.status !== "ACTIVE" && (
-                <span className={`detail-status detail-status-${detail.status.toLocaleLowerCase()}`}>
-                  {detail.status === "ARCHIVED" ? "已归档" : "名称冲突"}
-                </span>
-              )}
-            </div>
-          )}
+          <div className="detail-identity">
+            <code>{detail.skillName}</code>
+            {detail.status !== "ACTIVE" && (
+              <span className={`detail-status detail-status-${detail.status.toLocaleLowerCase()}`}>
+                {detail.status === "ARCHIVED" ? "已归档" : "名称冲突"}
+              </span>
+            )}
+          </div>
           {detail.tags.length > 0 && (
             <div className="detail-tags">
               {detail.tags.map((tag) => <Tag color="green" key={tag.id}>{tag.name}</Tag>)}
