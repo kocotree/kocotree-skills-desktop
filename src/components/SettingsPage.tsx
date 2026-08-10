@@ -86,16 +86,19 @@ export function SettingsPage() {
       </header>
 
       <div className="settings-content">
-        <section className={`update-settings-card ${showAvailablePanel ? "has-update" : ""}`}>
+        <section
+          className={`update-settings-card ${showAvailablePanel ? "has-update" : ""}`}
+          aria-labelledby="software-update-heading"
+        >
           <header className="update-card-header">
             <span className="update-card-mark" aria-hidden="true">
               <AppIcon name="update" size={22} />
             </span>
             <div>
-              <span className="settings-eyebrow">软件更新</span>
-              <h2>Kocotree Skills</h2>
+              <h2 id="software-update-heading">软件更新</h2>
+              <p>Kocotree Skills 客户端</p>
             </div>
-            <span className="current-version-badge">v{packageJson.version}</span>
+            <span className="current-version-badge">当前版本 v{packageJson.version}</span>
           </header>
 
           <div className="settings-preference-row">

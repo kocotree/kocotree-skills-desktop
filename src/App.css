@@ -707,7 +707,7 @@ textarea:focus-visible,
 
 .update-card-header > div {
   display: grid;
-  gap: 2px;
+  gap: 1px;
 }
 
 .settings-eyebrow {
@@ -724,6 +724,13 @@ textarea:focus-visible,
   color: #292d29;
   font-size: 16px;
   line-height: 24px;
+}
+
+.update-card-header p {
+  margin: 0;
+  color: #858b85;
+  font-size: 11px;
+  line-height: 17px;
 }
 
 .current-version-badge {
