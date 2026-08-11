@@ -203,8 +203,8 @@ textarea:focus-visible,
 
 .sidebar-local-nav button {
   height: 44px;
-  gap: 9px;
-  padding: 0 10px;
+  gap: 10px;
+  padding: 0 14px;
   font-size: 15px;
 }
 
@@ -246,7 +246,6 @@ textarea:focus-visible,
 .sidebar-local-nav .local-nav-child {
   position: relative;
   width: 100%;
-  padding-left: 10px;
 }
 
 .sidebar-local-nav button:disabled {
