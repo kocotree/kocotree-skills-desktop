@@ -33,9 +33,6 @@ const folderInputAttributes = {
   webkitdirectory: "",
 };
 
-// Tag 选择暂时不在上传页展示，保留完整实现便于后续恢复。
-const showTagSelection = false;
-
 /**
  * 功能说明：在本地解析 ZIP 或自动打包文件夹，并在用户确认后创建 Skill 或发布指定 Skill 新版本。
  * @param targetSkill - 从详情页进入时绑定的目标 Skill，新建流程为 null。
@@ -96,10 +93,10 @@ export function UploadPage({
     setNewTagInputVisible(false);
     setError("");
     setDuplicateConflicts([]);
+    setSelectedTagIds(targetSkill?.tags.map((tag) => tag.id) ?? []);
     if (targetSkill) {
       setDisplayName(targetSkill.displayName);
       setDisplayDescription(targetSkill.displayDescription);
-      setSelectedTagIds(targetSkill.tags.map((tag) => tag.id));
     }
     if (!targetSkill && inspection) {
       setDisplayName(inspection.skillName);
@@ -203,6 +200,91 @@ export function UploadPage({
     setNewTagDraft("");
     setNewTagInputVisible(false);
     setError("");
+  }
+
+  function renderTagSelection(legend: string) {
+    return (
+      <fieldset className="tag-field field-wide" aria-required="false">
+        <legend>{legend}</legend>
+        <div>
+          {availableTags.map((tag) => (
+            <button
+              className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"}
+              type="button"
+              aria-pressed={selectedTagIds.includes(tag.id)}
+              key={tag.id}
+              onClick={() => toggleTag(tag.id)}
+            >
+              {tag.name}
+            </button>
+          ))}
+          {newTagNames.map((name) => (
+            <span className="tag-created-chip" key={name}>
+              {name}
+              <button
+                type="button"
+                aria-label={`删除新 Tag：${name}`}
+                onClick={() => {
+                  setNewTagNames((items) => items.filter((item) => item !== name));
+                  setError("");
+                }}
+              >
+                <AppIcon name="close" size={12} />
+              </button>
+            </span>
+          ))}
+          {newTagInputVisible ? (
+            <span className="tag-create-editor">
+              <input
+                className="tag-create-input"
+                autoFocus
+                aria-label="创建新 Tag"
+                value={newTagDraft}
+                onChange={(event) => {
+                  setNewTagDraft(event.currentTarget.value);
+                  setError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitNewTagDraft();
+                  }
+                  if (event.key === "Escape") {
+                    setNewTagDraft("");
+                    setNewTagInputVisible(false);
+                  }
+                }}
+                placeholder="输入后按回车添加"
+              />
+              <Tooltip content="取消创建新 Tag">
+                <button
+                  className="tag-create-cancel-button"
+                  type="button"
+                  aria-label="取消创建新 Tag"
+                  onClick={() => {
+                    setNewTagDraft("");
+                    setNewTagInputVisible(false);
+                  }}
+                >
+                  <AppIcon name="close" size={14} />
+                </button>
+              </Tooltip>
+            </span>
+          ) : (
+            <Tooltip content="创建新 Tag">
+              <button
+                className="tag-create-button"
+                type="button"
+                aria-label="创建新 Tag"
+                onClick={() => setNewTagInputVisible(true)}
+              >
+                <AppIcon name="plus" size={15} />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      </fieldset>
+    );
   }
 
   /**
@@ -370,78 +452,7 @@ export function UploadPage({
                 <label className="field"><span>展示名称（必填）</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
                 <label className="field"><span>版本号（固定）</span><input readOnly value={version} /></label>
                 <label className="field field-wide"><span>展示简介（必填）</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                {showTagSelection && (
-                  <fieldset className="tag-field field-wide" aria-required="false">
-                    <legend>选择 Tag（可选，最多 5 个）</legend>
-                    <div>
-                      {availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}
-                      {newTagNames.map((name) => (
-                        <span className="tag-created-chip" key={name}>
-                          {name}
-                          <button
-                            type="button"
-                            aria-label={`删除新 Tag：${name}`}
-                            onClick={() => {
-                              setNewTagNames((items) => items.filter((item) => item !== name));
-                              setError("");
-                            }}
-                          >
-                            <AppIcon name="close" size={12} />
-                          </button>
-                        </span>
-                      ))}
-                      {newTagInputVisible ? (
-                        <span className="tag-create-editor">
-                          <input
-                            className="tag-create-input"
-                            autoFocus
-                            aria-label="创建新 Tag"
-                            value={newTagDraft}
-                            onChange={(event) => {
-                              setNewTagDraft(event.currentTarget.value);
-                              setError("");
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                commitNewTagDraft();
-                              }
-                              if (event.key === "Escape") {
-                                setNewTagDraft("");
-                                setNewTagInputVisible(false);
-                              }
-                            }}
-                            placeholder="输入后按回车添加"
-                          />
-                          <Tooltip content="取消创建新 Tag">
-                            <button
-                              className="tag-create-cancel-button"
-                              type="button"
-                              aria-label="取消创建新 Tag"
-                              onClick={() => {
-                                setNewTagDraft("");
-                                setNewTagInputVisible(false);
-                              }}
-                            >
-                              <AppIcon name="close" size={14} />
-                            </button>
-                          </Tooltip>
-                        </span>
-                      ) : (
-                        <Tooltip content="创建新 Tag">
-                          <button
-                            className="tag-create-button"
-                            type="button"
-                            aria-label="创建新 Tag"
-                            onClick={() => setNewTagInputVisible(true)}
-                          >
-                            <AppIcon name="plus" size={15} />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </fieldset>
-                )}
+                {renderTagSelection("选择 Tag（可选，最多 5 个）")}
               </div>
             )}
 
@@ -451,12 +462,7 @@ export function UploadPage({
                   <label className="field"><span>展示名称（必填）</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
                 )}
                 <label className="field field-wide"><span>展示简介（必填）</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
-                {showTagSelection && (
-                  <fieldset className="tag-field field-wide" aria-required="false">
-                    <legend>Tag（可选，最多 5 个）</legend>
-                    <div>{availableTags.map((tag) => <button className={selectedTagIds.includes(tag.id) ? "source-chip active" : "source-chip"} type="button" key={tag.id} onClick={() => toggleTag(tag.id)}>{tag.name}</button>)}</div>
-                  </fieldset>
-                )}
+                {renderTagSelection("Tag（可选，最多 5 个）")}
               </div>
             )}
 

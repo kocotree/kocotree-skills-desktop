@@ -405,6 +405,7 @@ export interface components {
         SkillVersion: {
             id: string;
             skillId: string;
+            /** @description 北京时间日期版本；同一天发布时末尾序号依次递增，例如 2026.8.5-1、2026.8.5-2。 */
             version: string;
             /** @enum {string} */
             status: "PUBLISHED" | "WITHDRAWN";
@@ -485,6 +486,7 @@ export interface components {
             /** Format: binary */
             file: string;
             baseVersionId: string;
+            /** @description 按北京时间日期生成的版本号；同一天发布时末尾序号递增，例如 2026.8.5-1、2026.8.5-2 */
             version: string;
             changelog: string;
             displayName?: string;
@@ -765,7 +767,10 @@ export interface operations {
         parameters: {
             query?: {
                 query?: string;
+                /** @deprecated */
                 tagId?: string;
+                /** @description 多选 Tag ID；重复传参，命中任一 Tag 的 Skill 会被返回 */
+                tagIds?: string[];
                 /** @description 已发布 Skill 部门列表返回的不透明部门标识 */
                 departmentKey?: string;
                 sort?: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";

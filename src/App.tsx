@@ -21,6 +21,7 @@ import {
   type SkillDetailDto,
   type SkillSummaryDto,
   type SkillVersionDto,
+  type TagDto,
   type UserDto,
 } from "./api";
 import { AppIcon } from "./components/AppIcon";
@@ -317,11 +318,13 @@ function BrowsePage({
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [departmentKey, setDepartmentKey] = useState("all");
   const [sort, setSort] = useState<SortKey>("popular");
   const [page, setPage] = useState(1);
   const [totalSkills, setTotalSkills] = useState(0);
   const [skills, setSkills] = useState<SkillSummaryDto[]>([]);
+  const [tags, setTags] = useState<TagDto[]>([]);
   const [departments, setDepartments] =
     useState<PublishedSkillDepartmentDto[]>([]);
   const departmentOptions = useMemo(
@@ -338,6 +341,7 @@ function BrowsePage({
   useEffect(() => {
     if (!highlightedSkillId) return;
     setQuery("");
+    setSelectedTagIds([]);
     setDepartmentKey("all");
     setSort("popular");
     setPage(1);
@@ -358,6 +362,20 @@ function BrowsePage({
     const timer = window.setTimeout(onHighlightComplete, 2200);
     return () => window.clearTimeout(timer);
   }, [highlightedSkillId, loading, onHighlightComplete, skills]);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setTags([]);
+      return;
+    }
+    let active = true;
+    skillApi.listTags().then((items) => {
+      if (active) setTags(items);
+    }).catch((reason: unknown) => {
+      console.error("[KocotreeSkills] Tag 加载失败", reason);
+    });
+    return () => { active = false; };
+  }, [authenticated, refreshKey]);
 
   useEffect(() => {
     if (!authenticated) {
@@ -391,6 +409,10 @@ function BrowsePage({
           const normalizedQuery = debouncedQuery.trim().toLocaleLowerCase();
           const filteredSkills = installedSkills
             .filter((skill) =>
+              selectedTagIds.length === 0
+              || skill.tags.some((tag) => selectedTagIds.includes(tag.id)),
+            )
+            .filter((skill) =>
               departmentKey === "all"
               || JSON.stringify(skill.owner.departmentPath) === departmentKey,
             )
@@ -417,6 +439,7 @@ function BrowsePage({
         })
       : skillApi.listSkills({
           query: debouncedQuery || undefined,
+          tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
           departmentKey: departmentKey === "all" ? undefined : departmentKey,
           sort: sort === "popular"
             ? "INSTALLS_DESC"
@@ -445,7 +468,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, sort, uninstallableSkillIds]);
+  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, selectedTagIds, sort, uninstallableSkillIds]);
 
   if (!authResolved) {
     return (
@@ -544,6 +567,15 @@ function BrowsePage({
         </div>
 
         <TagFilter
+          tags={tags}
+          selectedTagIds={selectedTagIds}
+          onMultiChange={(nextTagIds) => {
+            setSelectedTagIds(nextTagIds);
+            setPage(1);
+          }}
+        />
+
+        <TagFilter
           tags={departmentOptions}
           selectedTagId={departmentKey}
           label="发布部门"
@@ -598,7 +630,7 @@ function BrowsePage({
         <section className="empty-state">
           <AppIcon name={sort === "installed" ? "library" : "search"} size={30} />
           <strong>{sort === "installed" && uninstallableSkillIds.size === 0 ? "还没有安装 Skill" : "没有找到匹配的 Skill"}</strong>
-          <span>{sort === "installed" && uninstallableSkillIds.size === 0 ? "从热门或最近更新中选择需要的 Skill" : "换一个关键词或发布部门试试"}</span>
+          <span>{sort === "installed" && uninstallableSkillIds.size === 0 ? "从热门或最近更新中选择需要的 Skill" : "换一个关键词、Tag 或发布部门试试"}</span>
         </section>
       )}
     </main>

@@ -24,6 +24,13 @@ function positiveInteger(
     : fallback;
 }
 
+function stringArray(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values.flatMap((item) =>
+    typeof item === "string" ? item.split(",") : [],
+  ).map((item) => item.trim()).filter(Boolean))];
+}
+
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
   app.get("/tags", async (request, reply) => {
     const auth = await requireAuth(request, reply);
@@ -52,14 +59,13 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
     const pageSize = positiveInteger(query.pageSize, 20, 100);
     const keyword =
       typeof query.query === "string" ? query.query.trim() : undefined;
-    const tagId =
-      typeof query.tagId === "string" ? query.tagId.trim() : undefined;
+    const tagIds = stringArray(query.tagIds ?? query.tagId);
     const departmentKey =
       typeof query.departmentKey === "string"
         ? query.departmentKey.trim()
         : undefined;
 
-    if (tagId && tagId.length > 100) {
+    if (tagIds.length > 20 || tagIds.some((tagId) => tagId.length > 100)) {
       return failure(reply, 400, "INVALID_REQUEST", "Tag ID 无效");
     }
     if (departmentKey && departmentKey.length > 2_048) {
@@ -74,7 +80,7 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
 
     const result = await catalogService.listSkills({
       query: keyword || undefined,
-      tagId: tagId || undefined,
+      tagIds: tagIds.length > 0 ? tagIds : undefined,
       departmentPath: departmentPath ?? undefined,
       sort,
       page,

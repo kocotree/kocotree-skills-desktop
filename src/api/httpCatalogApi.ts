@@ -13,11 +13,13 @@ import type {
 import type { AuthenticatedHttpClient } from "./httpClient";
 
 function queryString(
-  values: Record<string, string | number | undefined>,
+  values: Record<string, string | number | readonly string[] | undefined>,
 ): string {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(values)) {
-    if (value !== undefined) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(name, item));
+    } else if (value !== undefined) {
       params.set(name, String(value));
     }
   }
@@ -40,6 +42,7 @@ export class HttpCatalogApi {
       `/api/skills${queryString({
         query: query.query,
         tagId: query.tagId,
+        tagIds: query.tagIds,
         departmentKey: query.departmentKey,
         sort: query.sort,
         page: query.page,

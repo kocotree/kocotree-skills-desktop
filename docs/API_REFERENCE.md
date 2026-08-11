@@ -201,10 +201,12 @@ GET /api/tags?query=开发
 ### 7.1 Skill 列表
 
 ```http
-GET /api/skills?query=review&tagId=tag_dev&sort=UPDATED_DESC&page=1&pageSize=20
+GET /api/skills?query=review&tagIds=tag_dev&tagIds=tag_tool&sort=UPDATED_DESC&page=1&pageSize=20
 ```
 
 排序枚举：`UPDATED_DESC`、`CREATED_DESC`、`INSTALLS_DESC`。
+
+`tagIds` 可重复传入多个 Tag ID，列表返回命中任一已选 Tag 的 Skill；不传时不过滤 Tag。旧的单值 `tagId` 参数仍兼容。
 
 `INSTALLS_DESC` 按安装次数、更新时间、创建时间和 Skill ID 依次降序排列，确保安装次数相同时仍能稳定分页。
 

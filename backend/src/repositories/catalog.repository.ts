@@ -3,7 +3,7 @@ import { prisma } from "../db";
 
 export interface ListSkillsInput {
   query?: string;
-  tagId?: string;
+  tagIds?: string[];
   departmentPath?: string[];
   sort: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
   page: number;
@@ -86,11 +86,13 @@ export const catalogRepository = {
             ],
           }
         : {}),
-      ...(input.tagId
+      ...(input.tagIds?.length
         ? {
             tags: {
               some: {
-                tagId: input.tagId,
+                tagId: {
+                  in: input.tagIds,
+                },
               },
             },
           }

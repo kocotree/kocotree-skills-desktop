@@ -174,10 +174,15 @@ export class MockSkillApi implements SkillApi {
   async listSkills(query: ListSkillsQuery = {}): Promise<SkillPageDto> {
     await this.wait();
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
+    const tagIds = query.tagIds?.length
+      ? query.tagIds
+      : query.tagId
+        ? [query.tagId]
+        : [];
     let items = this.skills.filter(
       (skill) =>
         skill.status === "ACTIVE"
-        && (!query.tagId || skill.tags.some((tag) => tag.id === query.tagId))
+        && (tagIds.length === 0 || skill.tags.some((tag) => tagIds.includes(tag.id)))
         && (
           !query.departmentKey
           || JSON.stringify(skill.owner.departmentPath) === query.departmentKey

@@ -126,8 +126,18 @@ paths:
         - name: tagId
           in: query
           required: false
+          deprecated: true
           schema:
             type: string
+        - name: tagIds
+          in: query
+          required: false
+          description: 多选 Tag ID；重复传参，命中任一 Tag 的 Skill 会被返回
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              type: string
         - name: departmentKey
           in: query
           required: false

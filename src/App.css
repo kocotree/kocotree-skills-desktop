@@ -1340,16 +1340,24 @@ textarea:focus-visible,
 }
 
 .tag-filter-menu-list button:hover,
-.tag-filter-menu-list button:focus-visible {
+.tag-filter-menu-list button:focus-visible,
+.tag-filter-menu-list button.active {
   outline: none;
   background: var(--accent-soft);
   color: var(--accent-deep);
 }
 
 .tag-filter-menu-list button > span {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tag-filter-menu-list button > svg {
+  flex: none;
+  margin-left: 8px;
 }
 
 .tag-filter-menu-empty {

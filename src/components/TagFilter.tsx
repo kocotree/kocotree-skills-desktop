@@ -86,8 +86,10 @@ function sameIds(current: readonly string[], next: readonly string[]): boolean {
  */
 export function TagFilter({
   tags,
-  selectedTagId,
+  selectedTagId = "all",
+  selectedTagIds,
   onChange,
+  onMultiChange,
   label = "标签",
   allLabel = "全部标签",
   moreAriaLabel = "更多标签",
@@ -96,8 +98,10 @@ export function TagFilter({
   emptyText = "没有匹配的标签",
 }: {
   tags: FilterOption[];
-  selectedTagId: string;
-  onChange: (tagId: string) => void;
+  selectedTagId?: string;
+  selectedTagIds?: string[];
+  onChange?: (tagId: string) => void;
+  onMultiChange?: (tagIds: string[]) => void;
   label?: string;
   allLabel?: string;
   moreAriaLabel?: string;
@@ -105,6 +109,19 @@ export function TagFilter({
   searchAriaLabel?: string;
   emptyText?: string;
 }) {
+  const multiSelect = selectedTagIds !== undefined;
+  const multiSelectedTagIds = selectedTagIds ?? [];
+  const activeTagIds = useMemo(
+    () => new Set(
+      multiSelect
+        ? multiSelectedTagIds
+        : selectedTagId === "all"
+          ? []
+          : [selectedTagId],
+    ),
+    [multiSelect, multiSelectedTagIds, selectedTagId],
+  );
+  const selectedTagForLayout = selectedTagIds?.[0] ?? selectedTagId;
   const [visibleTagIds, setVisibleTagIds] = useState<string[]>([]);
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreQuery, setMoreQuery] = useState("");
@@ -150,7 +167,7 @@ export function TagFilter({
           id: tag.id,
           width: tagWidths.get(tag.id) ?? 0,
         })),
-        selectedTagId,
+        selectedTagId: selectedTagForLayout,
         availableWidth: options.getBoundingClientRect().width,
         allTagWidth,
         moreWidth,
@@ -165,7 +182,7 @@ export function TagFilter({
     const resizeObserver = new ResizeObserver(syncVisibleTags);
     resizeObserver.observe(options);
     return () => resizeObserver.disconnect();
-  }, [selectedTagId, tags]);
+  }, [selectedTagForLayout, tags]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -197,28 +214,46 @@ export function TagFilter({
   }, [hiddenTags.length]);
 
   function selectTag(tagId: string): void {
-    onChange(tagId);
+    if (multiSelect) {
+      if (tagId === "all") {
+        onMultiChange?.([]);
+        setMoreOpen(false);
+        setMoreQuery("");
+        return;
+      }
+      onMultiChange?.(
+        activeTagIds.has(tagId)
+          ? multiSelectedTagIds.filter((id) => id !== tagId)
+          : [...multiSelectedTagIds, tagId],
+      );
+      return;
+    }
+    onChange?.(tagId);
     setMoreOpen(false);
     setMoreQuery("");
   }
+
+  const hiddenSelectedCount = hiddenTags.filter((tag) =>
+    activeTagIds.has(tag.id)
+  ).length;
 
   return (
     <div className="source-row tag-filter-row">
       <span className="tag-filter-label">{label}</span>
       <div className="tag-filter-options" ref={optionsRef}>
         <button
-          className={selectedTagId === "all" ? "source-chip active" : "source-chip"}
+          className={activeTagIds.size === 0 ? "source-chip active" : "source-chip"}
           type="button"
-          aria-pressed={selectedTagId === "all"}
+          aria-pressed={activeTagIds.size === 0}
           onClick={() => selectTag("all")}
         >
           {allLabel}
         </button>
         {visibleTags.map((tag) => (
           <button
-            className={selectedTagId === tag.id ? "source-chip tag-filter-chip active" : "source-chip tag-filter-chip"}
+            className={activeTagIds.has(tag.id) ? "source-chip tag-filter-chip active" : "source-chip tag-filter-chip"}
             type="button"
-            aria-pressed={selectedTagId === tag.id}
+            aria-pressed={activeTagIds.has(tag.id)}
             title={tag.name}
             key={tag.id}
             onClick={() => selectTag(tag.id)}
@@ -229,7 +264,7 @@ export function TagFilter({
         {hiddenTags.length > 0 && (
           <div className="tag-filter-more" ref={moreRef}>
             <button
-              className="source-chip tag-filter-more-trigger"
+              className={hiddenSelectedCount > 0 ? "source-chip tag-filter-more-trigger active" : "source-chip tag-filter-more-trigger"}
               type="button"
               aria-expanded={moreOpen}
               aria-controls={menuId}
@@ -262,12 +297,15 @@ export function TagFilter({
                   {filteredHiddenTags.length > 0 ? (
                     filteredHiddenTags.map((tag) => (
                       <button
+                        className={activeTagIds.has(tag.id) ? "active" : ""}
                         type="button"
+                        aria-pressed={activeTagIds.has(tag.id)}
                         title={tag.name}
                         key={tag.id}
                         onClick={() => selectTag(tag.id)}
                       >
                         <span>{tag.name}</span>
+                        {activeTagIds.has(tag.id) && <AppIcon name="check" size={14} />}
                       </button>
                     ))
                   ) : (
