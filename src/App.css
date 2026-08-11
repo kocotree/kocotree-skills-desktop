@@ -684,8 +684,8 @@ textarea:focus-visible,
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 22px;
-  border-bottom: 1px solid #ecefec;
+  padding: 16px 22px 14px;
+  background: linear-gradient(135deg, #fbfdfb, #f5faf7);
 }
 
 .update-card-mark {
@@ -739,13 +739,21 @@ textarea:focus-visible,
   font-size: 11px;
 }
 
+.update-card-settings {
+  margin: 0 14px 14px;
+  overflow: hidden;
+  border: 1px solid #e4e8e4;
+  border-radius: 10px;
+  background: #fff;
+}
+
 .update-status-row {
   display: flex;
   min-height: 74px;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 14px 22px;
+  padding: 14px 16px;
 }
 
 .update-status-copy {
@@ -797,7 +805,7 @@ textarea:focus-visible,
 }
 
 .update-available-panel {
-  margin: 0 22px 18px;
+  margin: 0 14px 14px;
   padding: 18px;
   border: 1px solid #d5eadc;
   border-radius: 11px;
@@ -932,7 +940,7 @@ textarea:focus-visible,
   grid-template-columns: 42px minmax(0, 1fr) max-content;
   align-items: center;
   gap: 12px;
-  padding: 12px 22px;
+  padding: 12px 16px;
   border-bottom: 1px solid #ecefec;
 }
 

@@ -101,49 +101,51 @@ export function SettingsPage() {
             <span className="current-version-badge">当前版本 v{packageJson.version}</span>
           </header>
 
-          <div className="settings-preference-row">
-            <span className="update-row-icon" aria-hidden="true">
-              <AppIcon name="clock" size={18} />
-            </span>
-            <div>
-              <strong>自动检查更新</strong>
-              <small>客户端启动后静默检查，有新版本时再提醒你。</small>
-            </div>
-            <button
-              className={`settings-switch ${update.automaticChecks ? "enabled" : ""}`}
-              type="button"
-              role="switch"
-              aria-checked={update.automaticChecks}
-              aria-label="自动检查更新"
-              onClick={() => setAutomaticUpdateChecks(!update.automaticChecks)}
-            >
-              <span />
-            </button>
-          </div>
-
-          <div className="update-status-row" aria-live="polite">
-            <div className="update-status-copy">
-              <span className={`update-row-icon update-status-icon ${showAvailablePanel ? "available" : ""} ${update.phase === "error" ? "error" : ""}`}>
-                <AppIcon name={statusIcon} size={18} />
+          <div className="update-card-settings" aria-label="软件更新设置">
+            <div className="settings-preference-row">
+              <span className="update-row-icon" aria-hidden="true">
+                <AppIcon name="clock" size={18} />
               </span>
               <div>
-                <strong>{updateStatusTitle(update.phase, update.availableVersion)}</strong>
-                <small>{updateStatusDescription(
-                  update.phase,
-                  update.automaticChecks,
-                  update.progress,
-                  update.errorMessage,
-                )}</small>
+                <strong>自动检查更新</strong>
+                <small>客户端启动后静默检查，有新版本时再提醒你。</small>
               </div>
+              <button
+                className={`settings-switch ${update.automaticChecks ? "enabled" : ""}`}
+                type="button"
+                role="switch"
+                aria-checked={update.automaticChecks}
+                aria-label="自动检查更新"
+                onClick={() => setAutomaticUpdateChecks(!update.automaticChecks)}
+              >
+                <span />
+              </button>
             </div>
-            <Button
-              className="update-check-button"
-              loading={update.phase === "checking"}
-              disabled={busy && update.phase !== "checking"}
-              onClick={() => void checkForAppUpdate()}
-            >
-              检查更新
-            </Button>
+
+            <div className="update-status-row" aria-live="polite">
+              <div className="update-status-copy">
+                <span className={`update-row-icon update-status-icon ${showAvailablePanel ? "available" : ""} ${update.phase === "error" ? "error" : ""}`}>
+                  <AppIcon name={statusIcon} size={18} />
+                </span>
+                <div>
+                  <strong>{updateStatusTitle(update.phase, update.availableVersion)}</strong>
+                  <small>{updateStatusDescription(
+                    update.phase,
+                    update.automaticChecks,
+                    update.progress,
+                    update.errorMessage,
+                  )}</small>
+                </div>
+              </div>
+              <Button
+                className="update-check-button"
+                loading={update.phase === "checking"}
+                disabled={busy && update.phase !== "checking"}
+                onClick={() => void checkForAppUpdate()}
+              >
+                检查更新
+              </Button>
+            </div>
           </div>
 
           {showAvailablePanel && update.availableVersion && (
