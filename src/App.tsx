@@ -580,10 +580,6 @@ function BrowsePage({
           selectedTagId={departmentKey}
           label="发布部门"
           allLabel="全部"
-          moreAriaLabel="更多发布部门"
-          searchPlaceholder="搜索发布部门"
-          searchAriaLabel="搜索更多发布部门"
-          emptyText="没有匹配的发布部门"
           onChange={(nextDepartmentKey) => {
             setDepartmentKey(nextDepartmentKey);
             setPage(1);
