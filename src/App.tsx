@@ -1352,7 +1352,7 @@ function App() {
             width={40}
             height={40}
           />
-          <strong>Kocotree 技能广场</strong>
+          <strong>Kocotree Skills 广场</strong>
         </div>
 
         <nav className="sidebar-nav" aria-label="主导航">

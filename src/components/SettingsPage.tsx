@@ -189,7 +189,7 @@ export function SettingsPage() {
             </span>
             <div className="about-card-copy">
               <span className="settings-eyebrow">关于</span>
-              <h2>Kocotree 技能广场</h2>
+              <h2>Kocotree Skills 广场</h2>
               <p>浏览、发布并管理提供给 Claude Code 和 Codex 使用的 Skill。</p>
             </div>
           </div>
