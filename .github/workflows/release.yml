@@ -259,7 +259,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Test frontend
-        run: pnpm test
+        run: pnpm test:frontend
 
       - name: Test desktop core
         run: cargo test --manifest-path src-tauri/Cargo.toml

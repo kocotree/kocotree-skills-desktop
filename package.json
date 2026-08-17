@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "api:generate": "openapi-typescript docs/openapi.yaml -o src/api/schema.d.ts",
     "test": "vitest run",
+    "test:frontend": "vitest run src",
     "preview": "vite preview",
     "tauri": "tauri"
   },
