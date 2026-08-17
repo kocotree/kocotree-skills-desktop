@@ -205,6 +205,17 @@ export class MockSkillApi implements SkillApi {
     return { items: clone(items.slice((page - 1) * pageSize, page * pageSize)), total: items.length, page, pageSize };
   }
 
+  async translateSkillMetadata(input: {
+    skillName: string;
+    skillDescription: string;
+  }): Promise<{ displayName: string; displayDescription: string }> {
+    await this.wait();
+    return {
+      displayName: input.skillName,
+      displayDescription: input.skillDescription,
+    };
+  }
+
   async listPublishedSkillDepartments(): Promise<
     PublishedSkillDepartmentDto[]
   > {

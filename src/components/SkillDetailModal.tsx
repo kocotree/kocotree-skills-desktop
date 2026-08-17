@@ -363,7 +363,7 @@ export function SkillDetailModal({
             <TabPane tab="介绍" itemKey="overview">
               <section className="detail-section">
                 <h3>Skill 技能描述</h3>
-                <p>{detail.skillDescription}</p>
+                <p>{detail.displayDescription}</p>
                 <dl className="detail-info-grid">
                   <div><dt>最新版本</dt><dd><strong>v{detail.currentVersion.version}</strong></dd></div>
                   <div><dt>安装次数</dt><dd><strong>{detail.installCount.toLocaleString("zh-CN")}</strong></dd></div>

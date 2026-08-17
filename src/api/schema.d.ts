@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/skill-metadata/translations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 将 Skill 名称和描述转换为中文展示信息 */
+        post: operations["translateSkillMetadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/skills": {
         parameters: {
             query?: never;
@@ -335,7 +352,7 @@ export interface components {
          * @description 与 HTTP 响应状态码一致。
          * @enum {integer}
          */
-        ErrorHttpStatus: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 500;
+        ErrorHttpStatus: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 500 | 502 | 503 | 504;
         /** @description 业务错误码与结构化错误详情。 */
         ErrorData: {
             errorCode: components["schemas"]["BusinessErrorCode"];
@@ -343,7 +360,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        BusinessErrorCode: "CONTENT_UNCHANGED" | "DISPLAY_NAME_CONFIRMATION_REQUIRED" | "DUPLICATE_SKILL_NAME" | "FILE_NOT_FOUND" | "FILE_PREVIEW_UNAVAILABLE" | "FORBIDDEN" | "INSTALLATION_UNAVAILABLE" | "INVALID_REQUEST" | "INVALID_SEMVER" | "INVALID_SKILL_PACKAGE" | "OWNER_REQUIRED" | "PACKAGE_HASH_MISMATCH" | "PACKAGE_TOO_LARGE" | "SKILL_NAME_MISMATCH" | "SKILL_NOT_FOUND" | "SKILL_UNAVAILABLE" | "UNAUTHENTICATED" | "USER_DISABLED" | "VERSION_ALREADY_EXISTS" | "VERSION_CONFLICT" | "VERSION_NOT_FOUND" | "VERSION_NOT_GREATER";
+        BusinessErrorCode: "CONTENT_UNCHANGED" | "DISPLAY_NAME_CONFIRMATION_REQUIRED" | "DUPLICATE_SKILL_NAME" | "FILE_NOT_FOUND" | "FILE_PREVIEW_UNAVAILABLE" | "FORBIDDEN" | "INSTALLATION_UNAVAILABLE" | "INVALID_REQUEST" | "INVALID_SEMVER" | "INVALID_SKILL_PACKAGE" | "OWNER_REQUIRED" | "PACKAGE_HASH_MISMATCH" | "PACKAGE_TOO_LARGE" | "INVALID_TRANSLATION_RESPONSE" | "SKILL_NAME_MISMATCH" | "SKILL_NOT_FOUND" | "SKILL_UNAVAILABLE" | "TRANSLATION_PROVIDER_ERROR" | "TRANSLATION_TIMEOUT" | "TRANSLATION_UNAVAILABLE" | "UNAUTHENTICATED" | "USER_DISABLED" | "VERSION_ALREADY_EXISTS" | "VERSION_CONFLICT" | "VERSION_NOT_FOUND" | "VERSION_NOT_GREATER";
         ApiOkMeta: {
             /**
              * @description 与 HTTP 成功状态码一致。
@@ -482,6 +499,14 @@ export interface components {
             /** @default false */
             confirmDuplicateDisplayName: boolean;
         };
+        TranslateSkillMetadataRequest: {
+            skillName: string;
+            skillDescription: string;
+        };
+        SkillMetadataTranslation: {
+            displayName: string;
+            displayDescription: string;
+        };
         PublishVersionRequest: {
             /** Format: binary */
             file: string;
@@ -601,6 +626,9 @@ export interface components {
         };
         TagListResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["Tag"][];
+        };
+        SkillMetadataTranslationResponse: components["schemas"]["ApiOkMeta"] & {
+            data: components["schemas"]["SkillMetadataTranslation"];
         };
         PublishedSkillDepartmentListResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["PublishedSkillDepartment"][];
@@ -758,6 +786,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    translateSkillMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranslateSkillMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description 中文展示信息 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillMetadataTranslationResponse"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

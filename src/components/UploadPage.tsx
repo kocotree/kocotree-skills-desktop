@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Tooltip } from "./ui";
 import {
   parseSkillPackage,
@@ -69,6 +69,10 @@ export function UploadPage({
   const [newTagInputVisible, setNewTagInputVisible] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [displayDescription, setDisplayDescription] = useState("");
+  const [translationState, setTranslationState] = useState<
+    "idle" | "translating" | "translated" | "failed"
+  >("idle");
+  const translationRequestId = useRef(0);
   const [version, setVersion] = useState(() =>
     nextDateSkillVersion(targetSkill?.currentVersion.version),
   );
@@ -101,6 +105,10 @@ export function UploadPage({
     if (!targetSkill && inspection) {
       setDisplayName(inspection.skillName);
       setDisplayDescription(inspection.skillDescription);
+      const requestId = ++translationRequestId.current;
+      void translateMetadata(inspection, requestId);
+    } else {
+      setTranslationState("idle");
     }
   }, [inspection, targetSkill]);
 
@@ -116,11 +124,13 @@ export function UploadPage({
     sourceType: UploadSourceType,
     parse: () => Promise<ParsedSkillPackage>,
   ): Promise<void> {
+    translationRequestId.current += 1;
     setFileName(sourceName);
     setSelectedSourceType(sourceType);
     setSelectedFile(null);
     setInspection(null);
     setError("");
+    setTranslationState("idle");
     setInspecting(true);
     console.info("[KocotreeSkills] 开始解析 Skill 上传来源", {
       sourceName,
@@ -143,6 +153,28 @@ export function UploadPage({
       setError(reason instanceof SkillApiError ? reason.message : "Skill 解析失败，请重新选择");
     } finally {
       setInspecting(false);
+    }
+  }
+
+  /** 使用服务端 DeepSeek 快速模式生成可编辑的中文展示信息。 */
+  async function translateMetadata(
+    source: SkillPackageInspection,
+    requestId = translationRequestId.current,
+  ): Promise<void> {
+    setTranslationState("translating");
+    try {
+      const translated = await skillApi.translateSkillMetadata({
+        skillName: source.skillName,
+        skillDescription: source.skillDescription,
+      });
+      if (requestId !== translationRequestId.current) return;
+      setDisplayName(translated.displayName);
+      setDisplayDescription(translated.displayDescription);
+      setTranslationState("translated");
+    } catch (reason) {
+      if (requestId !== translationRequestId.current) return;
+      console.error("[KocotreeSkills] Skill 展示信息翻译失败", reason);
+      setTranslationState("failed");
     }
   }
 
@@ -442,16 +474,47 @@ export function UploadPage({
             <div className="form-section-heading">
               <span className="section-number">2</span>
               <div>
-                <h2>{targetSkill ? "填写版本信息" : "确认发布信息"}</h2>
+                <div className="form-section-title-row">
+                  <h2>{targetSkill ? "填写版本信息" : "确认发布信息"}</h2>
+                  {!targetSkill && translationState === "translating" && (
+                    <small className="translation-inline-status" role="status">AI 翻译中…</small>
+                  )}
+                </div>
                 <p>版本号按北京时间日期自动生成，同一天发布会自动递增</p>
               </div>
             </div>
 
             {!targetSkill && (
               <div className="form-grid">
-                <label className="field"><span>展示名称（必填）</span><input required value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
+                <label className="field">
+                  <span className="field-label-row">
+                    <span>展示名称（必填）</span>
+                    {translationState === "translated" && (
+                      <small className="translation-inline-status" role="status">AI 已翻译，可编辑</small>
+                    )}
+                  </span>
+                  <input required disabled={translationState === "translating"} value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} />
+                </label>
                 <label className="field"><span>版本号（固定）</span><input readOnly value={version} /></label>
-                <label className="field field-wide"><span>展示简介（必填）</span><textarea required value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} /></label>
+                <label className="field field-wide">
+                  <span className="field-label-row">
+                    <span>展示简介（必填）</span>
+                    {translationState === "translated" && (
+                      <small className="translation-inline-status" role="status">
+                        {displayDescription === inspection.skillDescription
+                          ? "来自 SKILL.md"
+                          : "AI 已翻译，可编辑"}
+                      </small>
+                    )}
+                  </span>
+                  <textarea required disabled={translationState === "translating"} value={displayDescription} onChange={(event) => setDisplayDescription(event.currentTarget.value)} />
+                </label>
+                {translationState === "failed" && (
+                  <div className="translation-fallback field-wide" role="status">
+                    <span>中文展示信息翻译失败，当前保留原文；你可以手动修改或重试。</span>
+                    <Button size="small" onClick={() => void translateMetadata(inspection)}>重新翻译</Button>
+                  </div>
+                )}
                 {renderTagSelection("选择 Tag（可选，最多 5 个）")}
               </div>
             )}
@@ -486,7 +549,7 @@ export function UploadPage({
 
         <div className="form-actions">
           <button className="secondary-button" type="button" onClick={onCancel}>取消</button>
-          <button className="primary-button" type="submit" disabled={!inspection || !selectedFile || nameMismatch || inspecting || publishing}>
+          <button className="primary-button" type="submit" disabled={!inspection || !selectedFile || nameMismatch || inspecting || publishing || translationState === "translating"}>
             <AppIcon name="upload" size={17} />{publishing ? "正在发布…" : targetSkill ? "发布新版本" : "发布 Skill"}
           </button>
         </div>

@@ -47,4 +47,13 @@ export const config = {
         1024,
     ),
     skillUploadMaxMb: readNumber("SKILL_UPLOAD_MAX_MB", 50),
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY || "",
+    deepseekApiBaseUrl:
+        process.env.DEEPSEEK_API_BASE_URL || "https://api.deepseek.com",
+    deepseekTranslationModel:
+        process.env.DEEPSEEK_TRANSLATION_MODEL || "deepseek-v4-flash",
+    deepseekTranslationTimeoutMs: readNumber(
+        "DEEPSEEK_TRANSLATION_TIMEOUT_MS",
+        8_000,
+    ),
 };

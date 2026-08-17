@@ -43,6 +43,7 @@ deploy/.env.example                    -> /home/nangua/kocotree-skills-desktop/.
 API_DOMAIN=skills-api.kktree.cn
 FEISHU_REDIRECT_URI=https://skills-api.kktree.cn/api/auth/feishu/callback
 DESKTOP_AUTH_CALLBACK_URL=kocotree-skills://auth/callback
+DEEPSEEK_API_KEY=替换为真实的 DeepSeek API Key
 ```
 
 可以生成独立的 Token 签名密钥：
@@ -51,7 +52,7 @@ DESKTOP_AUTH_CALLBACK_URL=kocotree-skills://auth/callback
 openssl rand -base64 48
 ```
 
-真实数据库密码、飞书密钥、Token 密钥和 OSS 密钥只保存在服务器 `.env`，不要提交到
+真实数据库密码、飞书密钥、Token 密钥、OSS 密钥和 DeepSeek API Key 只保存在服务器 `.env`，不要提交到
 Git 或放入桌面构建环境。
 
 首次部署前验证 Compose：

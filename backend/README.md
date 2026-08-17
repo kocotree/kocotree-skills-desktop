@@ -107,11 +107,14 @@ FEISHU_APP_SECRET
 TOKEN_SECRET
 OSS_ACCESS_KEY_ID
 OSS_ACCESS_KEY_SECRET
+DEEPSEEK_API_KEY
 ```
 
 `OSS_SIGNED_URL_EXPIRES_SECONDS` 控制下载凭证有效期，默认 300 秒。
 `SKILL_UPLOAD_MAX_MB` 控制上传 ZIP 的压缩包大小上限，默认 50 MB。服务端会移除
 `__MACOSX`、`.DS_Store`、`._*` 等系统元数据并重新生成 ZIP，再计算哈希和上传 OSS。
+`DEEPSEEK_API_KEY` 只写入 `backend/.env`，由服务端调用
+`deepseek-v4-flash` 非思考模式生成中文展示名称和简介；不要使用 `VITE_*` 变量暴露给桌面端。
 
 飞书开放平台中配置的重定向 URL 必须与下面的值完全一致：
 

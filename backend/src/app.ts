@@ -7,6 +7,7 @@ import { catalogRoutes } from "./routes/catalog.route";
 import { installationRoutes } from "./routes/installation.route";
 import { mySkillsRoutes } from "./routes/my-skills.route";
 import { publishingRoutes } from "./routes/publishing.route";
+import { skillTranslationRoutes } from "./routes/skill-translation.route";
 
 export function buildApp() {
   const app = Fastify({
@@ -39,6 +40,9 @@ export function buildApp() {
     prefix: "/api",
   });
   void app.register(publishingRoutes, {
+    prefix: "/api",
+  });
+  void app.register(skillTranslationRoutes, {
     prefix: "/api",
   });
   app.get("/health", async () => ({

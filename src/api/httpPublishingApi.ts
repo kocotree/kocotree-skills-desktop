@@ -2,6 +2,8 @@ import type {
   CreateSkillDto,
   PublishSkillVersionDto,
   SkillDetailDto,
+  SkillMetadataTranslationDto,
+  TranslateSkillMetadataDto,
   UpdateSkillMetadataDto,
 } from "./contracts";
 import { AuthenticatedHttpClient } from "./httpClient";
@@ -28,6 +30,18 @@ function appendOptional(
 
 export class HttpPublishingApi {
   constructor(private readonly http: AuthenticatedHttpClient) {}
+
+  translateSkillMetadata(
+    input: TranslateSkillMetadataDto,
+  ): Promise<SkillMetadataTranslationDto> {
+    return this.http.request<SkillMetadataTranslationDto>(
+      "/api/skill-metadata/translations",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  }
 
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto> {
     const formData = new FormData();

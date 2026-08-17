@@ -12,6 +12,8 @@ tags:
     description: 当前用户和用户关联的 Skill。
   - name: Tags
     description: Skill 分类标签。
+  - name: Translations
+    description: Skill 展示信息中文本地化。
   - name: Skills
     description: Skill 查询、创建和生命周期管理。
   - name: Versions
@@ -107,6 +109,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TagListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skill-metadata/translations:
+    post:
+      tags: [Translations]
+      summary: 将 Skill 名称和描述转换为中文展示信息
+      operationId: translateSkillMetadata
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslateSkillMetadataRequest'
+      responses:
+        '200':
+          description: 中文展示信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillMetadataTranslationResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
   /api/skills:
@@ -625,7 +649,7 @@ components:
     ErrorHttpStatus:
       description: 与 HTTP 响应状态码一致。
       type: integer
-      enum: [400, 401, 403, 404, 409, 413, 415, 422, 500]
+      enum: [400, 401, 403, 404, 409, 413, 415, 422, 500, 502, 503, 504]
     ErrorData:
       description: 业务错误码与结构化错误详情。
       type: object
@@ -650,9 +674,13 @@ components:
         - OWNER_REQUIRED
         - PACKAGE_HASH_MISMATCH
         - PACKAGE_TOO_LARGE
+        - INVALID_TRANSLATION_RESPONSE
         - SKILL_NAME_MISMATCH
         - SKILL_NOT_FOUND
         - SKILL_UNAVAILABLE
+        - TRANSLATION_PROVIDER_ERROR
+        - TRANSLATION_TIMEOUT
+        - TRANSLATION_UNAVAILABLE
         - UNAUTHENTICATED
         - USER_DISABLED
         - VERSION_ALREADY_EXISTS
@@ -984,6 +1012,32 @@ components:
       dependentRequired:
         forkedFromSkillId: [forkedFromVersionId]
         forkedFromVersionId: [forkedFromSkillId]
+    TranslateSkillMetadataRequest:
+      type: object
+      required: [skillName, skillDescription]
+      additionalProperties: false
+      properties:
+        skillName:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+          maxLength: 64
+        skillDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    SkillMetadataTranslation:
+      type: object
+      required: [displayName, displayDescription]
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
     PublishVersionRequest:
       type: object
       required: [file, baseVersionId, version, changelog]
@@ -1261,6 +1315,14 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Tag'
+    SkillMetadataTranslationResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillMetadataTranslation'
     PublishedSkillDepartmentListResponse:
       allOf:
         - $ref: '#/components/schemas/ApiOkMeta'

@@ -65,6 +65,14 @@ export interface UpdateSkillMetadataDto {
   newTagNames?: string[];
   confirmDuplicateDisplayName?: boolean;
 }
+export interface TranslateSkillMetadataDto {
+  skillName: string;
+  skillDescription: string;
+}
+export interface SkillMetadataTranslationDto {
+  displayName: string;
+  displayDescription: string;
+}
 export interface DeleteSkillResultDto {
   id: string;
   deletedObjectCount: number;
@@ -229,6 +237,9 @@ export interface SkillApi {
   listVersionFiles(skillId: string, versionId: string): Promise<FileEntryDto[]>;
   getVersionFileContent(skillId: string, versionId: string, path: string): Promise<SkillFileContentDto>;
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto>;
+  translateSkillMetadata(
+    input: TranslateSkillMetadataDto,
+  ): Promise<SkillMetadataTranslationDto>;
   deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
   deleteSkillVersion(
     skillId: string,

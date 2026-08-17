@@ -3,6 +3,7 @@ import type { AuthenticatedHttpClient } from "./httpClient";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { HttpInstallationApi } from "./httpInstallationApi";
 import { HttpNotificationApi } from "./httpNotificationApi";
+import { HttpPublishingApi } from "./httpPublishingApi";
 import { HttpSkillApi } from "./httpSkillApi";
 import { localSkillService, skillApi } from "./index";
 import { TauriInstaller } from "./tauriInstaller";
@@ -84,6 +85,27 @@ describe("真实 HTTP API 适配器", () => {
       3,
       "/api/notifications/read-all",
       { method: "POST" },
+    );
+  });
+
+  it("通过后端接口请求 Skill 中文展示信息", async () => {
+    const { client, request } = createHttpStub();
+    const api = new HttpPublishingApi(client);
+
+    await api.translateSkillMetadata({
+      skillName: "code-review",
+      skillDescription: "Review code changes and identify issues.",
+    });
+
+    expect(request).toHaveBeenCalledWith(
+      "/api/skill-metadata/translations",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          skillName: "code-review",
+          skillDescription: "Review code changes and identify issues.",
+        }),
+      },
     );
   });
 });

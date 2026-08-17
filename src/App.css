@@ -1612,6 +1612,14 @@ textarea:focus-visible,
   font-size: 15px;
 }
 
+.form-section-title-row {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .form-section-heading p {
   margin: 3px 0 0;
   color: #8a8e96;
@@ -1637,6 +1645,28 @@ textarea:focus-visible,
   color: #4c5058;
   font-size: 13px;
   font-weight: 600;
+}
+
+.field-label-row {
+  display: flex;
+  min-height: 19px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.translation-inline-status {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-surface);
+  color: var(--accent-deep);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
 }
 
 .field input,
@@ -1966,13 +1996,16 @@ textarea:focus-visible,
   font-size: 12px;
 }
 
-.form-notice {
-  margin-top: 16px;
+.translation-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--accent-border);
+  border: 1px solid #f0d6ae;
   border-radius: 8px;
-  background: var(--accent-surface);
-  color: var(--accent-deep);
+  background: #fffaf2;
+  color: #6f5630;
   font-size: 12px;
 }
 

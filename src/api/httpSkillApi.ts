@@ -101,6 +101,13 @@ export class HttpSkillApi implements SkillApi {
     return this.publishing.createSkill(input);
   }
 
+  translateSkillMetadata(input: {
+    skillName: string;
+    skillDescription: string;
+  }) {
+    return this.publishing.translateSkillMetadata(input);
+  }
+
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto) {
     return this.publishing.publishSkillVersion(skillId, input);
   }
