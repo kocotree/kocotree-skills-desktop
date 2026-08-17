@@ -381,7 +381,6 @@ export function AllAgentsSkillsPage({
                   <span className="my-skill-card-heading">
                     <span className="my-skill-main">
                       <strong>{record.displayName}</strong>
-                      <code>{record.skillName}</code>
                       {description && (
                         <small title={description}>
                           {description}

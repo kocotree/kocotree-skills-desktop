@@ -204,9 +204,6 @@ function SkillCard({
             <Tooltip className="skill-text-tooltip" content={skill.displayName} onlyWhenTruncated>
               <strong className="skill-display-name">{skill.displayName}</strong>
             </Tooltip>
-            <Tooltip className="skill-text-tooltip" content={skill.skillName} onlyWhenTruncated>
-              <code className="skill-internal-name">{skill.skillName}</code>
-            </Tooltip>
             <span className="skill-description">{skill.displayDescription}</span>
           </span>
         </button>

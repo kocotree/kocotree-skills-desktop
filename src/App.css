@@ -1392,19 +1392,6 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
-.skill-internal-name {
-  display: block;
-  min-width: 0;
-  margin: 0;
-  overflow: hidden;
-  color: #989ca4;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  line-height: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .skill-card-tags {
   display: flex;
   min-width: 0;
@@ -3122,6 +3109,18 @@ button.my-skill-card:hover {
 
 .workspace-skill-card {
   border-top-color: #bcdccc;
+}
+
+.compact-local-skill-card .my-skill-main {
+  gap: 6px;
+}
+
+.compact-local-skill-card .my-skill-main strong {
+  line-height: 20px;
+}
+
+.compact-local-skill-card .my-skill-main small {
+  line-height: 18px;
 }
 
 .local-skills-list .compact-local-skill-card {
