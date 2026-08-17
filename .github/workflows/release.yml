@@ -73,16 +73,16 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Test frontend
+      - name: Install backend dependencies
+        run: pnpm --dir backend install --frozen-lockfile
+
+      - name: Test application
         run: pnpm test
 
       - name: Build frontend
         env:
           VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
         run: pnpm build
-
-      - name: Install backend dependencies
-        run: pnpm --dir backend install --frozen-lockfile
 
       - name: Generate Prisma Client
         run: pnpm --dir backend prisma:generate
