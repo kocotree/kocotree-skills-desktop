@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { SkillApiError } from "./contracts";
 import {
   inspectSkillZip,
+  isIgnoredUploadPath,
   parseSkillFrontmatter,
   type SkillArchiveSource,
 } from "./zipInspector";
@@ -160,7 +161,7 @@ export async function parseSkillPackage(file: File): Promise<ParsedSkillPackage>
       packageSha256: await sha256(uploadBuffer),
       contentHash: parsed.contentHash,
       warnings: originalParsed.ignoredSystemPaths.length > 0
-        ? [`已自动清理 ${originalParsed.ignoredSystemPaths.length} 条 macOS 系统元数据`]
+        ? [`已自动清理 ${originalParsed.ignoredSystemPaths.length} 条系统元数据或缓存文件`]
         : [],
     },
     source: {
@@ -186,13 +187,6 @@ export async function parseSkillFolder(
       "所选文件夹中没有可上传的文件",
     );
   }
-  if (files.length > MAX_FOLDER_FILE_COUNT) {
-    throw new SkillApiError(
-      "PACKAGE_TOO_LARGE",
-      `文件夹中的普通文件不能超过 ${MAX_FOLDER_FILE_COUNT} 个`,
-    );
-  }
-
   const entries = files.map((file) => {
     const relativePath = file.webkitRelativePath.replace(/\\/g, "/");
     const segments = relativePath.split("/");
@@ -220,8 +214,20 @@ export async function parseSkillFolder(
       "一次只能上传一个 Skill 文件夹",
     );
   }
+  const ignoredEntryCount = entries.filter((entry) =>
+    isIgnoredUploadPath(entry.relativePath)
+  ).length;
+  const uploadEntries = entries.filter((entry) =>
+    !isIgnoredUploadPath(entry.relativePath)
+  );
 
-  const totalSize = entries.reduce(
+  if (uploadEntries.length > MAX_FOLDER_FILE_COUNT) {
+    throw new SkillApiError(
+      "PACKAGE_TOO_LARGE",
+      `文件夹中的普通文件不能超过 ${MAX_FOLDER_FILE_COUNT} 个`,
+    );
+  }
+  const totalSize = uploadEntries.reduce(
     (sum, entry) => sum + entry.file.size,
     0,
   );
@@ -233,7 +239,7 @@ export async function parseSkillFolder(
   }
 
   const archive = new JSZip();
-  for (const { file, relativePath } of entries) {
+  for (const { file, relativePath } of uploadEntries) {
     archive.file(relativePath, await file.arrayBuffer(), {
       binary: true,
       createFolders: true,
@@ -259,6 +265,12 @@ export async function parseSkillFolder(
     inspection: {
       ...parsed.inspection,
       originalFileName: rootDirectory,
+      warnings: ignoredEntryCount > 0
+        ? [
+            ...parsed.inspection.warnings,
+            `已自动清理 ${ignoredEntryCount} 条系统元数据或缓存文件`,
+          ]
+        : parsed.inspection.warnings,
     },
   };
 }

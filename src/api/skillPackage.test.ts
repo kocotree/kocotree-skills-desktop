@@ -1,5 +1,6 @@
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
-import { parseSkillFolder } from "./skillPackage";
+import { parseSkillFolder, parseSkillPackage } from "./skillPackage";
 
 function folderFile(relativePath: string, content: string): File {
   const pathSegments = relativePath.split("/");
@@ -52,8 +53,53 @@ describe("parseSkillFolder", () => {
 
     expect(parsed.inspection.fileCount).toBe(1);
     expect(parsed.inspection.warnings).toEqual([
-      "已自动清理 1 条 macOS 系统元数据",
+      "已自动清理 1 条系统元数据或缓存文件",
     ]);
+  });
+
+  it("移除 Python 缓存并保留使用 .gitkeep 占位的文件夹", async () => {
+    const parsed = await parseSkillFolder([
+      folderFile(
+        "cache-folder/SKILL.md",
+        "---\nname: cache-folder\ndescription: Test Python cache cleanup.\n---\n",
+      ),
+      folderFile("cache-folder/empty/.gitkeep", ""),
+      folderFile(
+        "cache-folder/src/__pycache__/tool.cpython-313.pyc",
+        "compiled cache",
+      ),
+    ]);
+
+    const paths = parsed.source.files.map((entry) => entry.path);
+    expect(paths).toContain("empty/.gitkeep");
+    expect(paths.some((path) => path.includes("__pycache__"))).toBe(false);
+    expect(parsed.inspection.fileCount).toBe(2);
+    expect(parsed.inspection.warnings[0]).toMatch(
+      /^已自动清理 \d+ 条系统元数据或缓存文件$/,
+    );
+  });
+
+  it("清理手工 ZIP 中的 Python 缓存并保留 .gitkeep", async () => {
+    const zip = new JSZip();
+    zip.file(
+      "SKILL.md",
+      "---\nname: cache-zip\ndescription: Test ZIP cache cleanup.\n---\n",
+    );
+    zip.file("empty/.gitkeep", "");
+    zip.file("src/__pycache__/tool.cpython-313.pyc", "compiled cache");
+    const file = new File(
+      [await zip.generateAsync({ type: "arraybuffer" })],
+      "cache-zip.zip",
+      { type: "application/zip" },
+    );
+
+    const parsed = await parseSkillPackage(file);
+    const paths = parsed.source.files.map((entry) => entry.path);
+    expect(paths).toContain("empty/.gitkeep");
+    expect(paths.some((path) => path.includes("__pycache__"))).toBe(false);
+    expect(parsed.inspection.warnings[0]).toMatch(
+      /^已自动清理 \d+ 条系统元数据或缓存文件$/,
+    );
   });
 
   it("拒绝来自多个根目录的混合文件", async () => {

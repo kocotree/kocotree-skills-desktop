@@ -132,16 +132,20 @@ function validateArchivePath(value: string): string {
 }
 
 function isIgnoredSystemPath(filePath: string): boolean {
-  const segments = filePath.split("/");
-  const fileName =
-    segments[segments.length - 1]?.toLocaleLowerCase() ?? "";
+  const segments = filePath
+    .split("/")
+    .map((segment) => segment.toLocaleLowerCase());
+  const fileName = segments[segments.length - 1] ?? "";
   return (
-    segments.includes("__MACOSX") ||
+    segments.includes("__macosx") ||
+    segments.includes("__pycache__") ||
     fileName === ".ds_store" ||
     fileName === ".kocotree-skill.json" ||
     fileName === "thumbs.db" ||
     fileName === "desktop.ini" ||
-    fileName.startsWith("._")
+    fileName.startsWith("._") ||
+    fileName.endsWith(".pyc") ||
+    fileName.endsWith(".pyo")
   );
 }
 

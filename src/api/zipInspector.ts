@@ -74,16 +74,19 @@ function validateArchivePath(path: string): string {
   return segments.join("/");
 }
 
-function isIgnoredSystemPath(path: string): boolean {
-  const segments = path.split("/");
-  const fileName = segments[segments.length - 1]?.toLocaleLowerCase() ?? "";
-  return segments.includes("__MACOSX")
+export function isIgnoredUploadPath(path: string): boolean {
+  const segments = path.split("/").map((segment) => segment.toLocaleLowerCase());
+  const fileName = segments[segments.length - 1] ?? "";
+  return segments.includes("__macosx")
+    || segments.includes("__pycache__")
     || fileName === ".ds_store"
     || fileName === ".kocotree-skill.json"
     || fileName === ".kocotree-managed-copy.json"
     || fileName === "thumbs.db"
     || fileName === "desktop.ini"
-    || fileName.startsWith("._");
+    || fileName.startsWith("._")
+    || fileName.endsWith(".pyc")
+    || fileName.endsWith(".pyo");
 }
 
 function isSymbolicLink(entry: JSZipObject): boolean {
@@ -180,10 +183,10 @@ export async function inspectSkillZip(buffer: ArrayBuffer): Promise<ZipInspectio
       originalPath: validateArchivePath(getOriginalPath(entry)),
     }));
   const ignoredSystemPaths = validatedEntries
-    .filter(({ originalPath }) => isIgnoredSystemPath(originalPath))
+    .filter(({ originalPath }) => isIgnoredUploadPath(originalPath))
     .map(({ entry }) => entry.name);
   const safeEntries = validatedEntries
-    .filter(({ originalPath }) => !isIgnoredSystemPath(originalPath));
+    .filter(({ originalPath }) => !isIgnoredUploadPath(originalPath));
 
   if (safeEntries.some(({ entry }) => isSymbolicLink(entry))) {
     return invalidPackage("ZIP 不能包含符号链接或其他链接文件");

@@ -3598,6 +3598,15 @@ mod tests {
     }
 
     #[test]
+    fn upload_filter_excludes_python_cache_and_keeps_gitkeep() {
+        assert!(ignored_upload_path(Path::new(
+            "src/__pycache__/tool.cpython-313.pyc"
+        )));
+        assert!(ignored_upload_path(Path::new("cached.pyc")));
+        assert!(!ignored_upload_path(Path::new("empty/.gitkeep")));
+    }
+
+    #[test]
     fn installs_valid_package() {
         let root = tempfile::tempdir().unwrap();
         let bytes = create_package("test-skill", Some("test-skill"));
