@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type FormEvent,
+} from "react";
 import { Button, Tooltip } from "./ui";
 import {
+  inspectPreparedLocalSkillPackage,
+  localSkillService,
   parseSkillPackage,
   parseSkillFolder,
   skillApi,
   SkillApiError,
+  usesRealInstaller,
   type PreparedSkillUpload,
-  type ParsedSkillPackage,
   type SkillDetailDto,
   type SkillSummaryDto,
   type SkillPackageInspection,
@@ -32,6 +41,69 @@ const folderInputAttributes = {
   directory: "",
   webkitdirectory: "",
 };
+
+interface DroppedFileSystemEntry {
+  isFile: boolean;
+  isDirectory: boolean;
+  fullPath: string;
+  file: (
+    onSuccess: (file: File) => void,
+    onError?: (error: DOMException) => void,
+  ) => void;
+  createReader: () => {
+    readEntries: (
+      onSuccess: (entries: DroppedFileSystemEntry[]) => void,
+      onError?: (error: DOMException) => void,
+    ) => void;
+  };
+}
+
+function droppedEntry(item: DataTransferItem): DroppedFileSystemEntry | null {
+  const entry = (item as DataTransferItem & {
+    webkitGetAsEntry?: () => DroppedFileSystemEntry | null;
+  }).webkitGetAsEntry?.();
+  return (entry as DroppedFileSystemEntry | null | undefined) ?? null;
+}
+
+function readDroppedFile(entry: DroppedFileSystemEntry): Promise<File> {
+  return new Promise((resolve, reject) => entry.file(resolve, reject));
+}
+
+async function readDroppedDirectory(
+  entry: DroppedFileSystemEntry,
+): Promise<DroppedFileSystemEntry[]> {
+  const reader = entry.createReader();
+  const entries: DroppedFileSystemEntry[] = [];
+  while (true) {
+    const batch = await new Promise<DroppedFileSystemEntry[]>((resolve, reject) =>
+      reader.readEntries(resolve, reject)
+    );
+    if (batch.length === 0) return entries;
+    entries.push(...batch);
+  }
+}
+
+async function collectDroppedFolderFiles(
+  entry: DroppedFileSystemEntry,
+): Promise<File[]> {
+  if (entry.isFile) {
+    const file = await readDroppedFile(entry);
+    Object.defineProperty(file, "webkitRelativePath", {
+      configurable: true,
+      value: entry.fullPath.replace(/^\/+/, ""),
+    });
+    return [file];
+  }
+  if (!entry.isDirectory) return [];
+  const children = await readDroppedDirectory(entry);
+  const nestedFiles = await Promise.all(children.map(collectDroppedFolderFiles));
+  return nestedFiles.flat();
+}
+
+function droppedPathName(path: string): string {
+  const segments = path.split(/[\\/]/).filter(Boolean);
+  return segments[segments.length - 1] || "Skill";
+}
 
 /**
  * 功能说明：在本地解析 ZIP 或自动打包文件夹，并在用户确认后创建 Skill 或发布指定 Skill 新版本。
@@ -80,6 +152,10 @@ export function UploadPage({
   const [inspecting, setInspecting] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState("");
+  const [dragActive, setDragActive] = useState(false);
+  const dropzoneRef = useRef<HTMLDivElement | null>(null);
+  const zipInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
   const [forkSource, setForkSource] = useState<SkillSummaryDto | null>(null);
   const [duplicateConflicts, setDuplicateConflicts] = useState<Array<{ id: string; displayName: string; skillName: string }>>([]);
 
@@ -122,7 +198,7 @@ export function UploadPage({
   async function inspectSource(
     sourceName: string,
     sourceType: UploadSourceType,
-    parse: () => Promise<ParsedSkillPackage>,
+    parse: () => Promise<PreparedSkillUpload>,
   ): Promise<void> {
     translationRequestId.current += 1;
     setFileName(sourceName);
@@ -194,6 +270,135 @@ export function UploadPage({
       "folder",
       () => parseSkillFolder(files),
     );
+  }
+
+  async function inspectDroppedPath(path: string): Promise<void> {
+    const sourceName = droppedPathName(path);
+    const isZip = sourceName.toLocaleLowerCase().endsWith(".zip");
+    await inspectSource(
+      sourceName,
+      isZip ? "zip" : "folder",
+      async () => {
+        const packagedFile = await localSkillService.packageSkill(
+          path,
+          sourceName.replace(/\.zip$/i, ""),
+        );
+        return isZip
+          ? parseSkillPackage(packagedFile)
+          : inspectPreparedLocalSkillPackage(packagedFile);
+      },
+    );
+  }
+
+  async function inspectNativeDrop(paths: string[]): Promise<void> {
+    if (paths.length !== 1) {
+      setError("一次只能拖入一个 Skill ZIP 或文件夹");
+      return;
+    }
+    try {
+      await inspectDroppedPath(paths[0]);
+    } catch (reason) {
+      console.error("[KocotreeSkills] 拖拽 Skill 来源失败", reason);
+      setError(
+        reason instanceof SkillApiError
+          ? reason.message
+          : "仅支持一个 Skill ZIP 或包含 SKILL.md 的文件夹",
+      );
+    }
+  }
+
+  async function inspectBrowserDrop(
+    dataTransfer: DataTransfer,
+  ): Promise<void> {
+    const fileItems = Array.from(dataTransfer.items).filter(
+      (item) => item.kind === "file",
+    );
+    if (fileItems.length !== 1) {
+      setError("一次只能拖入一个 Skill ZIP 或文件夹");
+      return;
+    }
+    const entry = droppedEntry(fileItems[0]);
+    if (entry?.isDirectory) {
+      const files = await collectDroppedFolderFiles(entry);
+      if (files.length === 0) {
+        setError("拖入的文件夹中没有可上传的文件");
+        return;
+      }
+      await inspectFolder(files);
+      return;
+    }
+    const file = dataTransfer.files[0];
+    if (!file || !file.name.toLocaleLowerCase().endsWith(".zip")) {
+      setError("仅支持 Skill ZIP 或包含 SKILL.md 的文件夹");
+      return;
+    }
+    await inspectFile(file);
+  }
+
+  function nativeDropInside(position: { x: number; y: number }): boolean {
+    const element = dropzoneRef.current;
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    const scale = window.devicePixelRatio || 1;
+    const x = position.x / scale;
+    const y = position.y / scale;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }
+
+  useEffect(() => {
+    if (!usesRealInstaller) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload;
+      if (payload.type === "leave") {
+        setDragActive(false);
+        return;
+      }
+      const inside = nativeDropInside(payload.position);
+      if (payload.type === "drop") {
+        setDragActive(false);
+        if (inside && !inspecting && !publishing) {
+          void inspectNativeDrop(payload.paths);
+        }
+        return;
+      }
+      setDragActive(inside && !inspecting && !publishing);
+    }).then((stopListening) => {
+      if (disposed) stopListening();
+      else unlisten = stopListening;
+    }).catch((reason: unknown) => {
+      console.error("[KocotreeSkills] 注册文件拖拽监听失败", reason);
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [inspecting, publishing]);
+
+  function handleBrowserDrag(event: ReactDragEvent<HTMLDivElement>): void {
+    if (usesRealInstaller || inspecting || publishing) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDragActive(true);
+  }
+
+  function handleBrowserDragLeave(event: ReactDragEvent<HTMLDivElement>): void {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+      setDragActive(false);
+    }
+  }
+
+  function handleBrowserDrop(event: ReactDragEvent<HTMLDivElement>): void {
+    if (usesRealInstaller || inspecting || publishing) return;
+    event.preventDefault();
+    setDragActive(false);
+    void inspectBrowserDrop(event.dataTransfer).catch((reason: unknown) => {
+      console.error("[KocotreeSkills] 浏览器拖拽 Skill 来源失败", reason);
+      setError(reason instanceof SkillApiError ? reason.message : "Skill 解析失败，请重新拖入");
+    });
   }
 
   function toggleTag(tagId: string): void {
@@ -406,36 +611,79 @@ export function UploadPage({
           <div><h2>选择 Skill 压缩包或文件夹</h2></div>
         </div>
 
-        <div className="upload-source-grid">
-          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "zip" ? " is-selected" : ""}`}>
-            <input
-              type="file"
-              accept=".zip,application/zip"
+        <div
+          ref={dropzoneRef}
+          className={`file-dropzone upload-combined-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType ? " is-selected" : ""}${dragActive ? " is-dragging" : ""}`}
+          role="group"
+          aria-label="拖入或选择 Skill 压缩包或文件夹"
+          aria-busy={inspecting}
+          onDragEnter={handleBrowserDrag}
+          onDragOver={handleBrowserDrag}
+          onDragLeave={handleBrowserDragLeave}
+          onDrop={handleBrowserDrop}
+        >
+          <input
+            ref={zipInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            disabled={inspecting || publishing}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              if (file) void inspectFile(file);
+            }}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            disabled={inspecting || publishing}
+            {...folderInputAttributes}
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files || []);
+              event.currentTarget.value = "";
+              if (files.length > 0) void inspectFolder(files);
+            }}
+          />
+          <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
+          <span className="dropzone-copy">
+            <strong>
+              {dragActive
+                ? "松开即可读取 Skill"
+                : inspecting
+                  ? selectedSourceType === "folder"
+                    ? "正在打包文件夹…"
+                    : "正在解析 ZIP…"
+                  : selectedSourceType
+                    ? fileName
+                    : "把要上传的 Skill 拖到这里"}
+            </strong>
+            <small>
+              {selectedSourceType && !inspecting
+                ? "可以重新拖入，或点击右侧按钮更换"
+                : "支持 ZIP 压缩包或完整的 Skill 文件夹"}
+            </small>
+          </span>
+          <div className="dropzone-actions">
+            <button
+              className="dropzone-choice-button"
+              type="button"
               disabled={inspecting || publishing}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) void inspectFile(file);
-              }}
-            />
-            <span className="dropzone-icon"><AppIcon name="upload" size={25} /></span>
-            <strong>{inspecting && selectedSourceType === "zip" ? "正在解析 ZIP…" : selectedSourceType === "zip" ? fileName : "选择本地 Skill 压缩包"}</strong>
-            {selectedSourceType === "zip" && !inspecting && <small>重新点击可更换 ZIP</small>}
-          </label>
-          <label className={`file-dropzone${inspecting ? " is-loading" : ""}${selectedSourceType === "folder" ? " is-selected" : ""}`}>
-            <input
-              type="file"
-              multiple
+              onClick={() => zipInputRef.current?.click()}
+            >
+              <AppIcon name="upload" size={15} />
+              选择 ZIP 文件
+            </button>
+            <button
+              className="dropzone-choice-button"
+              type="button"
               disabled={inspecting || publishing}
-              {...folderInputAttributes}
-              onChange={(event) => {
-                const files = Array.from(event.currentTarget.files || []);
-                if (files.length > 0) void inspectFolder(files);
-              }}
-            />
-            <span className="dropzone-icon"><AppIcon name="folder" size={25} /></span>
-            <strong>{inspecting && selectedSourceType === "folder" ? "正在打包文件夹…" : selectedSourceType === "folder" ? fileName : "选择本地 Skill 文件夹"}</strong>
-            {selectedSourceType === "folder" && !inspecting && <small>重新点击可更换文件夹</small>}
-          </label>
+              onClick={() => folderInputRef.current?.click()}
+            >
+              <AppIcon name="folder" size={15} />
+              选择文件夹
+            </button>
+          </div>
         </div>
 
         {inspection && (

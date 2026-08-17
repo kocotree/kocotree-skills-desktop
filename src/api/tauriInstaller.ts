@@ -147,7 +147,7 @@ export class TauriInstaller implements LocalSkillService {
     }
   }
 
-  /** 将扫描到的本地 Skill 本体打包为可复用现有上传流程的 ZIP。 */
+  /** 读取拖入的 ZIP，或将本地 Skill 文件夹打包为可复用上传流程的 ZIP。 */
   async packageSkill(sourcePath: string, skillName: string): Promise<File> {
     try {
       const bytes = await invoke<ArrayBuffer>("package_local_skill", {
@@ -160,7 +160,7 @@ export class TauriInstaller implements LocalSkillService {
       const commandError = parseCommandError(reason);
       throw new SkillApiError(
         commandError?.code ?? "LOCAL_SKILL_PACKAGE_FAILED",
-        commandError?.message ?? "本地 Skill 打包失败",
+        commandError?.message ?? "本地 Skill 来源读取失败",
         commandError?.details,
       );
     }

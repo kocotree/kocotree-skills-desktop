@@ -1694,13 +1694,8 @@ textarea:focus-visible,
   background: #e8e9ec;
 }
 
-.upload-source-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .file-dropzone {
+  position: relative;
   display: grid;
   min-height: 150px;
   place-items: center;
@@ -1709,8 +1704,17 @@ textarea:focus-visible,
   border: 1px dashed #cfd3d8;
   border-radius: 11px;
   background: #fafbfb;
-  cursor: pointer;
   text-align: center;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.upload-combined-dropzone {
+  min-height: 118px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  place-items: center stretch;
+  gap: 18px;
+  padding: 22px 24px;
+  text-align: left;
 }
 
 .file-dropzone:hover {
@@ -1722,6 +1726,12 @@ textarea:focus-visible,
   border-color: var(--accent);
   background: var(--accent-surface);
   box-shadow: 0 0 0 3px rgba(0, 145, 57, 0.08);
+}
+
+.file-dropzone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+  box-shadow: 0 0 0 4px rgba(0, 145, 57, 0.11);
 }
 
 .file-dropzone.is-loading {
@@ -1741,11 +1751,24 @@ textarea:focus-visible,
   display: grid;
   width: 42px;
   height: 42px;
-  margin-bottom: 3px;
+  margin: 0;
   place-items: center;
   border-radius: 10px;
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.dropzone-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.dropzone-copy strong,
+.dropzone-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-dropzone strong {
@@ -1754,6 +1777,41 @@ textarea:focus-visible,
 
 .file-dropzone small {
   color: #9699a1;
+}
+
+.dropzone-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+}
+
+.dropzone-choice-button {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid #d8ddd9;
+  border-radius: 8px;
+  background: #fff;
+  color: #454b47;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dropzone-choice-button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-deep);
+}
+
+.dropzone-choice-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .inspection-result {
@@ -4138,8 +4196,25 @@ button.my-skill-card:hover {
     padding: 14px;
   }
 
-  .upload-source-grid {
+  .upload-combined-dropzone {
+    min-height: 170px;
     grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .dropzone-copy {
+    justify-items: center;
+  }
+
+  .dropzone-copy strong,
+  .dropzone-copy small {
+    white-space: normal;
+  }
+
+  .dropzone-actions {
+    justify-content: center;
   }
 
   .form-actions,

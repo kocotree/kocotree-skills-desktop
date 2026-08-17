@@ -3189,6 +3189,33 @@ fn package_local_skill_on_disk(source_path: String) -> Result<Vec<u8>, InstallEr
     Ok(bytes)
 }
 
+fn read_skill_upload_source_on_disk(source_path: String) -> Result<Vec<u8>, InstallError> {
+    let source = PathBuf::from(&source_path);
+    let metadata = fs::metadata(&source)
+        .map_err(|error| io_error("读取拖入的 Skill 来源", error))?;
+    if metadata.is_dir() {
+        return package_local_skill_on_disk(source_path);
+    }
+    let is_zip = metadata.is_file()
+        && source
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"));
+    if !is_zip {
+        return Err(InstallError::new(
+            "INVALID_SKILL_PACKAGE",
+            "仅支持 Skill ZIP 或包含 SKILL.md 的文件夹",
+        ));
+    }
+    if metadata.len() > MAX_PACKAGE_SIZE as u64 {
+        return Err(InstallError::new(
+            "PACKAGE_TOO_LARGE",
+            "ZIP 不能超过 50 MB",
+        ));
+    }
+    fs::read(source).map_err(|error| io_error("读取 Skill ZIP", error))
+}
+
 fn record_local_skill_publication_on_disk(
     input: RecordLocalSkillPublicationInput,
 ) -> Result<(), InstallError> {
@@ -3390,18 +3417,18 @@ fn clear_local_skill_publication_on_disk(
     clear_local_skill_publication_at_home(&home, &skill_id)
 }
 
-/** 将指定本地 Skill 本体目录打包，并通过二进制 IPC 返回 ZIP 内容。 */
+/** 读取拖入的 ZIP，或将指定本地 Skill 文件夹打包，并通过二进制 IPC 返回 ZIP 内容。 */
 #[tauri::command]
 pub async fn package_local_skill(
     source_path: String,
 ) -> Result<tauri::ipc::Response, InstallError> {
     let bytes =
-        tauri::async_runtime::spawn_blocking(move || package_local_skill_on_disk(source_path))
+        tauri::async_runtime::spawn_blocking(move || read_skill_upload_source_on_disk(source_path))
             .await
             .map_err(|error| {
                 InstallError::new(
                     "LOCAL_SKILL_PACKAGE_FAILED",
-                    format!("打包本地 Skill 失败：{error}"),
+                    format!("读取本地 Skill 来源失败：{error}"),
                 )
             })??;
     Ok(tauri::ipc::Response::new(bytes))
