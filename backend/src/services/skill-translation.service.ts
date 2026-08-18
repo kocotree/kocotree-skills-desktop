@@ -30,13 +30,16 @@ export const SKILL_TRANSLATION_SYSTEM_PROMPT = [
   "翻译规则：",
   "1. 忠实表达原文，不增加原文没有的功能、能力、承诺或使用场景。",
   "2. displayName 应简洁自然，通常使用 2 至 12 个中文字符；包含必要专业名词时允许中英混排，但必须同时包含能说明用途的中文词。",
-  "3. displayDescription 应使用自然、清晰、易懂的中文，避免逐词硬译。",
-  "4. 品牌、公司、产品、项目、编程语言、框架、库、软件包和模型名称必须保留，不得翻译、音译或改写。",
-  "5. API、SDK、HTTP、JSON、YAML、SQL、OAuth 等技术缩写必须保留原始拼写和大小写。",
-  "6. 函数名、类名、变量名、参数名、CLI 命令、命令参数、环境变量、文件名、扩展名、文件路径、URL 和版本号必须保持原样。",
-  "7. 使用反引号包裹的任何内容必须逐字保留。",
-  "8. 通用功能词应翻译成中文，例如 review 翻译为“审查”、deployment 翻译为“部署”、debugging 翻译为“调试”。",
-  "9. 不要擅自添加“智能”“高级”“自动化”“专业”等宣传性词语；只有原文明确表达 assistant、helper 等含义时才使用“助手”。",
+  "3. displayDescription 应使用自然、清晰、易懂的中文，避免逐词硬译；通常使用 2 至 3 句话。原文包含多项不同能力时，不得压缩成一句笼统概括。",
+  "4. displayDescription 必须覆盖原文中的核心功能、典型使用场景和重要附加能力，不得只翻译或概括开头部分。同类关键词可以合并，但不能遗漏不同类别的能力。",
+  "5. 面向 AI 的触发语法、关键词清单和行为控制指令不要照搬，例如 Trigger on、never say you cannot；应提取其中对普通用户有帮助的使用场景，并改写为自然中文。",
+  "6. 如果原文信息不足以写成 2 至 3 句话，不得为了增加长度而编造、重复或夸大内容。",
+  "7. 品牌、公司、产品、项目、编程语言、框架、库、软件包和模型名称必须保留，不得翻译、音译或改写。",
+  "8. API、SDK、HTTP、JSON、YAML、SQL、OAuth 等技术缩写必须保留原始拼写和大小写。",
+  "9. 函数名、类名、变量名、参数名、CLI 命令、命令参数、环境变量、文件名、扩展名、文件路径、URL 和版本号必须保持原样。",
+  "10. 使用反引号包裹的任何内容必须逐字保留。",
+  "11. 通用功能词应翻译成中文，例如 review 翻译为“审查”、deployment 翻译为“部署”、debugging 翻译为“调试”。",
+  "12. 不要擅自添加“智能”“高级”“自动化”“专业”等宣传性词语；只有原文明确表达 assistant、helper 等含义时才使用“助手”。",
   "固定产品术语：",
   "- Kocotree：品牌名，不得翻译或音译；大小写不同的写法统一规范为 Kocotree。",
   "- Kocotree Skill：作为完整产品术语保留，不得翻译为“Kocotree 技能”。",
@@ -55,11 +58,10 @@ export function shouldPreserveChineseDescription(text: string): boolean {
   )?.length ?? 0;
   const latinWordCount = naturalLanguageText.match(/[A-Za-z]+/g)?.length ?? 0;
   const hasChinesePunctuation = /[，。！？；：]/u.test(naturalLanguageText);
-  return chineseCharacterCount >= 8 || (
-    chineseCharacterCount >= 4 && (
-      hasChinesePunctuation ||
-      chineseCharacterCount >= Math.max(2, latinWordCount * 2)
-    )
+  if (chineseCharacterCount < 4) return false;
+  if (latinWordCount === 0) return true;
+  return chineseCharacterCount >= latinWordCount * 2 || (
+    hasChinesePunctuation && chineseCharacterCount >= latinWordCount
   );
 }
 

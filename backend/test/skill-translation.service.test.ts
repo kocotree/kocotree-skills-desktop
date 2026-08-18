@@ -67,7 +67,22 @@ describe("DeepSeek Skill 元数据翻译", () => {
     });
   });
 
-  it("提示词保护专业名词和 Kocotree 固定术语", () => {
+  it("提示词要求完整简介并保护专业名词和 Kocotree 固定术语", () => {
+    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
+      "通常使用 2 至 3 句话",
+    );
+    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
+      "核心功能、典型使用场景和重要附加能力",
+    );
+    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
+      "不得只翻译或概括开头部分",
+    );
+    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
+      "面向 AI 的触发语法、关键词清单和行为控制指令不要照搬",
+    );
+    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
+      "不得为了增加长度而编造、重复或夸大内容",
+    );
     expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
       "Kocotree Skill：作为完整产品术语保留",
     );
@@ -133,6 +148,38 @@ describe("DeepSeek Skill 元数据翻译", () => {
     expect(body.messages[0]?.content).toContain(
       "本次 skillDescription 已判定为中文：只生成 displayName",
     );
+  });
+
+  it("英文主体包含中文触发词时仍然翻译展示简介", async () => {
+    const originalDescription =
+      "Generate images, videos, and audio/music via Lovart AI. Also manages Lovart projects, threads (conversation history), and user settings. Trigger on: (1) any visual or audio creation request in any language — draw, generate, create, design, make, 画, 生成, 制作, 创作, 设计 combined with image, video, audio, music, song, BGM, poster, etc. (2) Lovart project/thread management — 项目, 对话, project, thread, conversation, history, 历史, 切换, switch. You CAN generate directly - never say you cannot.";
+    const translatedDescription =
+      "使用 Lovart AI 生成图片、视频、音频和音乐，适用于海报、歌曲、BGM 等视觉与音频内容创作。还可管理 Lovart 项目和用户设置，切换项目，以及查看和继续历史对话。";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            displayName: "Lovart 内容生成",
+            displayDescription: translatedDescription,
+          }),
+        },
+      }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(skillTranslationService.translate({
+      skillName: "lovart-api",
+      skillDescription: originalDescription,
+    })).resolves.toEqual({
+      displayName: "Lovart 内容生成",
+      displayDescription: translatedDescription,
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages[0]?.content).toBe(SKILL_TRANSLATION_SYSTEM_PROMPT);
   });
 
   it("拒绝没有中文内容的模型响应", async () => {
