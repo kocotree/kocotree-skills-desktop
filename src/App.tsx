@@ -13,6 +13,7 @@ import {
   groupLocalSkills,
   inspectPreparedLocalSkillPackage,
   type AgentInstallationStatus,
+  type CatalogEventDto,
   type LocalSkillFilter,
   type LocalSkillRecord,
   type PreparedSkillUpload,
@@ -55,6 +56,88 @@ type PageKey =
   | "settings";
 type SortKey = "created" | "updated" | "popular" | "installed";
 const BROWSE_PAGE_SIZE = 18;
+const BROWSE_FILTER_CACHE_FRESH_MS = 30_000;
+const BROWSE_CACHE_MAX_AGE_MS = 5 * 60_000;
+const BROWSE_CACHE_MAX_PAGES = 40;
+
+interface BrowsePageCacheEntry {
+  items: SkillSummaryDto[];
+  total: number;
+  cachedAt: number;
+  refreshKey: number;
+}
+
+interface BrowseFilterCacheEntry<T> {
+  items: T[];
+  cachedAt: number;
+  refreshKey: number;
+}
+
+const browsePageCache = new Map<string, BrowsePageCacheEntry>();
+let browseTagsCache: BrowseFilterCacheEntry<TagDto> | null = null;
+let browseDepartmentsCache:
+  BrowseFilterCacheEntry<PublishedSkillDepartmentDto> | null = null;
+
+function browsePageCacheKey(input: {
+  query: string;
+  tagIds: string[];
+  departmentKey: string;
+  sort: SortKey;
+  page: number;
+}): string {
+  return JSON.stringify([
+    input.query.trim().toLocaleLowerCase(),
+    [...input.tagIds].sort(),
+    input.departmentKey,
+    input.sort,
+    input.page,
+    BROWSE_PAGE_SIZE,
+  ]);
+}
+
+function getUsableBrowseCache<T extends { cachedAt: number; refreshKey: number }>(
+  entry: T | null | undefined,
+  refreshKey: number,
+): T | null {
+  if (
+    !entry
+    || entry.refreshKey !== refreshKey
+    || Date.now() - entry.cachedAt >= BROWSE_CACHE_MAX_AGE_MS
+  ) {
+    return null;
+  }
+  return entry;
+}
+
+function setBrowsePageCache(
+  key: string,
+  entry: BrowsePageCacheEntry,
+): void {
+  browsePageCache.delete(key);
+  browsePageCache.set(key, entry);
+  while (browsePageCache.size > BROWSE_CACHE_MAX_PAGES) {
+    const oldestKey = browsePageCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    browsePageCache.delete(oldestKey);
+  }
+}
+
+function removeSkillFromBrowseCache(skillId: string): void {
+  for (const [key, entry] of browsePageCache) {
+    if (!entry.items.some((skill) => skill.id === skillId)) continue;
+    browsePageCache.set(key, {
+      ...entry,
+      items: entry.items.filter((skill) => skill.id !== skillId),
+      total: Math.max(0, entry.total - 1),
+    });
+  }
+}
+
+function clearBrowseCache(): void {
+  browsePageCache.clear();
+  browseTagsCache = null;
+  browseDepartmentsCache = null;
+}
 
 interface InstallPromptState {
   skill: SkillSummaryDto;
@@ -298,6 +381,7 @@ function BrowsePage({
   refreshKey,
   highlightedSkillId,
   onHighlightComplete,
+  catalogEvent,
 }: {
   authenticated: boolean;
   authResolved: boolean;
@@ -312,6 +396,7 @@ function BrowsePage({
   refreshKey: number;
   highlightedSkillId: string | null;
   onHighlightComplete: () => void;
+  catalogEvent: CatalogEventDto | null;
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -333,7 +418,15 @@ function BrowsePage({
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [revalidationKey, setRevalidationKey] = useState(0);
   const highlightedCardRef = useRef<HTMLElement | null>(null);
+  const lastFocusRevalidationAtRef = useRef(Date.now());
+  const installedSkillIdsKey = useMemo(
+    () => sort === "installed"
+      ? [...uninstallableSkillIds].sort().join(",")
+      : "",
+    [sort, uninstallableSkillIds],
+  );
 
   useEffect(() => {
     if (!highlightedSkillId) return;
@@ -343,6 +436,38 @@ function BrowsePage({
     setSort("popular");
     setPage(1);
   }, [highlightedSkillId]);
+
+  useEffect(() => {
+    if (!authenticated || sort === "installed") return;
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastFocusRevalidationAtRef.current < 2_000) return;
+      lastFocusRevalidationAtRef.current = now;
+      setRevalidationKey((current) => current + 1);
+    };
+    window.addEventListener("focus", revalidateWhenVisible);
+    document.addEventListener("visibilitychange", revalidateWhenVisible);
+    return () => {
+      window.removeEventListener("focus", revalidateWhenVisible);
+      document.removeEventListener("visibilitychange", revalidateWhenVisible);
+    };
+  }, [authenticated, sort]);
+
+  useEffect(() => {
+    if (!catalogEvent) return;
+    if (
+      catalogEvent.type === "skill.deleted"
+      && catalogEvent.skillId
+      && skills.some((skill) => skill.id === catalogEvent.skillId)
+    ) {
+      setSkills((current) =>
+        current.filter((skill) => skill.id !== catalogEvent.skillId),
+      );
+      setTotalSkills((current) => Math.max(0, current - 1));
+    }
+    setRevalidationKey((current) => current + 1);
+  }, [catalogEvent]);
 
   useEffect(() => {
     if (query === debouncedQuery) return;
@@ -365,28 +490,57 @@ function BrowsePage({
       setTags([]);
       return;
     }
+    const cached = getUsableBrowseCache(browseTagsCache, refreshKey);
+    if (cached) {
+      setTags(cached.items);
+      if (Date.now() - cached.cachedAt < BROWSE_FILTER_CACHE_FRESH_MS) {
+        return;
+      }
+    }
     let active = true;
     skillApi.listTags().then((items) => {
-      if (active) setTags(items);
+      if (!active) return;
+      browseTagsCache = {
+        items,
+        cachedAt: Date.now(),
+        refreshKey,
+      };
+      setTags(items);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] Tag 加载失败", reason);
     });
     return () => { active = false; };
-  }, [authenticated, refreshKey]);
+  }, [authenticated, refreshKey, catalogEvent?.eventId]);
 
   useEffect(() => {
     if (!authenticated) {
       setDepartments([]);
       return;
     }
+    const cached = getUsableBrowseCache(
+      browseDepartmentsCache,
+      refreshKey,
+    );
+    if (cached) {
+      setDepartments(cached.items);
+      if (Date.now() - cached.cachedAt < BROWSE_FILTER_CACHE_FRESH_MS) {
+        return;
+      }
+    }
     let active = true;
     skillApi.listPublishedSkillDepartments().then((items) => {
-      if (active) setDepartments(items);
+      if (!active) return;
+      browseDepartmentsCache = {
+        items,
+        cachedAt: Date.now(),
+        refreshKey,
+      };
+      setDepartments(items);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 发布部门加载失败", reason);
     });
     return () => { active = false; };
-  }, [authenticated, refreshKey]);
+  }, [authenticated, refreshKey, catalogEvent?.eventId]);
 
   useEffect(() => {
     if (!authenticated) {
@@ -397,12 +551,33 @@ function BrowsePage({
       return;
     }
     let active = true;
-    setLoading(true);
     setError("");
+    const cacheKey = sort === "installed"
+      ? null
+      : browsePageCacheKey({
+          query: debouncedQuery,
+          tagIds: selectedTagIds,
+          departmentKey,
+          sort,
+          page,
+        });
+    const cached = cacheKey
+      ? getUsableBrowseCache(browsePageCache.get(cacheKey), refreshKey)
+      : null;
+    if (cached) {
+      setSkills(cached.items);
+      setTotalSkills(cached.total);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     const request = sort === "installed"
-      ? Promise.all([...uninstallableSkillIds].map((skillId) =>
-          skillApi.getSkill(skillId),
-        )).then((installedSkills) => {
+      ? Promise.all(
+          installedSkillIdsKey
+            .split(",")
+            .filter(Boolean)
+            .map((skillId) => skillApi.getSkill(skillId)),
+        ).then((installedSkills) => {
           const normalizedQuery = debouncedQuery.trim().toLocaleLowerCase();
           const filteredSkills = installedSkills
             .filter((skill) =>
@@ -456,16 +631,26 @@ function BrowsePage({
           setPage(pageCount);
           return;
         }
+        if (cacheKey) {
+          setBrowsePageCache(cacheKey, {
+            items: result.items,
+            total: result.total,
+            cachedAt: Date.now(),
+            refreshKey,
+          });
+        }
         setSkills(result.items);
       })
       .catch((reason: unknown) => {
         if (!active) return;
         console.error("[KocotreeSkills] Skill 列表加载失败", reason);
-        setError(reason instanceof SkillApiError ? reason.message : "列表加载失败，请稍后重试");
+        if (!cached) {
+          setError(reason instanceof SkillApiError ? reason.message : "列表加载失败，请稍后重试");
+        }
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, departmentKey, page, refreshKey, selectedTagIds, sort, uninstallableSkillIds]);
+  }, [authenticated, debouncedQuery, departmentKey, installedSkillIdsKey, page, refreshKey, revalidationKey, selectedTagIds, sort]);
 
   if (!authResolved) {
     return (
@@ -646,6 +831,8 @@ function App() {
   const [uploadSessionKey, setUploadSessionKey] = useState(0);
   const [browseRefreshKey, setBrowseRefreshKey] = useState(0);
   const [publishedRefreshKey, setPublishedRefreshKey] = useState(0);
+  const [catalogEvent, setCatalogEvent] =
+    useState<CatalogEventDto | null>(null);
   const [metadataSkill, setMetadataSkill] = useState<SkillDetailDto | null>(null);
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserDto | null>(null);
@@ -760,6 +947,8 @@ function App() {
 
   useEffect(() => {
     const handleInvalidated = () => {
+      clearBrowseCache();
+      setCatalogEvent(null);
       setCurrentUser(null);
       setAuthResolved(true);
       setUnreadCount(0);
@@ -788,6 +977,25 @@ function App() {
       setUnreadCount(result.unreadCount);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 未读通知数量加载失败", reason);
+    });
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    return skillApi.subscribeCatalogEvents((event) => {
+      browseTagsCache = null;
+      browseDepartmentsCache = null;
+      if (event.type === "skill.deleted" && event.skillId) {
+        removeSkillFromBrowseCache(event.skillId);
+        setSelectedSkill((current) =>
+          current?.id === event.skillId ? null : current,
+        );
+        setMetadataSkill((current) =>
+          current?.id === event.skillId ? null : current,
+        );
+      }
+      setCatalogEvent(event);
+      setPublishedRefreshKey((current) => current + 1);
     });
   }, [currentUser]);
 
@@ -897,6 +1105,8 @@ function App() {
   async function handleSignOut(): Promise<void> {
     try {
       await skillApi.signOut();
+      clearBrowseCache();
+      setCatalogEvent(null);
       setCurrentUser(null);
       setUnreadCount(0);
       setSelectedSkill(null);
@@ -998,6 +1208,7 @@ function App() {
         ),
         localResult.record,
       ]);
+      clearBrowseCache();
       setBrowseRefreshKey((current) => current + 1);
       setInstallPrompt(null);
       if (localResult.notices.length > 0) {
@@ -1248,6 +1459,7 @@ function App() {
         Toast.error("云端发布成功，但本地云端关联保存失败，请重新扫描后再试");
       }
     }
+    clearBrowseCache();
     setBrowseRefreshKey((current) => current + 1);
     setPublishedRefreshKey((current) => current + 1);
     setUploadTargetSkill(null);
@@ -1266,6 +1478,7 @@ function App() {
     setSelectedSkill((current) =>
       current?.id === skill.id ? skill : current,
     );
+    clearBrowseCache();
     setBrowseRefreshKey((current) => current + 1);
     setPublishedRefreshKey((current) => current + 1);
 
@@ -1287,6 +1500,7 @@ function App() {
   }
 
   async function handleOwnedSkillDeleted(skillId: string): Promise<void> {
+    removeSkillFromBrowseCache(skillId);
     setBrowseRefreshKey((current) => current + 1);
     if (!usesRealInstaller) return;
     try {
@@ -1545,6 +1759,7 @@ function App() {
             refreshKey={browseRefreshKey}
             highlightedSkillId={highlightedBrowseSkillId}
             onHighlightComplete={handleBrowseHighlightComplete}
+            catalogEvent={catalogEvent}
           />
         ) : activePage === "published" ? (
           <MySkillsPage
@@ -1623,6 +1838,7 @@ function App() {
           setSelectedSkill((current) =>
             current?.id === skill.id ? skill : current,
           );
+          clearBrowseCache();
           setBrowseRefreshKey((current) => current + 1);
           setPublishedRefreshKey((current) => current + 1);
         }}

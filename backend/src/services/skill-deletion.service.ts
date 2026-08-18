@@ -1,4 +1,5 @@
 import { skillDeletionRepository } from "../repositories/skill-deletion.repository";
+import { catalogEventService } from "./catalog-event.service";
 import { storageService } from "./storage.service";
 
 export const skillDeletionService = {
@@ -8,6 +9,7 @@ export const skillDeletionService = {
       userId,
     );
     if (result.status !== "DELETED") return result;
+    catalogEventService.publish("skill.deleted", skillId);
 
     const cleanupResults = await Promise.allSettled(
       result.objectKeys.map(({ objectKey, bucket }) =>

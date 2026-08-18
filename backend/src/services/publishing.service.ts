@@ -5,6 +5,7 @@ import {
   PublishingPersistenceError,
   publishingRepository,
 } from "../repositories/publishing.repository";
+import { catalogEventService } from "./catalog-event.service";
 import { catalogService } from "./catalog.service";
 import {
   prepareSkillPackage,
@@ -483,6 +484,7 @@ export const publishingService = {
       await deleteUploadedObject(objectKey);
       mapPersistenceError(error, "CREATE");
     }
+    catalogEventService.publish("skill.created", skillId);
     return loadPublishedSkill(skillId);
   },
 
@@ -567,6 +569,7 @@ export const publishingService = {
     } catch (error) {
       mapPersistenceError(error, "UPDATE");
     }
+    catalogEventService.publish("skill.updated", input.skillId);
     return loadPublishedSkill(
       input.skillId,
       "展示信息已更新，但无法读取最新 Skill 信息",
@@ -762,6 +765,7 @@ export const publishingService = {
       await deleteUploadedObject(objectKey);
       mapPersistenceError(error, "PUBLISH");
     }
+    catalogEventService.publish("skill.updated", input.skillId);
     return loadPublishedSkill(input.skillId);
   },
 };

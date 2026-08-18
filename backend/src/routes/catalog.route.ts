@@ -1,9 +1,13 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { failure, requireAuth, success } from "../http";
 import {
   catalogService,
   decodeDepartmentKey,
 } from "../services/catalog.service";
+import {
+  catalogEventService,
+  type CatalogEvent,
+} from "../services/catalog-event.service";
 
 const SORTS = new Set([
   "UPDATED_DESC",
@@ -12,6 +16,16 @@ const SORTS = new Set([
 ]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CATALOG_EVENT_HEARTBEAT_MS = 20_000;
+
+function writeCatalogEvent(
+  reply: FastifyReply,
+  event: CatalogEvent,
+): void {
+  reply.raw.write(
+    `id: ${event.eventId}\nevent: catalog\ndata: ${JSON.stringify(event)}\n\n`,
+  );
+}
 
 function positiveInteger(
   value: unknown,
@@ -95,6 +109,45 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
 
     const items = await catalogService.listPublishedSkillDepartments();
     return success(items);
+  });
+
+  app.get("/skills/events", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+
+    reply.hijack();
+    reply.raw.statusCode = 200;
+    reply.raw.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
+    reply.raw.setHeader("Connection", "keep-alive");
+    reply.raw.setHeader("X-Accel-Buffering", "no");
+    request.raw.socket.setKeepAlive(true);
+
+    let closed = false;
+    const unsubscribe = catalogEventService.subscribe((event) => {
+      if (!closed && !reply.raw.destroyed) {
+        writeCatalogEvent(reply, event);
+      }
+    });
+    const heartbeat = setInterval(() => {
+      if (!closed && !reply.raw.destroyed) {
+        reply.raw.write(`: heartbeat ${Date.now()}\n\n`);
+      }
+    }, CATALOG_EVENT_HEARTBEAT_MS);
+    heartbeat.unref();
+
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+    request.raw.once("close", close);
+    reply.raw.once("close", close);
+    reply.raw.once("error", close);
+    reply.raw.flushHeaders();
+    reply.raw.write("retry: 1000\n: connected\n\n");
+    return reply;
   });
 
   app.get("/skills/:skillId", async (request, reply) => {

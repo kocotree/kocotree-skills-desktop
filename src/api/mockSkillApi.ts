@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import {
   SkillApiError,
+  type CatalogEventListener,
   type CreateSkillDto,
   type DeleteSkillResultDto,
   type DeleteSkillVersionResultDto,
@@ -112,6 +113,10 @@ export class MockSkillApi implements SkillApi {
   constructor(options: MockSkillApiOptions = {}) {
     this.delayMs = options.delayMs ?? 220;
     this.currentUser = options.initialUser ?? null;
+  }
+
+  subscribeCatalogEvents(_listener: CatalogEventListener): () => void {
+    return () => {};
   }
 
   /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */

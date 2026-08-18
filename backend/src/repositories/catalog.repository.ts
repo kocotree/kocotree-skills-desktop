@@ -10,7 +10,56 @@ export interface ListSkillsInput {
   pageSize: number;
 }
 
-const skillInclude = {
+const userSummarySelect = {
+  id: true,
+  name: true,
+  avatarUrl: true,
+  departmentPath: true,
+  status: true,
+  updatedAt: true,
+} satisfies Prisma.UserSelect;
+
+const skillSummarySelect = {
+  id: true,
+  slug: true,
+  name: true,
+  description: true,
+  installCount: true,
+  createdAt: true,
+  updatedAt: true,
+  creator: {
+    select: userSummarySelect,
+  },
+  tags: {
+    select: {
+      tag: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  },
+  latestVersion: {
+    select: {
+      id: true,
+      version: true,
+      status: true,
+      manifestJson: true,
+      readmeMd: true,
+      changelog: true,
+      packageSize: true,
+      checksumSha256: true,
+      publishedAt: true,
+      createdAt: true,
+      creator: {
+        select: userSummarySelect,
+      },
+    },
+  },
+} satisfies Prisma.SkillSelect;
+
+const skillDetailInclude = {
   creator: true,
   tags: {
     include: {
@@ -118,16 +167,24 @@ export const catalogRepository = {
             { id: "desc" },
           ]
         : input.sort === "CREATED_DESC"
-          ? { createdAt: "desc" }
-          : { updatedAt: "desc" };
+          ? [
+              { createdAt: "desc" },
+              { id: "desc" },
+            ]
+          : [
+              { updatedAt: "desc" },
+              { id: "desc" },
+            ];
 
-    const [items, total] = await prisma.$transaction([
+    // 浏览列表允许在极短的并发写入窗口内由下一次刷新收敛，避免只读事务
+    // 将关系加载和总数统计串行绑定到同一个远程数据库连接。
+    const [items, total] = await Promise.all([
       prisma.skill.findMany({
         where,
         orderBy,
         skip: (input.page - 1) * input.pageSize,
         take: input.pageSize,
-        include: skillInclude,
+        select: skillSummarySelect,
       }),
       prisma.skill.count({ where }),
     ]);
@@ -147,15 +204,16 @@ export const catalogRepository = {
         not: null,
       },
     };
-    const [items, total] = await prisma.$transaction([
+    const [items, total] = await Promise.all([
       prisma.skill.findMany({
         where,
-        orderBy: {
-          updatedAt: "desc",
-        },
+        orderBy: [
+          { updatedAt: "desc" },
+          { id: "desc" },
+        ],
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: skillInclude,
+        select: skillSummarySelect,
       }),
       prisma.skill.count({ where }),
     ]);
@@ -171,7 +229,7 @@ export const catalogRepository = {
           not: null,
         },
       },
-      include: skillInclude,
+      include: skillDetailInclude,
     });
   },
 

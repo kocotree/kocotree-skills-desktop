@@ -24,6 +24,15 @@ type VersionRecord = NonNullable<SkillRecord["latestVersion"]>;
 type VersionHashFile = Awaited<
   ReturnType<typeof catalogRepository.listVersionHashFiles>
 >[number];
+type UserSummary = Pick<
+  User,
+  | "id"
+  | "name"
+  | "avatarUrl"
+  | "departmentPath"
+  | "status"
+  | "updatedAt"
+>;
 
 function encodeDepartmentKey(path: string[]): string {
   return Buffer.from(JSON.stringify(path), "utf8").toString("base64url");
@@ -63,7 +72,7 @@ export function decodeDepartmentKey(value: string): string[] | null {
   }
 }
 
-function toUserDto(user: User | null) {
+function toUserDto(user: UserSummary | null) {
   if (!user) {
     return {
       id: "unknown",
@@ -99,7 +108,7 @@ function toVersionDto(
     id: string;
     slug: string;
     description: string;
-    creator?: User | null;
+    creator?: UserSummary | null;
   },
   version: VersionRecord,
   fallbackFiles: VersionHashFile[] = [],

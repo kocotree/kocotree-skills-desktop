@@ -1,4 +1,5 @@
 import type {
+  CatalogEventListener,
   CreateSkillDto,
   InstallationEventDto,
   ListMySkillsQuery,
@@ -11,6 +12,7 @@ import type {
   SignInOptions,
   UpdateSkillMetadataDto,
 } from "./contracts";
+import { CatalogEventStream } from "./catalogEventStream";
 import { DesktopAuthApi } from "./desktopAuthApi";
 import { HttpCatalogApi } from "./httpCatalogApi";
 import { AuthenticatedHttpClient } from "./httpClient";
@@ -36,6 +38,17 @@ export class HttpSkillApi implements SkillApi {
   private readonly mySkills = new HttpMySkillsApi(this.http);
   private readonly notifications = new HttpNotificationApi(this.http);
   private readonly publishing = new HttpPublishingApi(this.http);
+  private readonly catalogEvents = new CatalogEventStream(
+    () => this.auth.getAccessToken(),
+    () => {
+      this.auth.invalidateSession();
+      window.dispatchEvent(new Event(AUTH_INVALIDATED_EVENT));
+    },
+  );
+
+  subscribeCatalogEvents(listener: CatalogEventListener) {
+    return this.catalogEvents.subscribe(listener);
+  }
 
   listTags(query?: string) {
     return this.catalog.listTags(query);

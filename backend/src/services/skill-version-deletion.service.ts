@@ -1,4 +1,5 @@
 import { skillVersionDeletionRepository } from "../repositories/skill-version-deletion.repository";
+import { catalogEventService } from "./catalog-event.service";
 import { storageService } from "./storage.service";
 
 export const skillVersionDeletionService = {
@@ -14,6 +15,7 @@ export const skillVersionDeletionService = {
         userId,
       );
     if (result.status !== "DELETED") return result;
+    catalogEventService.publish("skill.updated", skillId);
 
     try {
       await storageService.deleteObject(

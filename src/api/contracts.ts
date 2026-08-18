@@ -73,6 +73,18 @@ export interface SkillMetadataTranslationDto {
   displayName: string;
   displayDescription: string;
 }
+export type CatalogEventType =
+  | "catalog.resync"
+  | "skill.created"
+  | "skill.updated"
+  | "skill.deleted";
+export interface CatalogEventDto {
+  eventId: string;
+  type: CatalogEventType;
+  skillId: string | null;
+  occurredAt: string;
+}
+export type CatalogEventListener = (event: CatalogEventDto) => void;
 export interface DeleteSkillResultDto {
   id: string;
   deletedObjectCount: number;
@@ -226,6 +238,7 @@ export interface LocalSkillService extends SkillInstaller {
  * 返回值：各方法均返回 HTTP 响应外层中的 data，页面不直接处理 code 和 msg。
  */
 export interface SkillApi {
+  subscribeCatalogEvents(listener: CatalogEventListener): () => void;
   listSkills(query?: ListSkillsQuery): Promise<SkillPageDto>;
   listPublishedSkillDepartments(): Promise<PublishedSkillDepartmentDto[]>;
   listMySkills(query: ListMySkillsQuery): Promise<SkillPageDto>;
