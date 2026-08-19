@@ -114,6 +114,56 @@ fn command_exists_on_path(command: &str) -> bool {
     })
 }
 
+#[cfg(any(windows, test))]
+const CODEX_WINDOWS_PACKAGE_NAME: &str = "OpenAI.Codex";
+#[cfg(any(windows, test))]
+const CODEX_WINDOWS_PACKAGE_FAMILY: &str = "OpenAI.Codex_2p2nqsd0c76g0";
+
+#[cfg(any(windows, test))]
+fn appx_probe_exit_code_is_installed(exit_code: Option<i32>) -> bool {
+    exit_code == Some(0)
+}
+
+#[cfg(windows)]
+fn windows_codex_app_is_installed() -> bool {
+    use std::{os::windows::process::CommandExt, process::Command};
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const NOT_INSTALLED_EXIT_CODE: i32 = 3;
+    let package_query = format!(
+        "$package = Get-AppxPackage -Name '{}' -ErrorAction SilentlyContinue | \
+        Where-Object {{ $_.PackageFamilyName -eq '{}' }} | Select-Object -First 1; \
+        if ($null -ne $package) {{ exit 0 }}; exit {NOT_INSTALLED_EXIT_CODE}",
+        CODEX_WINDOWS_PACKAGE_NAME, CODEX_WINDOWS_PACKAGE_FAMILY,
+    );
+
+    let status = match Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &package_query,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+    {
+        Ok(status) => status,
+        Err(error) => {
+            warn!("查询 Windows Codex AppX 安装状态失败：{error}");
+            return false;
+        }
+    };
+
+    match status.code() {
+        code if appx_probe_exit_code_is_installed(code) => true,
+        Some(NOT_INSTALLED_EXIT_CODE) => false,
+        _ => {
+            warn!("查询 Windows Codex AppX 安装状态失败：exit_status={status}");
+            false
+        }
+    }
+}
+
 fn nvm_has_command(home: &Path, command: &str) -> bool {
     let versions_root = home.join(".nvm").join("versions").join("node");
     fs::read_dir(versions_root).is_ok_and(|entries| {
@@ -218,6 +268,11 @@ fn claude_code_is_installed(home: &Path) -> bool {
 
 fn codex_is_installed(home: &Path) -> bool {
     if command_exists_on_path("codex") || nvm_has_command(home, "codex") {
+        return true;
+    }
+
+    #[cfg(windows)]
+    if windows_codex_app_is_installed() {
         return true;
     }
 
@@ -3739,6 +3794,19 @@ mod tests {
         let command = home.join(".local").join("bin").join(agent);
         fs::create_dir_all(command.parent().unwrap()).unwrap();
         fs::write(command, "").unwrap();
+    }
+
+    #[test]
+    fn appx_probe_requires_the_official_codex_identity_and_success_exit_code() {
+        assert_eq!(CODEX_WINDOWS_PACKAGE_NAME, "OpenAI.Codex");
+        assert_eq!(
+            CODEX_WINDOWS_PACKAGE_FAMILY,
+            "OpenAI.Codex_2p2nqsd0c76g0",
+        );
+        assert!(appx_probe_exit_code_is_installed(Some(0)));
+        assert!(!appx_probe_exit_code_is_installed(Some(3)));
+        assert!(!appx_probe_exit_code_is_installed(Some(1)));
+        assert!(!appx_probe_exit_code_is_installed(None));
     }
 
     #[test]
