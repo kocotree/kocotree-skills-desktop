@@ -3735,6 +3735,12 @@ mod tests {
         }
     }
 
+    fn mark_agent_installed(home: &Path, agent: &str) {
+        let command = home.join(".local").join("bin").join(agent);
+        fs::create_dir_all(command.parent().unwrap()).unwrap();
+        fs::write(command, "").unwrap();
+    }
+
     #[test]
     fn upload_filter_excludes_python_cache_and_keeps_gitkeep() {
         assert!(ignored_upload_path(Path::new(
@@ -3902,9 +3908,8 @@ mod tests {
     #[test]
     fn uninstalls_platform_skill_and_managed_agent_connections() {
         let home = tempfile::tempdir().unwrap();
-        let claude_command = home.path().join(".local").join("bin").join("claude");
-        fs::create_dir_all(claude_command.parent().unwrap()).unwrap();
-        fs::write(claude_command, "").unwrap();
+        mark_agent_installed(home.path(), "claude");
+        mark_agent_installed(home.path(), "codex");
         let bytes = create_package("test-skill", None);
         let skills_root = private_skills_root(home.path());
         install_package_bytes(
@@ -4004,6 +4009,7 @@ mod tests {
     #[test]
     fn enabling_still_refuses_a_link_to_an_unknown_location() {
         let home = tempfile::tempdir().unwrap();
+        mark_agent_installed(home.path(), "codex");
         let source = private_skills_root(home.path()).join("test-skill");
         let unknown_source = home.path().join("other").join("test-skill");
         let codex_link = home.path().join(".codex").join("skills").join("test-skill");
@@ -4064,6 +4070,7 @@ mod tests {
     #[test]
     fn codex_toggle_only_changes_the_managed_connection() {
         let home = tempfile::tempdir().unwrap();
+        mark_agent_installed(home.path(), "codex");
         let source = private_skills_root(home.path()).join("test-skill");
         fs::create_dir_all(&source).unwrap();
         fs::write(
@@ -4135,6 +4142,7 @@ mod tests {
     #[test]
     fn external_skill_toggle_only_changes_the_agent_entry() {
         let home = tempfile::tempdir().unwrap();
+        mark_agent_installed(home.path(), "codex");
         let source = external_skills_manager_root(home.path()).join("test-skill");
         let codex_entry = home.path().join(".codex").join("skills").join("test-skill");
         fs::create_dir_all(&source).unwrap();
