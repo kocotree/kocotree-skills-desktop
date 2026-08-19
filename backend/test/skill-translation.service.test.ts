@@ -67,21 +67,15 @@ describe("DeepSeek Skill 元数据翻译", () => {
     });
   });
 
-  it("提示词要求完整简介并保护专业名词和 Kocotree 固定术语", () => {
+  it("使用 P005 规则并保护专业名词和 Kocotree 固定术语", () => {
     expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
-      "通常使用 2 至 3 句话",
+      "displayName 应简洁自然，通常使用 2 至 12 个中文字符",
     );
     expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
-      "核心功能、典型使用场景和重要附加能力",
+      "displayDescription 应使用自然、清晰、易懂的中文，避免逐词硬译",
     );
     expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
-      "不得只翻译或概括开头部分",
-    );
-    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
-      "面向 AI 的触发语法、关键词清单和行为控制指令不要照搬",
-    );
-    expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
-      "不得为了增加长度而编造、重复或夸大内容",
+      "API、SDK、HTTP、JSON、YAML、SQL、OAuth、LLC、BGM 等技术、业务或法律缩写必须保留原始拼写和大小写",
     );
     expect(SKILL_TRANSLATION_SYSTEM_PROMPT).toContain(
       "Kocotree Skill：作为完整产品术语保留",
