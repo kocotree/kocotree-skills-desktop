@@ -1201,21 +1201,32 @@ function App() {
         installedAt: new Date().toISOString(),
       });
       setInstalledSkillIds((currentIds) => new Set(currentIds).add(skill.id));
-      setLocalSkills((current) => [
-        ...current.filter(
-          (record) =>
-            record.installPath !== localResult.record.installPath,
-        ),
-        localResult.record,
-      ]);
+      try {
+        setLocalSkills(await localSkillService.scanSkills());
+      } catch (scanError) {
+        console.warn("[KocotreeSkills] 安装后刷新本地 Skill 失败", scanError);
+        setLocalSkills((current) => [
+          ...current.filter(
+            (record) => record.installPath !== localResult.record.installPath,
+          ),
+          localResult.record,
+        ]);
+      }
       clearBrowseCache();
       setBrowseRefreshKey((current) => current + 1);
       setInstallPrompt(null);
       if (localResult.notices.length > 0) {
+        const enabledAgentLabels = localResult.enabledAgents.map((agent) =>
+          agent === "claude" ? "Claude Code" : "Codex",
+        );
         setInstallFeedback({
           tone: "warning",
-          title: "Skill 已安装，Agent 尚未开启",
-          summary: "Skill 本体已进入私有仓库，需要分别开启 Claude Code 或 Codex 才能使用。",
+          title: enabledAgentLabels.length > 0
+            ? "Skill 已安装，部分 Agent 开启失败"
+            : "Skill 已安装，Agent 尚未开启",
+          summary: enabledAgentLabels.length > 0
+            ? `已在 ${enabledAgentLabels.join("、")} 中自动开启。`
+            : "Skill 本体已进入私有仓库。",
           details: [
             ...localResult.notices,
             ...(localResult.backupPath
@@ -1223,10 +1234,16 @@ function App() {
               : []),
           ],
         });
-      } else if (localResult.backupPath) {
-        Toast.success(`Skill 已覆盖安装，原目录已备份到 ${localResult.backupPath}`);
       } else {
-        Toast.success(`Skill 已安装到 ${localResult.record.installPath}`);
+        const enabledAgentLabels = localResult.enabledAgents.map((agent) =>
+          agent === "claude" ? "Claude Code" : "Codex",
+        );
+        const enabledSummary = enabledAgentLabels.length > 0
+          ? `，并已在 ${enabledAgentLabels.join("、")} 中自动开启`
+          : "";
+        Toast.success(localResult.backupPath
+          ? `Skill 已覆盖安装${enabledSummary}，原目录已备份到 ${localResult.backupPath}`
+          : `Skill 已安装到 ${localResult.record.installPath}${enabledSummary}`);
       }
     } catch (reason) {
       console.error("[KocotreeSkills] Skill 安装失败", reason);
@@ -1547,6 +1564,7 @@ function App() {
     codex: countActiveLocalSkills(localSkillGroups, "codex"),
   };
   const claudeInstalled = agentInstallationStatus?.claude ?? true;
+  const codexInstalled = agentInstallationStatus?.codex ?? true;
 
   return (
     <div className="app-shell">
@@ -1646,15 +1664,20 @@ function App() {
             <button
               className={`local-nav-child ${activePage === "local-codex" ? "active" : ""}`}
               type="button"
-              aria-label={`Codex，${localSkillCounts.codex} 个 Skill`}
-              title="Codex"
+              aria-label={codexInstalled
+                ? `Codex，${localSkillCounts.codex} 个 Skill`
+                : "Codex，未安装"}
+              title={codexInstalled ? "Codex" : "Codex 未安装"}
+              disabled={!codexInstalled}
               onClick={() => setActivePage("local-codex")}
             >
               <i className="local-nav-icon local-nav-icon-codex">
                 <AppIcon name="codex" size={20} />
               </i>
               <span className="sidebar-nav-label">Codex</span>
-              <span className="local-nav-count">{localSkillCounts.codex}</span>
+              <span className="local-nav-count">
+                {codexInstalled ? localSkillCounts.codex : "未安装"}
+              </span>
             </button>
           </nav>
         </section>
@@ -1775,6 +1798,7 @@ function App() {
           <AllAgentsSkillsPage
             skills={localSkills}
             claudeInstalled={claudeInstalled}
+            codexInstalled={codexInstalled}
             loading={localSkillsLoading}
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}
@@ -1790,7 +1814,9 @@ function App() {
           <LocalSkillsPage
             filter={localFilter}
             skills={localSkills}
-            agentInstalled={localFilter !== "claude" || claudeInstalled}
+            agentInstalled={localFilter === "claude"
+              ? claudeInstalled
+              : codexInstalled}
             loading={localSkillsLoading}
             error={localSkillsError}
             onRefresh={() => void refreshLocalSkills()}

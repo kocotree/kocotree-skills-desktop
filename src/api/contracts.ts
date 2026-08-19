@@ -132,6 +132,7 @@ export type LocalSkillAgent = "agents" | "claude" | "codex";
 /** 当前设备上可供 Kocotree 投放 Skill 的 Agent 安装状态。 */
 export interface AgentInstallationStatus {
   claude: boolean;
+  codex: boolean;
 }
 
 /** 客户端扫描和合并展示用的本地 Skill 记录。 */
@@ -205,6 +206,7 @@ export interface LocalInstallResult {
   record: LocalSkillRecord;
   replacedSkillName: string | null;
   backupPath: string | null;
+  enabledAgents: Exclude<LocalSkillAgent, "agents">[];
   notices: string[];
 }
 

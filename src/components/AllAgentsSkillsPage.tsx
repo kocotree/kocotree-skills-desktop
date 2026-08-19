@@ -116,6 +116,7 @@ function installationTimestamp(group: LocalSkillGroup): number {
 export function AllAgentsSkillsPage({
   skills,
   claudeInstalled,
+  codexInstalled,
   loading,
   error,
   onRefresh,
@@ -129,6 +130,7 @@ export function AllAgentsSkillsPage({
 }: {
   skills: LocalSkillRecord[];
   claudeInstalled: boolean;
+  codexInstalled: boolean;
   loading: boolean;
   error: string;
   onRefresh: () => void;
@@ -251,9 +253,10 @@ export function AllAgentsSkillsPage({
                 className={`agent-status-filter filter-${agent.id}${statusFilter === agent.id ? " active" : ""}`}
                 type="button"
                 aria-pressed={statusFilter === agent.id}
-                title={agent.id === "claude" && !claudeInstalled
-                  ? "未检测到 Claude Code"
-                  : `查看 ${agent.label} 已启用的 Skill`}
+                title={(agent.id === "claude" ? claudeInstalled : codexInstalled)
+                  ? `查看 ${agent.label} 已启用的 Skill`
+                  : `未检测到 ${agent.label}`
+                }
                 onClick={() => setStatusFilter(agent.id)}
                 key={agent.id}
               >
@@ -425,8 +428,9 @@ export function AllAgentsSkillsPage({
                     <div className="skill-agent-controls compact-agent-controls">
                       {AGENTS.map((agent) => {
                         const state = getLocalSkillActivationState(group, agent.id);
-                        const installed =
-                          agent.id !== "claude" || claudeInstalled;
+                        const installed = agent.id === "claude"
+                          ? claudeInstalled
+                          : codexInstalled;
                         const controlKey = `${group.id}:${agent.id}`;
                         const pending = pendingControl === controlKey;
                         const controlSupported = canControlLocalSkill(

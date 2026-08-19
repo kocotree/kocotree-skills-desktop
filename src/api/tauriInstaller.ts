@@ -18,6 +18,8 @@ interface InstallSkillCommandResult {
   installedPath: string;
   replacedSkillName: string | null;
   backupPath: string | null;
+  enabledAgents: Array<"claude" | "codex">;
+  notices: string[];
 }
 
 interface InstallSkillCommandError {
@@ -113,10 +115,12 @@ export class TauriInstaller implements LocalSkillService {
           location: "MANAGER",
           entryKind: "DIRECTORY",
           resolvedPath: result.installedPath,
+          assignedAgents: result.enabledAgents,
         },
         replacedSkillName: result.replacedSkillName,
         backupPath: result.backupPath,
-        notices: [],
+        enabledAgents: result.enabledAgents,
+        notices: result.notices,
       };
     } catch (reason) {
       const commandError = parseCommandError(reason);

@@ -83,12 +83,15 @@ pub struct InstallSkillResult {
     pub installed_path: String,
     pub replaced_skill_name: Option<String>,
     pub backup_path: Option<String>,
+    pub enabled_agents: Vec<String>,
+    pub notices: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInstallationStatus {
     pub claude: bool,
+    pub codex: bool,
 }
 
 fn command_exists_in_directory(directory: &Path, command: &str) -> bool {
@@ -213,12 +216,71 @@ fn claude_code_is_installed(home: &Path) -> bool {
         .any(|directory| command_exists_in_directory(directory, "claude"))
 }
 
+fn codex_is_installed(home: &Path) -> bool {
+    if command_exists_on_path("codex") || nvm_has_command(home, "codex") {
+        return true;
+    }
+
+    let directories = vec![
+        home.join(".local").join("bin"),
+        home.join(".npm-global").join("bin"),
+        home.join(".bun").join("bin"),
+        home.join(".local").join("share").join("pnpm"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/homebrew/bin"),
+    ];
+    if directories
+        .iter()
+        .any(|directory| command_exists_in_directory(directory, "codex"))
+    {
+        return true;
+    }
+
+    #[cfg(target_os = "macos")]
+    if [
+        PathBuf::from("/Applications/Codex.app"),
+        home.join("Applications").join("Codex.app"),
+    ]
+    .iter()
+    .any(|path| path.is_dir())
+    {
+        return true;
+    }
+
+    #[cfg(windows)]
+    {
+        if windows_nvm_has_command("codex") {
+            return true;
+        }
+        let mut candidates = windows_claude_command_directories(home);
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            let local_app_data = PathBuf::from(local_app_data);
+            candidates.push(local_app_data.join("Programs").join("Codex"));
+            candidates.push(local_app_data.join("Codex"));
+        }
+        if candidates
+            .iter()
+            .any(|directory| command_exists_in_directory(directory, "codex"))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[tauri::command]
 pub fn get_agent_installation_status() -> AgentInstallationStatus {
-    let claude = dirs::home_dir()
-        .as_deref()
-        .is_some_and(claude_code_is_installed);
-    AgentInstallationStatus { claude }
+    let Some(home) = dirs::home_dir() else {
+        return AgentInstallationStatus {
+            claude: false,
+            codex: false,
+        };
+    };
+    AgentInstallationStatus {
+        claude: claude_code_is_installed(&home),
+        codex: codex_is_installed(&home),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1003,6 +1065,8 @@ fn install_package_bytes(
         installed_path: target.to_string_lossy().into_owned(),
         replaced_skill_name: target_exists.then(|| input.skill_name.clone()),
         backup_path: backup_path.map(|path| path.to_string_lossy().into_owned()),
+        enabled_agents: Vec::new(),
+        notices: Vec::new(),
     })
 }
 
@@ -1019,7 +1083,7 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
         "开始安装 Skill：skill_id={}, version_id={}, version={}, skill_name={}",
         input.skill_id, input.version_id, input.version, input.skill_name
     );
-    let result = async {
+    let result: Result<InstallSkillResult, InstallError> = async {
         let package_bytes = download_package(&input.download_url).await?;
         info!(
             "Skill 安装包下载完成：skill_name={}, bytes={}",
@@ -1031,7 +1095,48 @@ pub async fn install_skill(input: InstallSkillInput) -> Result<InstallSkillResul
         })?;
         let skills_root = private_skills_root(&home);
         let backups_root = private_backups_root(&home);
-        install_package_bytes(&input, &package_bytes, &skills_root, &backups_root)
+        let mut installed =
+            install_package_bytes(&input, &package_bytes, &skills_root, &backups_root)?;
+        let available_agents = [
+            ("claude", "Claude Code", claude_code_is_installed(&home)),
+            ("codex", "Codex", codex_is_installed(&home)),
+        ];
+        let any_agent_available = available_agents
+            .iter()
+            .any(|(_, _, available)| *available);
+        for (agent, label, available) in available_agents {
+            if !available {
+                continue;
+            }
+            let enable_result = set_local_skill_enabled_at_home(
+                &home,
+                SetLocalSkillEnabledInput {
+                    skill_name: input.skill_name.clone(),
+                    source_path: installed.installed_path.clone(),
+                    agent: agent.to_string(),
+                    enabled: true,
+                },
+            );
+            match enable_result {
+                Ok(_) => installed.enabled_agents.push(agent.to_string()),
+                Err(enable_error) => {
+                    warn!(
+                        "Skill 已安装但自动开启失败：skill_name={}, agent={}, code={}, message={}",
+                        input.skill_name, agent, enable_error.code, enable_error.message
+                    );
+                    installed.notices.push(format!(
+                        "{label} 自动开启失败：{}",
+                        enable_error.message
+                    ));
+                }
+            }
+        }
+        if !any_agent_available {
+            installed
+                .notices
+                .push("未检测到 Claude Code 或 Codex；Skill 已保存在私有仓库。".to_string());
+        }
+        Ok(installed)
     }
     .await;
 
@@ -1986,6 +2091,12 @@ fn set_local_skill_enabled_at_home(
         return Err(InstallError::new(
             "LOCAL_SKILL_AGENT_NOT_INSTALLED",
             "未检测到 Claude Code，安装后才能开启 Skill",
+        ));
+    }
+    if input.enabled && input.agent == "codex" && !codex_is_installed(home) {
+        return Err(InstallError::new(
+            "LOCAL_SKILL_AGENT_NOT_INSTALLED",
+            "未检测到 Codex，安装后才能开启 Skill",
         ));
     }
     let requested_source_path = PathBuf::from(&input.source_path);

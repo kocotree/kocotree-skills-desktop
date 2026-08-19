@@ -209,7 +209,7 @@ export class MockLocalSkillService implements LocalSkillService {
 
   async getAgentInstallationStatus(): Promise<AgentInstallationStatus> {
     await this.wait();
-    return { claude: true };
+    return { claude: true, codex: true };
   }
 
   async scanSkills(): Promise<LocalSkillRecord[]> {
@@ -437,6 +437,7 @@ export class MockLocalSkillService implements LocalSkillService {
       record: structuredClone(record),
       replacedSkillName: conflict && input.force ? conflict.skillName : null,
       backupPath: conflict && input.force ? `~/.kocotree-skills/backups/${conflict.skillName}-${Date.now()}` : null,
+      enabledAgents: [],
       notices: [...(scenario?.completionNotices ?? [])],
     };
   }
