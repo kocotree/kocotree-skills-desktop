@@ -46,6 +46,12 @@ function stringArray(value: unknown): string[] {
 }
 
 export const catalogRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/business-scenarios", async (request, reply) => {
+    const auth = await requireAuth(request, reply);
+    if (!auth) return;
+    return success(await catalogService.listBusinessScenarios());
+  });
+
   app.get("/tags", async (request, reply) => {
     const auth = await requireAuth(request, reply);
     if (!auth) return;
@@ -78,6 +84,20 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       typeof query.departmentKey === "string"
         ? query.departmentKey.trim()
         : undefined;
+    const businessScenarioId =
+      typeof query.businessScenarioId === "string"
+        ? query.businessScenarioId.trim()
+        : undefined;
+    const businessScenario =
+      typeof query.businessScenario === "string"
+        ? query.businessScenario.trim()
+        : undefined;
+    if (businessScenarioId && businessScenario) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数互斥");
+    }
+    if (businessScenario && businessScenario !== "unclassified") {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数无效");
+    }
 
     if (tagIds.length > 20 || tagIds.some((tagId) => tagId.length > 100)) {
       return failure(reply, 400, "INVALID_REQUEST", "Tag ID 无效");
@@ -96,6 +116,8 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       query: keyword || undefined,
       tagIds: tagIds.length > 0 ? tagIds : undefined,
       departmentPath: departmentPath ?? undefined,
+      businessScenarioId: businessScenarioId || undefined,
+      unclassified: businessScenario === "unclassified",
       sort,
       page,
       pageSize,

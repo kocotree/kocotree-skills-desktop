@@ -13,6 +13,7 @@ import {
   groupLocalSkills,
   inspectPreparedLocalSkillPackage,
   type AgentInstallationStatus,
+  type BusinessScenarioDto,
   type CatalogEventDto,
   type LocalSkillFilter,
   type LocalSkillRecord,
@@ -77,11 +78,14 @@ const browsePageCache = new Map<string, BrowsePageCacheEntry>();
 let browseTagsCache: BrowseFilterCacheEntry<TagDto> | null = null;
 let browseDepartmentsCache:
   BrowseFilterCacheEntry<PublishedSkillDepartmentDto> | null = null;
+let browseBusinessScenariosCache:
+  BrowseFilterCacheEntry<BusinessScenarioDto> | null = null;
 
 function browsePageCacheKey(input: {
   query: string;
   tagIds: string[];
   departmentKey: string;
+  businessScenarioKey: string;
   sort: SortKey;
   page: number;
 }): string {
@@ -89,6 +93,7 @@ function browsePageCacheKey(input: {
     input.query.trim().toLocaleLowerCase(),
     [...input.tagIds].sort(),
     input.departmentKey,
+    input.businessScenarioKey,
     input.sort,
     input.page,
     BROWSE_PAGE_SIZE,
@@ -402,6 +407,7 @@ function BrowsePage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [departmentKey, setDepartmentKey] = useState("all");
+  const [businessScenarioKey, setBusinessScenarioKey] = useState("all");
   const [sort, setSort] = useState<SortKey>("popular");
   const [page, setPage] = useState(1);
   const [totalSkills, setTotalSkills] = useState(0);
@@ -409,6 +415,8 @@ function BrowsePage({
   const [tags, setTags] = useState<TagDto[]>([]);
   const [departments, setDepartments] =
     useState<PublishedSkillDepartmentDto[]>([]);
+  const [businessScenarios, setBusinessScenarios] =
+    useState<BusinessScenarioDto[]>([]);
   const departmentOptions = useMemo(
     () => departments.map((department) => ({
       id: department.id,
@@ -433,6 +441,7 @@ function BrowsePage({
     setQuery("");
     setSelectedTagIds([]);
     setDepartmentKey("all");
+    setBusinessScenarioKey("all");
     setSort("popular");
     setPage(1);
   }, [highlightedSkillId]);
@@ -514,6 +523,27 @@ function BrowsePage({
 
   useEffect(() => {
     if (!authenticated) {
+      setBusinessScenarios([]);
+      return;
+    }
+    const cached = getUsableBrowseCache(browseBusinessScenariosCache, refreshKey);
+    if (cached) {
+      setBusinessScenarios(cached.items);
+      if (Date.now() - cached.cachedAt < BROWSE_FILTER_CACHE_FRESH_MS) return;
+    }
+    let active = true;
+    skillApi.listBusinessScenarios().then((items) => {
+      if (!active) return;
+      browseBusinessScenariosCache = { items, cachedAt: Date.now(), refreshKey };
+      setBusinessScenarios(items);
+    }).catch((reason: unknown) => {
+      console.error("[KocotreeSkills] 业务场景加载失败", reason);
+    });
+    return () => { active = false; };
+  }, [authenticated, refreshKey, catalogEvent?.eventId]);
+
+  useEffect(() => {
+    if (!authenticated) {
       setDepartments([]);
       return;
     }
@@ -558,6 +588,7 @@ function BrowsePage({
           query: debouncedQuery,
           tagIds: selectedTagIds,
           departmentKey,
+          businessScenarioKey,
           sort,
           page,
         });
@@ -613,6 +644,10 @@ function BrowsePage({
           query: debouncedQuery || undefined,
           tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
           departmentKey: departmentKey === "all" ? undefined : departmentKey,
+          businessScenarioId: businessScenarioKey !== "all" && businessScenarioKey !== "unclassified"
+            ? businessScenarioKey
+            : undefined,
+          businessScenario: businessScenarioKey === "unclassified" ? "unclassified" : undefined,
           sort: sort === "popular"
             ? "INSTALLS_DESC"
             : sort === "created"
@@ -650,7 +685,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, debouncedQuery, departmentKey, installedSkillIdsKey, page, refreshKey, revalidationKey, selectedTagIds, sort]);
+  }, [authenticated, businessScenarioKey, debouncedQuery, departmentKey, installedSkillIdsKey, page, refreshKey, revalidationKey, selectedTagIds, sort]);
 
   if (!authResolved) {
     return (
@@ -747,6 +782,24 @@ function BrowsePage({
             />
           </label>
         </div>
+
+        <TagFilter
+          tags={[
+            { id: "unclassified", name: "未归类" },
+            ...businessScenarios.map((scenario) => ({
+              id: scenario.id,
+              name: `${scenario.name}（${scenario.skillCount}）`,
+            })),
+          ]}
+          selectedTagId={businessScenarioKey}
+          label="业务场景"
+          allLabel="全部"
+          variant="chips"
+          onChange={(nextScenario) => {
+            setBusinessScenarioKey(nextScenario);
+            setPage(1);
+          }}
+        />
 
         <TagFilter
           tags={tags}

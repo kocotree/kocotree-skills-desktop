@@ -11,6 +11,15 @@ export type UserDto = components["schemas"]["User"];
 export type TagDto = components["schemas"]["Tag"];
 export type PublishedSkillDepartmentDto =
   components["schemas"]["PublishedSkillDepartment"];
+export interface BusinessScenarioDto {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  sortOrder: number;
+  status: "ACTIVE" | "ARCHIVED";
+  skillCount: number;
+}
 export type DerivedSourceDto = components["schemas"]["DerivedSource"];
 export type SkillSummaryDto = components["schemas"]["SkillSummary"];
 export type SkillDetailDto = components["schemas"]["SkillDetail"];
@@ -96,7 +105,10 @@ export type DeleteSkillVersionResultDto =
 export type ResolveInstallationDto = components["schemas"]["ResolveInstallationRequest"];
 export type InstallationEventDto = components["schemas"]["InstallationEventRequest"];
 
-export type ListSkillsQuery = NonNullable<operations["listSkills"]["parameters"]["query"]>;
+export type ListSkillsQuery = NonNullable<operations["listSkills"]["parameters"]["query"]> & {
+  businessScenarioId?: string;
+  businessScenario?: "unclassified";
+};
 export type ListMySkillsQuery = NonNullable<operations["listMySkills"]["parameters"]["query"]>;
 export type ListVersionsQuery = NonNullable<operations["listSkillVersions"]["parameters"]["query"]>;
 export type ListNotificationsQuery = NonNullable<operations["listNotifications"]["parameters"]["query"]>;
@@ -243,6 +255,7 @@ export interface SkillApi {
   subscribeCatalogEvents(listener: CatalogEventListener): () => void;
   listSkills(query?: ListSkillsQuery): Promise<SkillPageDto>;
   listPublishedSkillDepartments(): Promise<PublishedSkillDepartmentDto[]>;
+  listBusinessScenarios(): Promise<BusinessScenarioDto[]>;
   listMySkills(query: ListMySkillsQuery): Promise<SkillPageDto>;
   resolvePublishTarget(skillName: string): Promise<PublishTargetResolutionDto>;
   getSkill(skillId: string): Promise<SkillDetailDto>;

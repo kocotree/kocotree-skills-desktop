@@ -92,6 +92,7 @@ model Skill {
   versions           SkillVersion[]      @relation("SkillVersions")
   latestVersion      SkillVersion?       @relation("LatestSkillVersion", fields: [latestVersionId], references: [id], onDelete: SetNull)
   tags               SkillTag[]
+  businessScenarios  SkillBusinessScenario[]
   installSessions    InstallSession[]
 
   @@index([status], map: "skills_status_idx")
@@ -191,6 +192,42 @@ model SkillTag {
   @@id([skillId, tagId])
   @@index([tagId], map: "skill_tags_tag_id_idx")
   @@map("skill_tags")
+}
+
+enum BusinessScenarioStatus {
+  ACTIVE
+  ARCHIVED
+
+  @@map("business_scenario_status")
+}
+
+model BusinessScenario {
+  id          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String                    @unique
+  name        String
+  description String                   @default("")
+  sortOrder   Int                       @map("sort_order")
+  status      BusinessScenarioStatus    @default(ACTIVE)
+  createdAt   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  skills      SkillBusinessScenario[]
+
+  @@index([status, sortOrder], map: "business_scenarios_status_sort_idx")
+  @@map("business_scenarios")
+}
+
+model SkillBusinessScenario {
+  skillId     String          @map("skill_id") @db.Uuid
+  scenarioId  String          @map("scenario_id") @db.Uuid
+  assignedAt  DateTime        @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedBy  String?         @map("assigned_by") @db.Uuid
+  skill       Skill           @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  scenario    BusinessScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@id([skillId, scenarioId])
+  @@index([scenarioId, skillId], map: "skill_business_scenarios_scenario_skill_idx")
+  @@index([assignedBy], map: "skill_business_scenarios_assigned_by_idx")
+  @@map("skill_business_scenarios")
 }
 
 model UserToken {

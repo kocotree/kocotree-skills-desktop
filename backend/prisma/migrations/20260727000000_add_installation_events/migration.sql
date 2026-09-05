@@ -1,0 +1,3 @@
+-- Baseline marker for the pre-existing Skill platform schema.
+-- The database already contains this structure; this migration is intentionally
+-- empty and is marked as applied with `prisma migrate resolve`.

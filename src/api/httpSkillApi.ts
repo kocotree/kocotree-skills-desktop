@@ -62,6 +62,10 @@ export class HttpSkillApi implements SkillApi {
     return this.catalog.listPublishedSkillDepartments();
   }
 
+  listBusinessScenarios() {
+    return this.catalog.listBusinessScenarios();
+  }
+
   listMySkills(query: ListMySkillsQuery) {
     return this.mySkills.listMySkills(query);
   }

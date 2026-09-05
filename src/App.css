@@ -1252,6 +1252,89 @@ textarea:focus-visible,
   color: #686e6a;
 }
 
+/* 业务场景使用独立 Chip，长目录自然换行，不把整行包成一个分段控件。 */
+.tag-filter-row.is-multi .tag-filter-options {
+  align-items: center;
+  row-gap: 7px;
+}
+
+/* 场景目录保持单行，可横向滚动；避免长名称把筛选面板撑成两行。 */
+.tag-filter-row.is-chip-row .tag-filter-options {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 3px;
+  scrollbar-width: none;
+}
+
+.tag-filter-row.is-chip-row .tag-filter-options::-webkit-scrollbar {
+  display: none;
+}
+
+.tag-filter-scroll-shell {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 非业务场景筛选（如发布部门）保持原有分段控件布局。 */
+.tag-filter-scroll-shell:not(.is-chip-scroll-shell) {
+  display: contents;
+}
+
+.tag-filter-row.is-chip-row .tag-filter-scroll-shell::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 34px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 78%);
+  content: "";
+  pointer-events: none;
+}
+
+.tag-filter-row.is-chip-row .tag-filter-scroll-shell.has-previous::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 26px;
+  background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0));
+  content: "";
+  pointer-events: none;
+}
+
+.tag-filter-scroll-more {
+  position: absolute;
+  z-index: 1;
+  top: calc(50% - 2px);
+  right: 5px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #dfe5e1;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--accent-deep);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.tag-filter-scroll-more.is-previous {
+  right: auto;
+  left: 5px;
+}
+
+.tag-filter-row.is-chip-row .tag-filter-options {
+  padding-right: 34px;
+}
+
 .tag-filter-row.is-multi .source-chip:hover {
   border-color: #c4d8ca;
   background: #f5faf7;

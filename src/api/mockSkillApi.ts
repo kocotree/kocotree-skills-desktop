@@ -25,6 +25,7 @@ import {
   type SkillVersionDetailDto,
   type SkillVersionDto,
   type TagDto,
+  type BusinessScenarioDto,
   type UpdateSkillMetadataDto,
   type UserDto,
   type VersionPageDto,
@@ -117,6 +118,11 @@ export class MockSkillApi implements SkillApi {
 
   subscribeCatalogEvents(_listener: CatalogEventListener): () => void {
     return () => {};
+  }
+
+  async listBusinessScenarios(): Promise<BusinessScenarioDto[]> {
+    await this.wait();
+    return [];
   }
 
   /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */

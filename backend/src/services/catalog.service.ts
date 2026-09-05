@@ -213,6 +213,14 @@ async function loadFallbackFiles(
 }
 
 export const catalogService = {
+  async listBusinessScenarios() {
+    const items = await catalogRepository.listBusinessScenarios();
+    return items.map(({ _count, ...item }) => ({
+      ...item,
+      skillCount: _count.skills,
+    }));
+  },
+
   async listTags(query?: string) {
     const items = await catalogRepository.listTags(query);
     return items.map((tag) => ({

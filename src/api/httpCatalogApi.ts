@@ -1,5 +1,6 @@
 import type {
   FileEntryDto,
+  BusinessScenarioDto,
   ListSkillsQuery,
   ListVersionsQuery,
   PublishedSkillDepartmentDto,
@@ -37,6 +38,10 @@ export class HttpCatalogApi {
     );
   }
 
+  listBusinessScenarios(): Promise<BusinessScenarioDto[]> {
+    return this.http.request<BusinessScenarioDto[]>("/api/business-scenarios");
+  }
+
   listSkills(query: ListSkillsQuery = {}): Promise<SkillPageDto> {
     return this.http.request<SkillPageDto>(
       `/api/skills${queryString({
@@ -44,6 +49,8 @@ export class HttpCatalogApi {
         tagId: query.tagId,
         tagIds: query.tagIds,
         departmentKey: query.departmentKey,
+        businessScenarioId: query.businessScenarioId,
+        businessScenario: query.businessScenario,
         sort: query.sort,
         page: query.page,
         pageSize: query.pageSize,

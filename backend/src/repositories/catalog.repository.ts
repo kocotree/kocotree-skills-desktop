@@ -5,6 +5,8 @@ export interface ListSkillsInput {
   query?: string;
   tagIds?: string[];
   departmentPath?: string[];
+  businessScenarioId?: string;
+  unclassified?: boolean;
   sort: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
   page: number;
   pageSize: number;
@@ -74,6 +76,28 @@ const skillDetailInclude = {
 } satisfies Prisma.SkillInclude;
 
 export const catalogRepository = {
+  listBusinessScenarios() {
+    return prisma.businessScenario.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { sortOrder: "asc" },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        sortOrder: true,
+        status: true,
+        _count: {
+          select: {
+            skills: {
+              where: { skill: { status: "PUBLISHED", latestVersionId: { not: null } } },
+            },
+          },
+        },
+      },
+    });
+  },
+
   listTags(query?: string) {
     return prisma.tag.findMany({
       where: query
@@ -157,6 +181,11 @@ export const catalogRepository = {
             },
           }
         : {}),
+      ...(input.businessScenarioId
+        ? { businessScenarios: { some: { scenarioId: input.businessScenarioId } } }
+        : input.unclassified
+          ? { businessScenarios: { none: {} } }
+          : {}),
     };
     const orderBy: Prisma.SkillOrderByWithRelationInput | Prisma.SkillOrderByWithRelationInput[] =
       input.sort === "INSTALLS_DESC"
