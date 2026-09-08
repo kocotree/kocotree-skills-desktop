@@ -1,0 +1,620 @@
+diff --git a/backend/src/repositories/catalog.repository.ts b/backend/src/repositories/catalog.repository.ts
+index 95ef9d8..7d720bd 100644
+--- a/backend/src/repositories/catalog.repository.ts
++++ b/backend/src/repositories/catalog.repository.ts
+@@ -21,6 +21,15 @@ const userSummarySelect = {
+   updatedAt: true,
+ } satisfies Prisma.UserSelect;
+ 
++const businessScenarioRefSelect = {
++  id: true,
++  slug: true,
++  name: true,
++  description: true,
++  sortOrder: true,
++  status: true,
++} satisfies Prisma.BusinessScenarioSelect;
++
+ const skillSummarySelect = {
+   id: true,
+   slug: true,
+@@ -42,6 +51,13 @@ const skillSummarySelect = {
+       },
+     },
+   },
++  businessScenarios: {
++    select: {
++      scenario: {
++        select: businessScenarioRefSelect,
++      },
++    },
++  },
+   latestVersion: {
+     select: {
+       id: true,
+@@ -68,6 +84,13 @@ const skillDetailInclude = {
+       tag: true,
+     },
+   },
++  businessScenarios: {
++    select: {
++      scenario: {
++        select: businessScenarioRefSelect,
++      },
++    },
++  },
+   latestVersion: {
+     include: {
+       creator: true,
+@@ -182,7 +205,14 @@ export const catalogRepository = {
+           }
+         : {}),
+       ...(input.businessScenarioId
+-        ? { businessScenarios: { some: { scenarioId: input.businessScenarioId } } }
++        ? {
++            businessScenarios: {
++              some: {
++                scenarioId: input.businessScenarioId,
++                scenario: { status: "ACTIVE" },
++              },
++            },
++          }
+         : input.unclassified
+           ? { businessScenarios: { none: {} } }
+           : {}),
+diff --git a/backend/src/routes/catalog.route.ts b/backend/src/routes/catalog.route.ts
+index 8d5b639..34e8238 100644
+--- a/backend/src/routes/catalog.route.ts
++++ b/backend/src/routes/catalog.route.ts
+@@ -84,6 +84,18 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
+       typeof query.departmentKey === "string"
+         ? query.departmentKey.trim()
+         : undefined;
++    if (
++      query.businessScenarioId !== undefined
++      && typeof query.businessScenarioId !== "string"
++    ) {
++      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 必须是单个字符串");
++    }
++    if (
++      query.businessScenario !== undefined
++      && typeof query.businessScenario !== "string"
++    ) {
++      return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选必须是单个字符串");
++    }
+     const businessScenarioId =
+       typeof query.businessScenarioId === "string"
+         ? query.businessScenarioId.trim()
+@@ -95,6 +107,9 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
+     if (businessScenarioId && businessScenario) {
+       return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数互斥");
+     }
++    if (businessScenarioId && !UUID_PATTERN.test(businessScenarioId)) {
++      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 无效");
++    }
+     if (businessScenario && businessScenario !== "unclassified") {
+       return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数无效");
+     }
+diff --git a/backend/src/services/catalog.service.ts b/backend/src/services/catalog.service.ts
+index f7e28de..4d983b2 100644
+--- a/backend/src/services/catalog.service.ts
++++ b/backend/src/services/catalog.service.ts
+@@ -173,6 +173,14 @@ function toSkillSummary(
+       id: tag.id,
+       name: tag.name,
+     })),
++    businessScenarios: skill.businessScenarios.map(({ scenario }) => ({
++      id: scenario.id,
++      slug: scenario.slug,
++      name: scenario.name,
++      description: scenario.description,
++      sortOrder: scenario.sortOrder,
++      status: scenario.status,
++    })),
+     currentVersion,
+     installCount: skill.installCount,
+     derivedFrom: null,
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index caa1636..967c78e 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -12,6 +12,8 @@ tags:
+     description: 当前用户和用户关联的 Skill。
+   - name: Tags
+     description: Skill 分类标签。
++  - name: BusinessScenarios
++    description: Skill 业务场景目录和筛选。
+   - name: Translations
+     description: Skill 展示信息中文本地化。
+   - name: Skills
+@@ -111,6 +113,22 @@ paths:
+                 $ref: '#/components/schemas/TagListResponse'
+         default:
+           $ref: '#/components/responses/ErrorResponse'
++  /api/business-scenarios:
++    get:
++      tags: [BusinessScenarios]
++      summary: 获取业务场景列表
++      operationId: listBusinessScenarios
++      security:
++        - BearerAuth: []
++      responses:
++        '200':
++          description: 激活业务场景及已发布 Skill 数量
++          content:
++            application/json:
++              schema:
++                $ref: '#/components/schemas/BusinessScenarioListResponse'
++        default:
++          $ref: '#/components/responses/ErrorResponse'
+   /api/skill-metadata/translations:
+     post:
+       tags: [Translations]
+@@ -169,6 +187,20 @@ paths:
+           schema:
+             type: string
+             maxLength: 2048
++        - name: businessScenarioId
++          in: query
++          required: false
++          description: 按业务场景 ID 筛选；与 businessScenario 互斥
++          schema:
++            type: string
++            format: uuid
++        - name: businessScenario
++          in: query
++          required: false
++          description: 特殊业务场景筛选；仅支持未归类
++          schema:
++            type: string
++            enum: [unclassified]
+         - name: sort
+           in: query
+           required: false
+@@ -866,6 +898,7 @@ components:
+         - status
+         - owner
+         - tags
++        - businessScenarios
+         - currentVersion
+         - installCount
+         - derivedFrom
+@@ -904,6 +937,11 @@ components:
+           maxItems: 5
+           items:
+             $ref: '#/components/schemas/Tag'
++        businessScenarios:
++          type: array
++          maxItems: 3
++          items:
++            $ref: '#/components/schemas/BusinessScenarioRef'
+         currentVersion:
+           $ref: '#/components/schemas/SkillVersion'
+         installCount:
+@@ -928,6 +966,39 @@ components:
+         updatedAt:
+           type: string
+           format: date-time
++    BusinessScenarioRef:
++      type: object
++      required: [id, slug, name, description, sortOrder, status]
++      properties:
++        id:
++          type: string
++          format: uuid
++        slug:
++          type: string
++          minLength: 1
++          maxLength: 100
++        name:
++          type: string
++          minLength: 1
++          maxLength: 100
++        description:
++          type: string
++          maxLength: 1000
++        sortOrder:
++          type: integer
++          minimum: 0
++        status:
++          type: string
++          enum: [ACTIVE, ARCHIVED]
++    BusinessScenario:
++      allOf:
++        - $ref: '#/components/schemas/BusinessScenarioRef'
++        - type: object
++          required: [skillCount]
++          properties:
++            skillCount:
++              type: integer
++              minimum: 0
+     SkillDetail:
+       allOf:
+         - $ref: '#/components/schemas/SkillSummary'
+@@ -1315,6 +1386,16 @@ components:
+               type: array
+               items:
+                 $ref: '#/components/schemas/Tag'
++    BusinessScenarioListResponse:
++      allOf:
++        - $ref: '#/components/schemas/ApiOkMeta'
++        - type: object
++          required: [data]
++          properties:
++            data:
++              type: array
++              items:
++                $ref: '#/components/schemas/BusinessScenario'
+     SkillMetadataTranslationResponse:
+       allOf:
+         - $ref: '#/components/schemas/ApiOkMeta'
+diff --git a/src/App.tsx b/src/App.tsx
+index 1262249..f03c32e 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -619,6 +619,12 @@ function BrowsePage({
+               departmentKey === "all"
+               || JSON.stringify(skill.owner.departmentPath) === departmentKey,
+             )
++            .filter((skill) =>
++              businessScenarioKey === "all"
++              || (businessScenarioKey === "unclassified"
++                ? skill.businessScenarios.length === 0
++                : skill.businessScenarios.some((scenario) => scenario.id === businessScenarioKey)),
++            )
+             .filter((skill) =>
+               !normalizedQuery
+               || [
+diff --git a/src/api/contracts.ts b/src/api/contracts.ts
+index f2a41d9..78edea0 100644
+--- a/src/api/contracts.ts
++++ b/src/api/contracts.ts
+@@ -11,15 +11,8 @@ export type UserDto = components["schemas"]["User"];
+ export type TagDto = components["schemas"]["Tag"];
+ export type PublishedSkillDepartmentDto =
+   components["schemas"]["PublishedSkillDepartment"];
+-export interface BusinessScenarioDto {
+-  id: string;
+-  slug: string;
+-  name: string;
+-  description: string;
+-  sortOrder: number;
+-  status: "ACTIVE" | "ARCHIVED";
+-  skillCount: number;
+-}
++export type BusinessScenarioDto = components["schemas"]["BusinessScenario"];
++export type BusinessScenarioRefDto = components["schemas"]["BusinessScenarioRef"];
+ export type DerivedSourceDto = components["schemas"]["DerivedSource"];
+ export type SkillSummaryDto = components["schemas"]["SkillSummary"];
+ export type SkillDetailDto = components["schemas"]["SkillDetail"];
+diff --git a/src/api/mockData.ts b/src/api/mockData.ts
+index 59ac82e..6f0a571 100644
+--- a/src/api/mockData.ts
++++ b/src/api/mockData.ts
+@@ -1,5 +1,6 @@
+ import type {
+   FileEntryDto,
++  BusinessScenarioDto,
+   NotificationDto,
+   SkillDetailDto,
+   SkillVersionDto,
+@@ -59,6 +60,44 @@ const mockDataTag: TagDto = {
+   name: "Mock",
+ };
+ 
++export const businessScenarioIds = {
++  product: "1b2c3d4e-5f60-4781-9234-567890abcdef",
++  ecommerce: "2b2c3d4e-5f60-4781-9234-567890abcdef",
++  contentMarketing: "3b2c3d4e-5f60-4781-9234-567890abcdef",
++  visualContent: "4b2c3d4e-5f60-4781-9234-567890abcdef",
++  customerOperations: "5b2c3d4e-5f60-4781-9234-567890abcdef",
++  channels: "6b2c3d4e-5f60-4781-9234-567890abcdef",
++  supplyChain: "7b2c3d4e-5f60-4781-9234-567890abcdef",
++  technology: "8b2c3d4e-5f60-4781-9234-567890abcdef",
++  aiAutomation: "9b2c3d4e-5f60-4781-9234-567890abcdef",
++  dataAnalysis: "ab2c3d4e-5f60-4781-9234-567890abcdef",
++  finance: "bb2c3d4e-5f60-4781-9234-567890abcdef",
++  hr: "cb2c3d4e-5f60-4781-9234-567890abcdef",
++} as const;
++
++export const mockBusinessScenarios: BusinessScenarioDto[] = [
++  [businessScenarioIds.product, "product-and-merchandising", "商品与产品", "商品规划、产品资料和商品生命周期管理"],
++  [businessScenarioIds.ecommerce, "ecommerce-operations", "电商运营", "电商店铺、商品上架和活动运营"],
++  [businessScenarioIds.contentMarketing, "content-marketing", "内容营销", "内容策划、分发和营销增长"],
++  [businessScenarioIds.visualContent, "visual-content-production", "视觉与内容生产", "图片、视频、设计和内容素材生产"],
++  [businessScenarioIds.customerOperations, "customer-and-user-operations", "客服与用户运营", "客服支持、用户维护和服务运营"],
++  [businessScenarioIds.channels, "channels-and-business", "渠道与商务", "渠道拓展、销售支持和商务协作"],
++  [businessScenarioIds.supplyChain, "supply-chain-and-production", "供应链与生产", "采购、生产、库存和供应链协同"],
++  [businessScenarioIds.technology, "technology-development", "技术研发", "软件开发、工程协作和技术交付"],
++  [businessScenarioIds.aiAutomation, "ai-automation", "AI 自动化", "AI 能力编排和业务流程自动化"],
++  [businessScenarioIds.dataAnalysis, "data-and-business-analysis", "数据与经营分析", "数据处理、指标分析和经营决策"],
++  [businessScenarioIds.finance, "financial-management", "财务管理", "财务核算、预算和经营财务"],
++  [businessScenarioIds.hr, "human-resources-and-administration", "人事行政", "人力资源、行政和组织管理"],
++].map(([id, slug, name, description], index) => ({
++  id,
++  slug,
++  name,
++  description,
++  sortOrder: (index + 1) * 10,
++  status: "ACTIVE" as const,
++  skillCount: 0,
++}));
++
+ export const mockTags: TagDto[] = [
+   { id: "2bb6b0f2-96f9-49e1-8c2c-a92503171001", name: "代码审查" },
+   { id: "2bb6b0f2-96f9-49e1-8c2c-a92503171002", name: "内容处理" },
+@@ -136,6 +175,25 @@ export const skillIds = {
+   withdrawn: "0c9c2f8d-3e84-4c0c-8a15-d41d87fd1016",
+ } as const;
+ 
++const mockSkillScenarioIds: Record<string, string[]> = {
++  [skillIds.codeReview]: [businessScenarioIds.technology],
++  [skillIds.meetingNotes]: [businessScenarioIds.customerOperations],
++  [skillIds.dataInsight]: [businessScenarioIds.dataAnalysis],
++  [skillIds.apiDoc]: [businessScenarioIds.technology, businessScenarioIds.aiAutomation],
++  [skillIds.weeklyReport]: [businessScenarioIds.dataAnalysis, businessScenarioIds.contentMarketing],
++  [skillIds.sqlChecker]: [businessScenarioIds.technology, businessScenarioIds.dataAnalysis],
++  [skillIds.archived]: [],
++  [skillIds.localConflict]: [],
++  [skillIds.localModified]: [],
++  [skillIds.downgrade]: [],
++  [skillIds.derivedOverlap]: [businessScenarioIds.technology],
++  [skillIds.packageHash]: [],
++  [skillIds.rollback]: [],
++  [skillIds.claudeLink]: [],
++  [skillIds.nameConflict]: [],
++  [skillIds.withdrawn]: [businessScenarioIds.aiAutomation],
++};
++
+ export interface MockInstallScenario {
+   downloadError?: { code: string; message: string };
+   forcedInstallError?: { code: string; message: string };
+@@ -234,6 +292,10 @@ const skillOverrides: Partial<Record<string, Pick<SkillDetailDto, "derivedFrom"
+   },
+ };
+ 
++const mockBusinessScenarioRefs = new Map(
++  mockBusinessScenarios.map(({ skillCount: _skillCount, ...scenario }) => [scenario.id, scenario]),
++);
++
+ export const mockSkillDetails: SkillDetailDto[] = skillMeta.map((item) => {
+   const [id, displayName, displayDescription, tagIndexes, owner, collaborators, installCount, createdAt, status] = item;
+   const currentVersion = mockVersions[id][0];
+@@ -248,6 +310,9 @@ export const mockSkillDetails: SkillDetailDto[] = skillMeta.map((item) => {
+     owner,
+     collaborators: [...collaborators],
+     tags: [...tagIndexes.map((index) => mockTags[index]), mockDataTag],
++    businessScenarios: (mockSkillScenarioIds[id] ?? [])
++      .map((scenarioId) => mockBusinessScenarioRefs.get(scenarioId))
++      .filter((scenario): scenario is NonNullable<typeof scenario> => Boolean(scenario)),
+     currentVersion,
+     installCount,
+     derivedFrom: override?.derivedFrom ?? null,
+diff --git a/src/api/mockSkillApi.test.ts b/src/api/mockSkillApi.test.ts
+index aa9be6c..c45dfe8 100644
+--- a/src/api/mockSkillApi.test.ts
++++ b/src/api/mockSkillApi.test.ts
+@@ -48,6 +48,39 @@ describe("MockSkillApi", () => {
+     expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
+   });
+ 
++  it("Mock 业务场景列表返回计数，Skill 支持指定场景和未归类筛选", async () => {
++    const api = new MockSkillApi({ delayMs: 0 });
++    const scenarios = await api.listBusinessScenarios();
++    const technology = scenarios.find((scenario) => scenario.slug === "technology-development");
++    expect(scenarios).toHaveLength(12);
++    expect(technology?.skillCount).toBeGreaterThan(0);
++
++    const assigned = await api.listSkills({
++      businessScenarioId: technology!.id,
++      pageSize: 100,
++    });
++    expect(assigned.items.length).toBe(technology!.skillCount);
++    expect(assigned.items.every((skill) =>
++      skill.businessScenarios.some((scenario) => scenario.id === technology!.id),
++    )).toBe(true);
++
++    const unclassified = await api.listSkills({
++      businessScenario: "unclassified",
++      pageSize: 100,
++    });
++    expect(unclassified.items.every((skill) => skill.businessScenarios.length === 0)).toBe(true);
++  });
++
++  it("Mock 业务场景筛选拒绝互斥和非法参数", async () => {
++    const api = new MockSkillApi({ delayMs: 0 });
++    await expect(api.listSkills({
++      businessScenarioId: skillIds.codeReview,
++      businessScenario: "unclassified",
++    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
++    await expect(api.listSkills({ businessScenarioId: "not-a-uuid" }))
++      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
++  });
++
+   it("热门排序依次按安装量、更新时间、创建时间和 ID 降序", async () => {
+     const api = new MockSkillApi({ delayMs: 0 });
+     const result = await api.listSkills({ sort: "INSTALLS_DESC", pageSize: 100 });
+diff --git a/src/api/mockSkillApi.ts b/src/api/mockSkillApi.ts
+index 114f473..2230b48 100644
+--- a/src/api/mockSkillApi.ts
++++ b/src/api/mockSkillApi.ts
+@@ -32,6 +32,7 @@ import {
+ } from "./contracts";
+ import {
+   mockNotifications,
++  mockBusinessScenarios,
+   mockInstallScenarios,
+   mockSkillDetails,
+   mockTags,
+@@ -122,7 +123,19 @@ export class MockSkillApi implements SkillApi {
+ 
+   async listBusinessScenarios(): Promise<BusinessScenarioDto[]> {
+     await this.wait();
+-    return [];
++    const activeSkills = this.skills.filter(
++      (skill) => skill.status === "ACTIVE" && skill.currentVersion.id,
++    );
++    return clone(
++      mockBusinessScenarios
++        .filter((scenario) => scenario.status === "ACTIVE")
++        .map((scenario) => ({
++          ...scenario,
++          skillCount: activeSkills.filter((skill) =>
++            skill.businessScenarios.some((item) => item.id === scenario.id),
++          ).length,
++        })),
++    );
+   }
+ 
+   /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */
+@@ -184,6 +197,21 @@ export class MockSkillApi implements SkillApi {
+ 
+   async listSkills(query: ListSkillsQuery = {}): Promise<SkillPageDto> {
+     await this.wait();
++    if (query.businessScenarioId && query.businessScenario) {
++      throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数互斥");
++    }
++    if (
++      query.businessScenarioId !== undefined
++      && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.businessScenarioId)
++    ) {
++      throw new SkillApiError("INVALID_REQUEST", "业务场景 ID 无效");
++    }
++    if (
++      query.businessScenario !== undefined
++      && query.businessScenario !== "unclassified"
++    ) {
++      throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数无效");
++    }
+     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
+     const tagIds = query.tagIds?.length
+       ? query.tagIds
+@@ -194,6 +222,14 @@ export class MockSkillApi implements SkillApi {
+       (skill) =>
+         skill.status === "ACTIVE"
+         && (tagIds.length === 0 || skill.tags.some((tag) => tagIds.includes(tag.id)))
++        && (
++          !query.businessScenarioId
++          || skill.businessScenarios.some((scenario) => scenario.id === query.businessScenarioId)
++        )
++        && (
++          query.businessScenario !== "unclassified"
++          || skill.businessScenarios.length === 0
++        )
+         && (
+           !query.departmentKey
+           || JSON.stringify(skill.owner.departmentPath) === query.departmentKey
+@@ -364,7 +400,7 @@ export class MockSkillApi implements SkillApi {
+     const skill: SkillDetailDto = {
+       id: skillId, skillName: version.skillName, displayName: input.displayName, skillDescription: version.skillDescription,
+       displayDescription: input.displayDescription, status: "ACTIVE", owner: user, collaborators: [],
+-      tags: resolvedTags, currentVersion: version, installCount: 0,
++      tags: resolvedTags, businessScenarios: [], currentVersion: version, installCount: 0,
+       derivedFrom: derivedSkill && derivedVersion ? { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" } : null,
+       derivedChain: derivedSkill && derivedVersion ? [...derivedSkill.derivedChain, { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" }] : [],
+       updatedBy: user, archivedAt: null, archiveReason: null, nameConflictReason: null, createdAt: now, updatedAt: now,
+diff --git a/src/api/schema.d.ts b/src/api/schema.d.ts
+index 20f5f7b..3eaae4c 100644
+--- a/src/api/schema.d.ts
++++ b/src/api/schema.d.ts
+@@ -72,6 +72,23 @@ export interface paths {
+         patch?: never;
+         trace?: never;
+     };
++    "/api/business-scenarios": {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        /** 获取业务场景列表 */
++        get: operations["listBusinessScenarios"];
++        put?: never;
++        post?: never;
++        delete?: never;
++        options?: never;
++        head?: never;
++        patch?: never;
++        trace?: never;
++    };
+     "/api/skill-metadata/translations": {
+         parameters: {
+             query?: never;
+@@ -454,6 +471,7 @@ export interface components {
+             status: "ACTIVE" | "ARCHIVED" | "NAME_CONFLICT";
+             owner: components["schemas"]["User"];
+             tags: components["schemas"]["Tag"][];
++            businessScenarios: components["schemas"]["BusinessScenarioRef"][];
+             currentVersion: components["schemas"]["SkillVersion"];
+             installCount: number;
+             derivedFrom: components["schemas"]["DerivedSource"] | null;
+@@ -467,6 +485,19 @@ export interface components {
+             /** Format: date-time */
+             updatedAt: string;
+         };
++        BusinessScenarioRef: {
++            /** Format: uuid */
++            id: string;
++            slug: string;
++            name: string;
++            description: string;
++            sortOrder: number;
++            /** @enum {string} */
++            status: "ACTIVE" | "ARCHIVED";
++        };
++        BusinessScenario: components["schemas"]["BusinessScenarioRef"] & {
++            skillCount: number;
++        };
+         SkillDetail: components["schemas"]["SkillSummary"] & {
+             collaborators: components["schemas"]["User"][];
+             derivedChain: components["schemas"]["DerivedSource"][];
+@@ -627,6 +658,9 @@ export interface components {
+         TagListResponse: components["schemas"]["ApiOkMeta"] & {
+             data: components["schemas"]["Tag"][];
+         };
++        BusinessScenarioListResponse: components["schemas"]["ApiOkMeta"] & {
++            data: components["schemas"]["BusinessScenario"][];
++        };
+         SkillMetadataTranslationResponse: components["schemas"]["ApiOkMeta"] & {
+             data: components["schemas"]["SkillMetadataTranslation"];
+         };
+@@ -791,6 +825,27 @@ export interface operations {
+             default: components["responses"]["ErrorResponse"];
+         };
+     };
++    listBusinessScenarios: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody?: never;
++        responses: {
++            /** @description 激活业务场景及已发布 Skill 数量 */
++            200: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content: {
++                    "application/json": components["schemas"]["BusinessScenarioListResponse"];
++                };
++            };
++            default: components["responses"]["ErrorResponse"];
++        };
++    };
+     translateSkillMetadata: {
+         parameters: {
+             query?: never;
+@@ -826,6 +881,10 @@ export interface operations {
+                 tagIds?: string[];
+                 /** @description 已发布 Skill 部门列表返回的不透明部门标识 */
+                 departmentKey?: string;
++                /** @description 按业务场景 ID 筛选；与 businessScenario 互斥 */
++                businessScenarioId?: string;
++                /** @description 特殊业务场景筛选；仅支持未归类 */
++                businessScenario?: "unclassified";
+                 sort?: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
+                 page?: components["parameters"]["Page"];
+                 pageSize?: components["parameters"]["PageSize"];

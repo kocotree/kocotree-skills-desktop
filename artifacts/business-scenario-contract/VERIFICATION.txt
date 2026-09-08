@@ -1,0 +1,41 @@
+业务场景筛选缺口收尾验证
+
+BRANCH: nangua
+CHANGED:
+- docs/openapi.yaml：新增 GET /api/business-scenarios、BusinessScenario/BusinessScenarioRef 响应模型、SkillSummary.businessScenarios、GET /api/skills 业务场景查询参数。
+- src/api/schema.d.ts、src/api/contracts.ts：同步生成类型并移除手写 BusinessScenario DTO。
+- src/api/mockData.ts、src/api/mockSkillApi.ts：补充 12 个场景、Skill 场景关系、场景计数、指定场景/未归类筛选和异常参数校验。
+- src/App.tsx：已安装列表加入业务场景筛选。
+- backend/src/{repositories/catalog.repository.ts,services/catalog.service.ts,routes/catalog.route.ts}：返回场景关联、筛选归档场景仅命中 ACTIVE、校验 UUID/数组/互斥参数。
+
+BASELINE
+Command: pnpm test
+Input: repository baseline before source edits
+Literal result: Test Files 10 passed (10); Tests 60 passed (60); exit status 0.
+Command: pnpm --dir backend run build
+Input: repository baseline before source edits
+Literal result: tsc --noEmit; exit status 0.
+
+MODIFIED
+Command: pnpm test
+Input: modified source with 2 new MockSkillApi tests
+Literal result: Test Files 10 passed (10); Tests 62 passed (62); exit status 0.
+Command: pnpm run build
+Input: modified source
+Literal result: tsc && vite build; build completed; one existing chunk-size warning; exit status 0.
+Command: pnpm --dir backend run build
+Input: modified backend source
+Literal result: tsc --noEmit; exit status 0.
+
+ROLLBACK
+Command: artifacts/business-scenario-contract/ROLLBACK.sh artifacts/business-scenario-contract/rollback-test-copy-1788578850
+Input: a separate copy of the nine baseline files with an intentional mutation appended to docs/openapi.yaml
+Literal result: restored original item-1 files under artifacts/business-scenario-contract/rollback-test-copy-1788578850; rollback verification: PASS; exit status 0.
+Restored behavior/status: all nine copied files match baseline-sha256.txt; working-tree source remains modified.
+
+ARTIFACTS
+- MODIFIED_FILE: artifacts/business-scenario-contract/MODIFIED_FILE
+- DIFF_FILE: artifacts/business-scenario-contract/DIFF_FILE
+- VERIFICATION.txt: artifacts/business-scenario-contract/VERIFICATION.txt
+- ROLLBACK.sh: artifacts/business-scenario-contract/ROLLBACK.sh (executable)
+- Baseline hashes: artifacts/business-scenario-contract/baseline-sha256.txt

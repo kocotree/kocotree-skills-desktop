@@ -1,0 +1,22 @@
+Business scenarios database layer verification
+
+Changed branch/field:
+- backend/prisma/schema.prisma: Skill.businessScenarios relation; BusinessScenarioStatus enum; BusinessScenario and SkillBusinessScenario models.
+- backend/prisma/migrations/20260905000000_add_business_scenarios/migration.sql: two tables, indexes, foreign keys, and 12 idempotent seed rows.
+
+BASELINE:
+Command: (before change) cd backend && pnpm build
+Literal output: $ tsc --noEmit
+Result: exit 0
+
+MODIFIED:
+Command: cd backend && pnpm prisma:generate && pnpm build
+Literal output: Prisma Client generated successfully (v6.19.3); $ tsc --noEmit
+Result: exit 0
+
+ROLLBACK:
+Command: artifacts/business-scenarios/ROLLBACK.sh /tmp/business-schema-test.prisma /tmp/business-schema-original.prisma && cmp /tmp/business-schema-test.prisma /tmp/business-schema-original.prisma
+Literal output: restored /tmp/business-schema-test.prisma from /tmp/business-schema-original.prisma
+Result: exit 0; copied test file matches original.
+
+Restored behavior/status: rollback was tested on a separate copy; the working schema remains modified.

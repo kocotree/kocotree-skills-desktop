@@ -1,0 +1,1449 @@
+openapi: 3.1.0
+info:
+  title: Kocotree Skills API
+  version: 0.5.0
+  description: Kocotree Skills 客户端、模拟接口与未来真实后端共同遵守的契约。
+  license:
+    name: Proprietary
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: Users
+    description: 当前用户和用户关联的 Skill。
+  - name: Tags
+    description: Skill 分类标签。
+  - name: Translations
+    description: Skill 展示信息中文本地化。
+  - name: Skills
+    description: Skill 查询、创建和生命周期管理。
+  - name: Versions
+    description: 不可变版本和文件树。
+  - name: Installations
+    description: 下载凭证、安装匹配和安装上报。
+  - name: Notifications
+    description: 应用内弱提醒。
+paths:
+  /api/users/me:
+    get:
+      tags: [Users]
+      summary: 获取当前用户
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/users/me/skills:
+    get:
+      tags: [Users]
+      summary: 获取我的在线 Skill
+      operationId: listMySkills
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: relation
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [OWNED, COLLABORATED]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Skill 分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/users/me/skills/publish-target:
+    get:
+      tags: [Users]
+      summary: 按 Skill 名称解析当前用户可发布的云端目标
+      operationId: resolvePublishTarget
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: skillName
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+            maxLength: 64
+      responses:
+        '200':
+          description: 云端发布目标解析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishTargetResolutionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/tags:
+    get:
+      tags: [Tags]
+      summary: 获取 Tag 列表
+      operationId: listTags
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: Tag 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TagListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skill-metadata/translations:
+    post:
+      tags: [Translations]
+      summary: 将 Skill 名称和描述转换为中文展示信息
+      operationId: translateSkillMetadata
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslateSkillMetadataRequest'
+      responses:
+        '200':
+          description: 中文展示信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillMetadataTranslationResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills:
+    get:
+      tags: [Skills]
+      summary: 获取公开 Skill 列表
+      operationId: listSkills
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 200
+        - name: tagId
+          in: query
+          required: false
+          deprecated: true
+          schema:
+            type: string
+        - name: tagIds
+          in: query
+          required: false
+          description: 多选 Tag ID；重复传参，命中任一 Tag 的 Skill 会被返回
+          schema:
+            type: array
+            maxItems: 20
+            items:
+              type: string
+        - name: departmentKey
+          in: query
+          required: false
+          description: 已发布 Skill 部门列表返回的不透明部门标识
+          schema:
+            type: string
+            maxLength: 2048
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [UPDATED_DESC, CREATED_DESC, INSTALLS_DESC]
+            default: UPDATED_DESC
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Skill 分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillPageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [Skills]
+      summary: 创建 Skill
+      operationId: createSkill
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateSkillRequest'
+            encoding:
+              tagIds:
+                style: form
+                explode: true
+              newTagNames:
+                style: form
+                explode: true
+      responses:
+        '201':
+          description: Skill 已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetailCreatedResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/departments:
+    get:
+      tags: [Skills]
+      summary: 获取已发布 Skill 的发布部门
+      operationId: listPublishedSkillDepartments
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 已发布 Skill 的发布部门列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublishedSkillDepartmentListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}:
+    get:
+      tags: [Skills]
+      summary: 获取 Skill 详情
+      description: 历史归档数据仅作只读兼容；当前产品不再创建归档状态。
+      operationId: getSkill
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      responses:
+        '200':
+          description: Skill 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    patch:
+      tags: [Skills]
+      summary: 修改平台展示信息
+      operationId: updateSkillMetadata
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSkillRequest'
+      responses:
+        '200':
+          description: Skill 已更新
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Skills]
+      summary: 永久删除当前用户拥有的 Skill
+      operationId: deleteSkill
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      responses:
+        '200':
+          description: Skill 已永久删除
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, data, msg]
+                properties:
+                  code:
+                    type: integer
+                    const: 200
+                  data:
+                    type: object
+                    required: [id, deletedObjectCount, objectCount, ossCleaned]
+                    properties:
+                      id:
+                        type: string
+                      deletedObjectCount:
+                        type: integer
+                      objectCount:
+                        type: integer
+                      ossCleaned:
+                        type: boolean
+                  msg:
+                    type: string
+                    const: success
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/versions:
+    get:
+      tags: [Versions]
+      summary: 获取版本历史
+      operationId: listSkillVersions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 版本分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionPageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags: [Versions]
+      summary: 发布新版本
+      operationId: publishSkillVersion
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PublishVersionRequest'
+            encoding:
+              tagIds:
+                style: form
+                explode: true
+              newTagNames:
+                style: form
+                explode: true
+      responses:
+        '201':
+          description: 新版本已发布
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillDetailCreatedResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/versions/{versionId}:
+    get:
+      tags: [Versions]
+      summary: 获取版本详情
+      operationId: getSkillVersion
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: 版本详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionDetailResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    delete:
+      tags: [Versions]
+      summary: 永久删除当前用户拥有的 Skill 版本
+      description: 至少保留一个版本；删除当前版本后，剩余的最新版本会成为当前版本。
+      operationId: deleteSkillVersion
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Skill 版本已永久删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SkillVersionDeletionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/versions/{versionId}/files:
+    get:
+      tags: [Versions]
+      summary: 获取版本文件树
+      operationId: listVersionFiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: 文件清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileEntryListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/versions/{versionId}/files/content:
+    get:
+      tags: [Versions]
+      summary: 获取文本文件内容
+      operationId: getVersionFileContent
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+        - name: path
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 文本文件内容
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileContentResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/installation-status:
+    get:
+      tags: [Installations]
+      summary: 查询已安装 Skill 的在线状态
+      operationId: getInstallationStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - name: versionId
+          in: query
+          required: false
+          description: 本地安装凭证记录的版本 ID；可能返回历史撤回版本的兼容状态。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 最小在线状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationStatusResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/skills/{skillId}/versions/{versionId}/download-tickets:
+    post:
+      tags: [Installations]
+      summary: 获取版本下载凭证
+      operationId: createDownloadTicket
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SkillId'
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '201':
+          description: 下载凭证
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadTicketCreatedResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/installations/resolve:
+    post:
+      tags: [Installations]
+      summary: 通过名称和内容哈希恢复平台关联
+      operationId: resolveInstallation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveInstallationRequest'
+      responses:
+        '200':
+          description: 匹配结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstallationResolutionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/installations/events:
+    post:
+      tags: [Installations]
+      summary: 上报成功安装事件
+      operationId: createInstallationEvent
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstallationEventRequest'
+      responses:
+        '200':
+          description: 已记录或幂等接受
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: 获取通知
+      operationId: listNotifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 通知分页
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: 全部标记已读
+      operationId: readAllNotifications
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 已全部标记已读
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /api/notifications/{notificationId}/read:
+    post:
+      tags: [Notifications]
+      summary: 标记单条通知已读
+      operationId: readNotification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 已标记已读
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    SkillId:
+      name: skillId
+      in: path
+      required: true
+      schema:
+        type: string
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  responses:
+    ErrorResponse:
+      description: 请求失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, data, msg]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorHttpStatus'
+        data:
+          $ref: '#/components/schemas/ErrorData'
+        msg:
+          description: 用户可读的错误信息。
+          type: string
+    ErrorHttpStatus:
+      description: 与 HTTP 响应状态码一致。
+      type: integer
+      enum: [400, 401, 403, 404, 409, 413, 415, 422, 500, 502, 503, 504]
+    ErrorData:
+      description: 业务错误码与结构化错误详情。
+      type: object
+      required: [errorCode]
+      properties:
+        errorCode:
+          $ref: '#/components/schemas/BusinessErrorCode'
+      additionalProperties: true
+    BusinessErrorCode:
+      type: string
+      enum:
+        - CONTENT_UNCHANGED
+        - DISPLAY_NAME_CONFIRMATION_REQUIRED
+        - DUPLICATE_SKILL_NAME
+        - FILE_NOT_FOUND
+        - FILE_PREVIEW_UNAVAILABLE
+        - FORBIDDEN
+        - INSTALLATION_UNAVAILABLE
+        - INVALID_REQUEST
+        - INVALID_SEMVER
+        - INVALID_SKILL_PACKAGE
+        - OWNER_REQUIRED
+        - PACKAGE_HASH_MISMATCH
+        - PACKAGE_TOO_LARGE
+        - INVALID_TRANSLATION_RESPONSE
+        - SKILL_NAME_MISMATCH
+        - SKILL_NOT_FOUND
+        - SKILL_UNAVAILABLE
+        - TRANSLATION_PROVIDER_ERROR
+        - TRANSLATION_TIMEOUT
+        - TRANSLATION_UNAVAILABLE
+        - UNAUTHENTICATED
+        - USER_DISABLED
+        - VERSION_ALREADY_EXISTS
+        - VERSION_CONFLICT
+        - VERSION_NOT_FOUND
+        - VERSION_NOT_GREATER
+    ApiOkMeta:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          description: 与 HTTP 成功状态码一致。
+          type: integer
+          const: 200
+        msg:
+          description: 成功响应的固定信息。
+          type: string
+          const: success
+          example: success
+    ApiCreatedMeta:
+      type: object
+      required: [code, msg]
+      properties:
+        code:
+          description: 与 HTTP 创建成功状态码一致。
+          type: integer
+          const: 201
+        msg:
+          description: 成功响应的固定信息。
+          type: string
+          const: success
+          example: success
+    EmptyData:
+      type: object
+      maxProperties: 0
+      additionalProperties: false
+    User:
+      type: object
+      required: [id, name, avatarUrl, departmentPath, status, role, syncedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        avatarUrl:
+          type: [string, 'null']
+          format: uri
+        departmentPath:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
+        role:
+          type: string
+          enum: [USER, ADMIN]
+        syncedAt:
+          type: string
+          format: date-time
+    Tag:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+    PublishedSkillDepartment:
+      type: object
+      required: [id, name, path]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        path:
+          type: array
+          minItems: 1
+          items:
+            type: string
+    DerivedSource:
+      type: object
+      required: [skillId, skillName, versionId, version, status, linkable]
+      properties:
+        skillId:
+          type: string
+        skillName:
+          type: string
+        versionId:
+          type: string
+        version:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED, NAME_CONFLICT]
+        linkable:
+          type: boolean
+    SkillVersion:
+      type: object
+      required:
+        - id
+        - skillId
+        - version
+        - status
+        - skillName
+        - skillDescription
+        - changelog
+        - baseVersionId
+        - packageSize
+        - packageSha256
+        - contentHash
+        - uploadedBy
+        - publishedAt
+        - withdrawnBy
+        - withdrawnAt
+        - withdrawalReason
+      properties:
+        id:
+          type: string
+        skillId:
+          type: string
+        version:
+          type: string
+          pattern: '^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}-[1-9][0-9]*$'
+          description: 北京时间日期版本；同一天发布时末尾序号依次递增，例如 2026.8.5-1、2026.8.5-2。
+        status:
+          type: string
+          enum: [PUBLISHED, WITHDRAWN]
+        skillName:
+          type: string
+          maxLength: 64
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        skillDescription:
+          type: string
+          minLength: 1
+        changelog:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        baseVersionId:
+          type: [string, 'null']
+        packageSize:
+          type: integer
+          minimum: 1
+          maximum: 52428800
+        packageSha256:
+          type: string
+        contentHash:
+          type: string
+        uploadedBy:
+          $ref: '#/components/schemas/User'
+        publishedAt:
+          type: string
+          format: date-time
+        withdrawnBy:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        withdrawnAt:
+          type: [string, 'null']
+          format: date-time
+        withdrawalReason:
+          type: [string, 'null']
+    SkillVersionDetail:
+      allOf:
+        - $ref: '#/components/schemas/SkillVersion'
+        - type: object
+          required: [skillMd]
+          properties:
+            skillMd:
+              type: string
+    SkillSummary:
+      type: object
+      required:
+        - id
+        - skillName
+        - displayName
+        - skillDescription
+        - displayDescription
+        - status
+        - owner
+        - tags
+        - currentVersion
+        - installCount
+        - derivedFrom
+        - updatedBy
+        - archivedAt
+        - archiveReason
+        - nameConflictReason
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        skillName:
+          type: string
+          maxLength: 64
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        skillDescription:
+          type: string
+          minLength: 1
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED, NAME_CONFLICT]
+        owner:
+          $ref: '#/components/schemas/User'
+        tags:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/Tag'
+        currentVersion:
+          $ref: '#/components/schemas/SkillVersion'
+        installCount:
+          type: integer
+          minimum: 0
+        derivedFrom:
+          oneOf:
+            - $ref: '#/components/schemas/DerivedSource'
+            - type: 'null'
+        updatedBy:
+          $ref: '#/components/schemas/User'
+        archivedAt:
+          type: [string, 'null']
+          format: date-time
+        archiveReason:
+          type: [string, 'null']
+        nameConflictReason:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    SkillDetail:
+      allOf:
+        - $ref: '#/components/schemas/SkillSummary'
+        - type: object
+          required: [collaborators, derivedChain]
+          properties:
+            collaborators:
+              type: array
+              items:
+                $ref: '#/components/schemas/User'
+            derivedChain:
+              type: array
+              items:
+                $ref: '#/components/schemas/DerivedSource'
+    FileEntry:
+      type: object
+      required: [path, type, size, sha256, previewable]
+      properties:
+        path:
+          type: string
+        type:
+          type: string
+          enum: [FILE, DIRECTORY]
+        size:
+          type: [integer, 'null']
+          minimum: 0
+        sha256:
+          type: [string, 'null']
+        previewable:
+          type: boolean
+    FileContent:
+      type: object
+      required: [path, content, sha256]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        sha256:
+          type: string
+    CreateSkillRequest:
+      type: object
+      description: Tag 为可选项；tagIds 与 newTagNames 合计最多 5 个。
+      required: [file, displayName, displayDescription]
+      properties:
+        file:
+          type: string
+          format: binary
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        changelog:
+          type: string
+          maxLength: 2000
+          description: 首版说明；留空时默认为“首次发布”。
+        tagIds:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+        newTagNames:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        forkedFromSkillId:
+          type: string
+        forkedFromVersionId:
+          type: string
+        confirmDuplicateDisplayName:
+          type: boolean
+          default: false
+      dependentRequired:
+        forkedFromSkillId: [forkedFromVersionId]
+        forkedFromVersionId: [forkedFromSkillId]
+    TranslateSkillMetadataRequest:
+      type: object
+      required: [skillName, skillDescription]
+      additionalProperties: false
+      properties:
+        skillName:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+          maxLength: 64
+        skillDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    SkillMetadataTranslation:
+      type: object
+      required: [displayName, displayDescription]
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    PublishVersionRequest:
+      type: object
+      required: [file, baseVersionId, version, changelog]
+      properties:
+        file:
+          type: string
+          format: binary
+        baseVersionId:
+          type: string
+        version:
+          type: string
+          description: 按北京时间日期生成的版本号；同一天发布时末尾序号递增，例如 2026.8.5-1、2026.8.5-2
+          pattern: '^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}-[1-9][0-9]*$'
+        changelog:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        tagIds:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+        newTagNames:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        replaceTags:
+          type: boolean
+          description: 完整替换现有 Tag 关联；允许清空全部 Tag。
+        confirmDuplicateDisplayName:
+          type: boolean
+          default: false
+    UpdateSkillRequest:
+      type: object
+      minProperties: 1
+      anyOf:
+        - required: [displayName]
+        - required: [displayDescription]
+        - required: [tagIds]
+        - required: [newTagNames]
+      properties:
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        displayDescription:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        tagIds:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+        newTagNames:
+          type: array
+          minItems: 0
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        confirmDuplicateDisplayName:
+          type: boolean
+          default: false
+    InstallationStatus:
+      type: object
+      required: [skillId, status, archivedAt, archiveReason, nameConflictReason, versionStatus, withdrawalReason, recommendedVersion]
+      properties:
+        skillId:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED, NAME_CONFLICT]
+        archivedAt:
+          type: [string, 'null']
+          format: date-time
+        archiveReason:
+          type: [string, 'null']
+        nameConflictReason:
+          type: [string, 'null']
+        versionStatus:
+          type: [string, 'null']
+          enum: [PUBLISHED, WITHDRAWN, null]
+        withdrawalReason:
+          type: [string, 'null']
+        recommendedVersion:
+          oneOf:
+            - type: object
+              required: [id, version]
+              properties:
+                id:
+                  type: string
+                version:
+                  type: string
+            - type: 'null'
+    DownloadTicket:
+      type: object
+      required: [url, expiresAt, packageSha256, contentHash]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+        packageSha256:
+          type: string
+        contentHash:
+          type: string
+    ResolveInstallationRequest:
+      type: object
+      required: [skillName, contentHash]
+      properties:
+        skillName:
+          type: string
+        contentHash:
+          type: string
+    InstallationResolution:
+      type: object
+      required: [matched, skillId, versionId, status, archivedAt, archiveReason]
+      properties:
+        matched:
+          type: boolean
+        skillId:
+          type: [string, 'null']
+        versionId:
+          type: [string, 'null']
+        status:
+          type: [string, 'null']
+          enum: [ACTIVE, ARCHIVED, NAME_CONFLICT, null]
+        archivedAt:
+          type: [string, 'null']
+          format: date-time
+        archiveReason:
+          type: [string, 'null']
+    PublishTargetResolution:
+      type: object
+      required: [state, skill]
+      properties:
+        state:
+          type: string
+          enum: [OWNED, NOT_FOUND, TAKEN_BY_OTHER, UNAVAILABLE]
+        skill:
+          oneOf:
+            - $ref: '#/components/schemas/SkillDetail'
+            - type: 'null'
+    InstallationEventRequest:
+      type: object
+      required: [eventId, skillId, versionId, installedAt]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        skillId:
+          type: string
+        versionId:
+          type: string
+        installedAt:
+          type: string
+          format: date-time
+    Notification:
+      type: object
+      required: [id, type, title, body, skillId, readAt, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [VERSION_PUBLISHED, METADATA_UPDATED]
+        title:
+          type: string
+        body:
+          type: string
+        skillId:
+          type: [string, 'null']
+        readAt:
+          type: [string, 'null']
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+    SkillPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillSummary'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    VersionPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkillVersion'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+    SkillVersionDeletionResult:
+      type: object
+      required: [versionId, latestVersionId, ossCleaned]
+      properties:
+        versionId:
+          type: string
+        latestVersionId:
+          type: string
+        ossCleaned:
+          type: boolean
+    NotificationPage:
+      type: object
+      required: [items, page, pageSize, total, unreadCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        unreadCount:
+          type: integer
+          minimum: 0
+    UserResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/User'
+    SkillPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillPage'
+    TagListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Tag'
+    SkillMetadataTranslationResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillMetadataTranslation'
+    PublishedSkillDepartmentListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/PublishedSkillDepartment'
+    SkillDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillDetail'
+    SkillDetailCreatedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiCreatedMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillDetail'
+    VersionPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/VersionPage'
+    SkillVersionDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillVersionDetail'
+    FileEntryListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/FileEntry'
+    FileContentResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/FileContent'
+    SkillVersionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillVersion'
+    SkillVersionDeletionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/SkillVersionDeletionResult'
+    InstallationStatusResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/InstallationStatus'
+    DownloadTicketCreatedResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiCreatedMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/DownloadTicket'
+    InstallationResolutionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/InstallationResolution'
+    PublishTargetResolutionResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/PublishTargetResolution'
+    NotificationPageResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/NotificationPage'
+    EmptyResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/EmptyData'
