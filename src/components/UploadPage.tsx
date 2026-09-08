@@ -1,4 +1,5 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import JSZip from "jszip";
 import {
   useEffect,
   useRef,
@@ -139,6 +140,9 @@ export function UploadPage({
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
   const [businessScenarios, setBusinessScenarios] = useState<BusinessScenarioDto[]>([]);
   const [selectedBusinessScenarioIds, setSelectedBusinessScenarioIds] = useState<string[]>([]);
+  const [suggestedBusinessScenarioIds, setSuggestedBusinessScenarioIds] = useState<string[]>([]);
+  const [scenarioSuggestionState, setScenarioSuggestionState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
+  const scenarioSuggestionKey = useRef<File | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagNames, setNewTagNames] = useState<string[]>([]);
   const [newTagDraft, setNewTagDraft] = useState("");
@@ -182,6 +186,8 @@ export function UploadPage({
     setDuplicateConflicts([]);
     setSelectedTagIds(targetSkill?.tags.map((tag) => tag.id) ?? []);
     setSelectedBusinessScenarioIds(targetSkill?.businessScenarios.map((scenario) => scenario.id) ?? []);
+    setSuggestedBusinessScenarioIds([]);
+    setScenarioSuggestionState("idle");
     if (targetSkill) {
       setDisplayName(targetSkill.displayName);
       setDisplayDescription(targetSkill.displayDescription);
@@ -195,6 +201,12 @@ export function UploadPage({
       setTranslationState("idle");
     }
   }, [inspection, targetSkill]);
+
+  useEffect(() => {
+    if (targetSkill || !inspection || !selectedFile || scenarioSuggestionKey.current === selectedFile) return;
+    scenarioSuggestionKey.current = selectedFile;
+    void suggestScenarios(selectedFile);
+  }, [inspection, selectedFile, targetSkill]);
 
   /**
    * 功能说明：解析用户选择的 ZIP 或文件夹，并将可上传文件与只读包信息保存在页面状态中。
@@ -237,6 +249,38 @@ export function UploadPage({
       setError(reason instanceof SkillApiError ? reason.message : "Skill 解析失败，请重新选择");
     } finally {
       setInspecting(false);
+    }
+  }
+
+  async function suggestScenarios(file: File): Promise<void> {
+    setScenarioSuggestionState("loading");
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const parts: string[] = [];
+      for (const name of Object.keys(zip.files)) {
+        if (/(^|\/)SKILL\.md$/i.test(name) || /(^|\/)README(?:\.md)?$/i.test(name)) {
+          parts.push(await zip.files[name].async("text"));
+        }
+      }
+      if (!parts.length) {
+        setScenarioSuggestionState("failed");
+        return;
+      }
+      const result = await skillApi.suggestBusinessScenarios(parts.join("\n\n").slice(0, 20000));
+      const content = parts.join("\n").toLocaleLowerCase();
+      const scenarios = businessScenarios.length ? businessScenarios : await skillApi.listBusinessScenarios();
+      const fallbackIds = scenarios
+        .filter((scenario) => `${scenario.name} ${scenario.description}`.split(/[，。；、\s]+/).some((term) => term.length >= 2 && content.includes(term.toLocaleLowerCase())))
+        .slice(0, 3)
+        .map((scenario) => scenario.id);
+      const availableIds = new Set(scenarios.map((scenario) => scenario.id));
+      const ids = (result.scenarioIds.length ? result.scenarioIds : fallbackIds).filter((id) => availableIds.has(id)).slice(0, 3);
+      setSuggestedBusinessScenarioIds(ids);
+      setSelectedBusinessScenarioIds((current) => current.length ? current : ids);
+      setScenarioSuggestionState(ids.length ? "ready" : "failed");
+    } catch (reason) {
+      console.warn("[KocotreeSkills] AI 业务场景预选失败，保留手动选择", reason);
+      setScenarioSuggestionState("failed");
     }
   }
 
@@ -535,8 +579,14 @@ export function UploadPage({
   function renderBusinessScenarioSelection(): ReactNode {
     return (
       <fieldset className="tag-field field-wide" aria-required="false">
-        <legend>业务场景（可选，最多 3 个）</legend>
-        <div>
+        <legend>业务场景（可选，最多 3 个） <small>AI 建议仅供确认</small></legend>
+        {(scenarioSuggestionState === "loading" || scenarioSuggestionState === "failed" || suggestedBusinessScenarioIds.length > 0) && (
+          <div className={`scenario-ai-status${scenarioSuggestionState === "failed" ? " is-failed" : ""}`} role="status">
+            <span className="scenario-ai-dot" aria-hidden="true" />
+            <span>{scenarioSuggestionState === "loading" ? "AI 正在分析 Skill 内容…" : scenarioSuggestionState === "failed" ? "AI 暂无建议，请手动选择" : `AI 已预选 ${suggestedBusinessScenarioIds.map((id) => businessScenarios.find((item) => item.id === id)?.name).filter(Boolean).join("、")}，可手动调整`}</span>
+          </div>
+        )}
+        <div className="scenario-chip-list">
           {businessScenarios.map((scenario) => {
             const selected = selectedBusinessScenarioIds.includes(scenario.id);
             return (

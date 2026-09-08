@@ -262,6 +262,7 @@ export class MockSkillApi implements SkillApi {
       displayDescription: input.skillDescription,
     };
   }
+  async suggestBusinessScenarios(_content: string) { await this.wait(); return { scenarioIds: [] }; }
 
   async listPublishedSkillDepartments(): Promise<
     PublishedSkillDepartmentDto[]

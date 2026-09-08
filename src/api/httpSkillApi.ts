@@ -124,6 +124,7 @@ export class HttpSkillApi implements SkillApi {
   }) {
     return this.publishing.translateSkillMetadata(input);
   }
+  suggestBusinessScenarios(content: string) { return this.publishing.suggestBusinessScenarios(content); }
 
   publishSkillVersion(skillId: string, input: PublishSkillVersionDto) {
     return this.publishing.publishSkillVersion(skillId, input);

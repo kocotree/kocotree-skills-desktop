@@ -4,6 +4,7 @@ import type {
   SkillDetailDto,
   SkillMetadataTranslationDto,
   TranslateSkillMetadataDto,
+  BusinessScenarioSuggestionDto,
   UpdateSkillMetadataDto,
 } from "./contracts";
 import { AuthenticatedHttpClient } from "./httpClient";
@@ -41,6 +42,9 @@ export class HttpPublishingApi {
         body: JSON.stringify(input),
       },
     );
+  }
+  suggestBusinessScenarios(content: string): Promise<BusinessScenarioSuggestionDto> {
+    return this.http.request<BusinessScenarioSuggestionDto>("/api/business-scenarios/suggestions", { method: "POST", body: JSON.stringify({ content }) });
   }
 
   createSkill(input: CreateSkillDto): Promise<SkillDetailDto> {

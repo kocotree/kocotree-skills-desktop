@@ -77,6 +77,7 @@ export interface SkillMetadataTranslationDto {
   displayName: string;
   displayDescription: string;
 }
+export interface BusinessScenarioSuggestionDto { scenarioIds: string[]; }
 export type CatalogEventType =
   | "catalog.resync"
   | "skill.created"
@@ -263,6 +264,7 @@ export interface SkillApi {
   translateSkillMetadata(
     input: TranslateSkillMetadataDto,
   ): Promise<SkillMetadataTranslationDto>;
+  suggestBusinessScenarios(content: string): Promise<BusinessScenarioSuggestionDto>;
   deleteSkill(skillId: string): Promise<DeleteSkillResultDto>;
   deleteSkillVersion(
     skillId: string,
