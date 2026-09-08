@@ -102,6 +102,7 @@ export type ResolveInstallationDto = components["schemas"]["ResolveInstallationR
 export type InstallationEventDto = components["schemas"]["InstallationEventRequest"];
 
 export type ListSkillsQuery = NonNullable<operations["listSkills"]["parameters"]["query"]> & {
+  businessScenarioIds?: string[];
   businessScenarioId?: string;
   businessScenario?: "unclassified";
 };

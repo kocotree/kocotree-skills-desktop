@@ -50,6 +50,7 @@ export class HttpCatalogApi {
         tagIds: query.tagIds,
         departmentKey: query.departmentKey,
         businessScenarioId: query.businessScenarioId,
+        businessScenarioIds: query.businessScenarioIds,
         businessScenario: query.businessScenario,
         sort: query.sort,
         page: query.page,

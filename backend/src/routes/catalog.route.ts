@@ -100,6 +100,18 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       typeof query.businessScenarioId === "string"
         ? query.businessScenarioId.trim()
         : undefined;
+    const rawScenarioIds = query.businessScenarioIds;
+    if (rawScenarioIds !== undefined && typeof rawScenarioIds !== "string"
+      && !(Array.isArray(rawScenarioIds) && rawScenarioIds.every((id) => typeof id === "string"))) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 列表无效");
+    }
+    if (rawScenarioIds !== undefined && query.businessScenarioId !== undefined) {
+      return failure(reply, 400, "INVALID_REQUEST", "单场景和多场景参数不能同时使用");
+    }
+    const businessScenarioIds = stringArray(rawScenarioIds);
+    if (businessScenarioIds.length > 100 || businessScenarioIds.some((id) => !UUID_PATTERN.test(id))) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 列表无效");
+    }
     const businessScenario =
       typeof query.businessScenario === "string"
         ? query.businessScenario.trim()
@@ -132,6 +144,7 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       tagIds: tagIds.length > 0 ? tagIds : undefined,
       departmentPath: departmentPath ?? undefined,
       businessScenarioId: businessScenarioId || undefined,
+      businessScenarioIds: businessScenarioIds.length ? businessScenarioIds : undefined,
       unclassified: businessScenario === "unclassified",
       sort,
       page,

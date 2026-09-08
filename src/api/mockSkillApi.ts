@@ -200,6 +200,14 @@ export class MockSkillApi implements SkillApi {
     if (query.businessScenarioId && query.businessScenario) {
       throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数互斥");
     }
+    if (query.businessScenarioIds !== undefined && query.businessScenarioId !== undefined) {
+      throw new SkillApiError("INVALID_REQUEST", "单场景和多场景参数不能同时使用");
+    }
+    if (query.businessScenarioIds !== undefined && (!Array.isArray(query.businessScenarioIds)
+      || query.businessScenarioIds.length > 100
+      || query.businessScenarioIds.some((id) => typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) {
+      throw new SkillApiError("INVALID_REQUEST", "业务场景 ID 列表无效");
+    }
     if (
       query.businessScenarioId !== undefined
       && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.businessScenarioId)
@@ -213,6 +221,7 @@ export class MockSkillApi implements SkillApi {
       throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数无效");
     }
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
+    const scenarioIds = query.businessScenarioIds ?? (query.businessScenarioId ? [query.businessScenarioId] : []);
     const tagIds = query.tagIds?.length
       ? query.tagIds
       : query.tagId
@@ -223,12 +232,9 @@ export class MockSkillApi implements SkillApi {
         skill.status === "ACTIVE"
         && (tagIds.length === 0 || skill.tags.some((tag) => tagIds.includes(tag.id)))
         && (
-          !query.businessScenarioId
-          || skill.businessScenarios.some((scenario) => scenario.id === query.businessScenarioId)
-        )
-        && (
-          query.businessScenario !== "unclassified"
-          || skill.businessScenarios.length === 0
+          (scenarioIds.length === 0 && query.businessScenario !== "unclassified")
+          || skill.businessScenarios.some((scenario) => scenario.status === "ACTIVE" && scenarioIds.includes(scenario.id))
+          || (query.businessScenario === "unclassified" && skill.businessScenarios.length === 0)
         )
         && (
           !query.departmentKey

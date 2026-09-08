@@ -560,9 +560,10 @@ export interface components {
             displayDescription?: string;
             tagIds?: string[];
             newTagNames?: string[];
+            businessScenarioIds?: string[];
             /** @default false */
             confirmDuplicateDisplayName: boolean;
-        } | unknown | unknown | unknown | unknown;
+        } | unknown | unknown | unknown | unknown | unknown;
         InstallationStatus: {
             skillId: string;
             /** @enum {string} */
@@ -882,9 +883,11 @@ export interface operations {
                 tagIds?: string[];
                 /** @description 已发布 Skill 部门列表返回的不透明部门标识 */
                 departmentKey?: string;
-                /** @description 按业务场景 ID 筛选；与 businessScenario 互斥 */
+                /** @description 兼容单场景筛选；与 businessScenario、businessScenarioIds 互斥 */
                 businessScenarioId?: string;
-                /** @description 特殊业务场景筛选；仅支持未归类 */
+                /** @description 多选业务场景，命中任一 ACTIVE 场景；可与 businessScenario=unclassified 组合取并集，与 businessScenarioId 互斥。省略或空数组表示不限定场景 ID。 */
+                businessScenarioIds?: string[];
+                /** @description 特殊业务场景筛选；仅支持未归类，可与 businessScenarioIds 组合取并集 */
                 businessScenario?: "unclassified";
                 sort?: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
                 page?: components["parameters"]["Page"];

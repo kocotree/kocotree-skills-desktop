@@ -6,6 +6,7 @@ export interface ListSkillsInput {
   tagIds?: string[];
   departmentPath?: string[];
   businessScenarioId?: string;
+  businessScenarioIds?: string[];
   unclassified?: boolean;
   sort: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
   page: number;
@@ -204,18 +205,23 @@ export const catalogRepository = {
             },
           }
         : {}),
-      ...(input.businessScenarioId
+      ...((input.businessScenarioIds?.length || input.businessScenarioId || input.unclassified)
         ? {
-            businessScenarios: {
-              some: {
-                scenarioId: input.businessScenarioId,
-                scenario: { status: "ACTIVE" },
-              },
-            },
+            AND: [{
+              OR: [
+                ...((input.businessScenarioIds?.length || input.businessScenarioId) ? [{
+                  businessScenarios: {
+                    some: {
+                      scenarioId: { in: input.businessScenarioIds?.length ? input.businessScenarioIds : [input.businessScenarioId!] },
+                      scenario: { status: "ACTIVE" as const },
+                    },
+                  },
+                }] : []),
+                ...(input.unclassified ? [{ businessScenarios: { none: {} } }] : []),
+              ],
+            }],
           }
-        : input.unclassified
-          ? { businessScenarios: { none: {} } }
-          : {}),
+        : {}),
     };
     const orderBy: Prisma.SkillOrderByWithRelationInput | Prisma.SkillOrderByWithRelationInput[] =
       input.sort === "INSTALLS_DESC"

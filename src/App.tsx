@@ -85,7 +85,7 @@ function browsePageCacheKey(input: {
   query: string;
   tagIds: string[];
   departmentKey: string;
-  businessScenarioKey: string;
+  businessScenarioKeys: string[];
   sort: SortKey;
   page: number;
 }): string {
@@ -93,7 +93,7 @@ function browsePageCacheKey(input: {
     input.query.trim().toLocaleLowerCase(),
     [...input.tagIds].sort(),
     input.departmentKey,
-    input.businessScenarioKey,
+    [...input.businessScenarioKeys].sort(),
     input.sort,
     input.page,
     BROWSE_PAGE_SIZE,
@@ -407,7 +407,7 @@ function BrowsePage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [departmentKey, setDepartmentKey] = useState("all");
-  const [businessScenarioKey, setBusinessScenarioKey] = useState("all");
+  const [businessScenarioKeys, setBusinessScenarioKeys] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>("popular");
   const [page, setPage] = useState(1);
   const [totalSkills, setTotalSkills] = useState(0);
@@ -441,7 +441,7 @@ function BrowsePage({
     setQuery("");
     setSelectedTagIds([]);
     setDepartmentKey("all");
-    setBusinessScenarioKey("all");
+    setBusinessScenarioKeys([]);
     setSort("popular");
     setPage(1);
   }, [highlightedSkillId]);
@@ -588,7 +588,7 @@ function BrowsePage({
           query: debouncedQuery,
           tagIds: selectedTagIds,
           departmentKey,
-          businessScenarioKey,
+          businessScenarioKeys,
           sort,
           page,
         });
@@ -620,10 +620,10 @@ function BrowsePage({
               || JSON.stringify(skill.owner.departmentPath) === departmentKey,
             )
             .filter((skill) =>
-              businessScenarioKey === "all"
-              || (businessScenarioKey === "unclassified"
+              businessScenarioKeys.length === 0
+              || businessScenarioKeys.some((key) => key === "unclassified"
                 ? skill.businessScenarios.length === 0
-                : skill.businessScenarios.some((scenario) => scenario.id === businessScenarioKey)),
+                : skill.businessScenarios.some((scenario) => scenario.status === "ACTIVE" && scenario.id === key)),
             )
             .filter((skill) =>
               !normalizedQuery
@@ -650,10 +650,8 @@ function BrowsePage({
           query: debouncedQuery || undefined,
           tagIds: selectedTagIds.length > 0 ? selectedTagIds : undefined,
           departmentKey: departmentKey === "all" ? undefined : departmentKey,
-          businessScenarioId: businessScenarioKey !== "all" && businessScenarioKey !== "unclassified"
-            ? businessScenarioKey
-            : undefined,
-          businessScenario: businessScenarioKey === "unclassified" ? "unclassified" : undefined,
+          businessScenarioIds: businessScenarioKeys.filter((key) => key !== "unclassified"),
+          businessScenario: businessScenarioKeys.includes("unclassified") ? "unclassified" : undefined,
           sort: sort === "popular"
             ? "INSTALLS_DESC"
             : sort === "created"
@@ -691,7 +689,7 @@ function BrowsePage({
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [authenticated, businessScenarioKey, debouncedQuery, departmentKey, installedSkillIdsKey, page, refreshKey, revalidationKey, selectedTagIds, sort]);
+  }, [authenticated, businessScenarioKeys, debouncedQuery, departmentKey, installedSkillIdsKey, page, refreshKey, revalidationKey, selectedTagIds, sort]);
 
   if (!authResolved) {
     return (
@@ -797,12 +795,13 @@ function BrowsePage({
               name: `${scenario.name}（${scenario.skillCount}）`,
             })),
           ]}
-          selectedTagId={businessScenarioKey}
+          selectedTagIds={businessScenarioKeys}
+          showAll
           label="业务场景"
           allLabel="全部"
           variant="chips"
-          onChange={(nextScenario) => {
-            setBusinessScenarioKey(nextScenario);
+          onMultiChange={(nextScenarios) => {
+            setBusinessScenarioKeys(nextScenarios);
             setPage(1);
           }}
         />

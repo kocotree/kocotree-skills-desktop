@@ -190,14 +190,26 @@ paths:
         - name: businessScenarioId
           in: query
           required: false
-          description: 按业务场景 ID 筛选；与 businessScenario 互斥
+          description: 兼容单场景筛选；与 businessScenario、businessScenarioIds 互斥
           schema:
             type: string
             format: uuid
+        - name: businessScenarioIds
+          in: query
+          required: false
+          description: 多选业务场景，命中任一 ACTIVE 场景；可与 businessScenario=unclassified 组合取并集，与 businessScenarioId 互斥。省略或空数组表示不限定场景 ID。
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: string
+              format: uuid
         - name: businessScenario
           in: query
           required: false
-          description: 特殊业务场景筛选；仅支持未归类
+          description: 特殊业务场景筛选；仅支持未归类，可与 businessScenarioIds 组合取并集
           schema:
             type: string
             enum: [unclassified]

@@ -18,6 +18,7 @@ export function TagFilter({
   label = "标签",
   allLabel = "全部",
   variant,
+  showAll = false,
 }: {
   tags: FilterOption[];
   selectedTagId?: string;
@@ -27,6 +28,7 @@ export function TagFilter({
   label?: string;
   allLabel?: string;
   variant?: "chips" | "segmented";
+  showAll?: boolean;
 }) {
   const multiSelect = selectedTagIds !== undefined;
   const multiSelectedTagIds = selectedTagIds ?? [];
@@ -84,12 +86,12 @@ export function TagFilter({
         role="group"
         aria-label={`${label}（${multiSelect ? "可多选" : "单选"}）`}
       >
-        {!multiSelect && (
+        {(!multiSelect || showAll) && (
           <button
             className={activeTagIds.size === 0 ? "source-chip active" : "source-chip"}
             type="button"
             aria-pressed={activeTagIds.size === 0}
-            onClick={() => selectTag("all")}
+            onClick={() => multiSelect ? onMultiChange?.([]) : selectTag("all")}
           >
             {allLabel}
           </button>
