@@ -21,6 +21,15 @@ const userSummarySelect = {
   updatedAt: true,
 } satisfies Prisma.UserSelect;
 
+const businessScenarioRefSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  description: true,
+  sortOrder: true,
+  status: true,
+} satisfies Prisma.BusinessScenarioSelect;
+
 const skillSummarySelect = {
   id: true,
   slug: true,
@@ -39,6 +48,13 @@ const skillSummarySelect = {
           id: true,
           name: true,
         },
+      },
+    },
+  },
+  businessScenarios: {
+    select: {
+      scenario: {
+        select: businessScenarioRefSelect,
       },
     },
   },
@@ -66,6 +82,13 @@ const skillDetailInclude = {
   tags: {
     include: {
       tag: true,
+    },
+  },
+  businessScenarios: {
+    select: {
+      scenario: {
+        select: businessScenarioRefSelect,
+      },
     },
   },
   latestVersion: {
@@ -182,7 +205,14 @@ export const catalogRepository = {
           }
         : {}),
       ...(input.businessScenarioId
-        ? { businessScenarios: { some: { scenarioId: input.businessScenarioId } } }
+        ? {
+            businessScenarios: {
+              some: {
+                scenarioId: input.businessScenarioId,
+                scenario: { status: "ACTIVE" },
+              },
+            },
+          }
         : input.unclassified
           ? { businessScenarios: { none: {} } }
           : {}),

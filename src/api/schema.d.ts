@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/business-scenarios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取业务场景列表 */
+        get: operations["listBusinessScenarios"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/skill-metadata/translations": {
         parameters: {
             query?: never;
@@ -454,6 +471,7 @@ export interface components {
             status: "ACTIVE" | "ARCHIVED" | "NAME_CONFLICT";
             owner: components["schemas"]["User"];
             tags: components["schemas"]["Tag"][];
+            businessScenarios: components["schemas"]["BusinessScenarioRef"][];
             currentVersion: components["schemas"]["SkillVersion"];
             installCount: number;
             derivedFrom: components["schemas"]["DerivedSource"] | null;
@@ -466,6 +484,19 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        BusinessScenarioRef: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            description: string;
+            sortOrder: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "ARCHIVED";
+        };
+        BusinessScenario: components["schemas"]["BusinessScenarioRef"] & {
+            skillCount: number;
         };
         SkillDetail: components["schemas"]["SkillSummary"] & {
             collaborators: components["schemas"]["User"][];
@@ -494,6 +525,7 @@ export interface components {
             changelog?: string;
             tagIds?: string[];
             newTagNames?: string[];
+            businessScenarioIds?: string[];
             forkedFromSkillId?: string;
             forkedFromVersionId?: string;
             /** @default false */
@@ -626,6 +658,9 @@ export interface components {
         };
         TagListResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["Tag"][];
+        };
+        BusinessScenarioListResponse: components["schemas"]["ApiOkMeta"] & {
+            data: components["schemas"]["BusinessScenario"][];
         };
         SkillMetadataTranslationResponse: components["schemas"]["ApiOkMeta"] & {
             data: components["schemas"]["SkillMetadataTranslation"];
@@ -791,6 +826,27 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
+    listBusinessScenarios: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 激活业务场景及已发布 Skill 数量 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BusinessScenarioListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
     translateSkillMetadata: {
         parameters: {
             query?: never;
@@ -826,6 +882,10 @@ export interface operations {
                 tagIds?: string[];
                 /** @description 已发布 Skill 部门列表返回的不透明部门标识 */
                 departmentKey?: string;
+                /** @description 按业务场景 ID 筛选；与 businessScenario 互斥 */
+                businessScenarioId?: string;
+                /** @description 特殊业务场景筛选；仅支持未归类 */
+                businessScenario?: "unclassified";
                 sort?: "UPDATED_DESC" | "CREATED_DESC" | "INSTALLS_DESC";
                 page?: components["parameters"]["Page"];
                 pageSize?: components["parameters"]["PageSize"];

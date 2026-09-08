@@ -48,6 +48,39 @@ describe("MockSkillApi", () => {
     expect(secondPage.items[0]?.id).not.toBe(firstPage.items[0]?.id);
   });
 
+  it("Mock 业务场景列表返回计数，Skill 支持指定场景和未归类筛选", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    const scenarios = await api.listBusinessScenarios();
+    const technology = scenarios.find((scenario) => scenario.slug === "technology-development");
+    expect(scenarios).toHaveLength(12);
+    expect(technology?.skillCount).toBeGreaterThan(0);
+
+    const assigned = await api.listSkills({
+      businessScenarioId: technology!.id,
+      pageSize: 100,
+    });
+    expect(assigned.items.length).toBe(technology!.skillCount);
+    expect(assigned.items.every((skill) =>
+      skill.businessScenarios.some((scenario) => scenario.id === technology!.id),
+    )).toBe(true);
+
+    const unclassified = await api.listSkills({
+      businessScenario: "unclassified",
+      pageSize: 100,
+    });
+    expect(unclassified.items.every((skill) => skill.businessScenarios.length === 0)).toBe(true);
+  });
+
+  it("Mock 业务场景筛选拒绝互斥和非法参数", async () => {
+    const api = new MockSkillApi({ delayMs: 0 });
+    await expect(api.listSkills({
+      businessScenarioId: skillIds.codeReview,
+      businessScenario: "unclassified",
+    })).rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+    await expect(api.listSkills({ businessScenarioId: "not-a-uuid" }))
+      .rejects.toSatisfy((reason: unknown) => expectApiError(reason, "INVALID_REQUEST"));
+  });
+
   it("热门排序依次按安装量、更新时间、创建时间和 ID 降序", async () => {
     const api = new MockSkillApi({ delayMs: 0 });
     const result = await api.listSkills({ sort: "INSTALLS_DESC", pageSize: 100 });

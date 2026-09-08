@@ -620,6 +620,12 @@ function BrowsePage({
               || JSON.stringify(skill.owner.departmentPath) === departmentKey,
             )
             .filter((skill) =>
+              businessScenarioKey === "all"
+              || (businessScenarioKey === "unclassified"
+                ? skill.businessScenarios.length === 0
+                : skill.businessScenarios.some((scenario) => scenario.id === businessScenarioKey)),
+            )
+            .filter((skill) =>
               !normalizedQuery
               || [
                 skill.skillName,

@@ -11,15 +11,8 @@ export type UserDto = components["schemas"]["User"];
 export type TagDto = components["schemas"]["Tag"];
 export type PublishedSkillDepartmentDto =
   components["schemas"]["PublishedSkillDepartment"];
-export interface BusinessScenarioDto {
-  id: string;
-  slug: string;
-  name: string;
-  description: string;
-  sortOrder: number;
-  status: "ACTIVE" | "ARCHIVED";
-  skillCount: number;
-}
+export type BusinessScenarioDto = components["schemas"]["BusinessScenario"];
+export type BusinessScenarioRefDto = components["schemas"]["BusinessScenarioRef"];
 export type DerivedSourceDto = components["schemas"]["DerivedSource"];
 export type SkillSummaryDto = components["schemas"]["SkillSummary"];
 export type SkillDetailDto = components["schemas"]["SkillDetail"];
@@ -52,6 +45,7 @@ export interface CreateSkillDto {
   changelog?: string;
   tagIds?: string[];
   newTagNames?: string[];
+  businessScenarioIds?: string[];
   forkedFromSkillId?: string;
   forkedFromVersionId?: string;
   confirmDuplicateDisplayName?: boolean;

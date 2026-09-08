@@ -1,5 +1,6 @@
 import type {
   FileEntryDto,
+  BusinessScenarioDto,
   NotificationDto,
   SkillDetailDto,
   SkillVersionDto,
@@ -58,6 +59,44 @@ const mockDataTag: TagDto = {
   id: "2bb6b0f2-96f9-49e1-8c2c-a92503171008",
   name: "Mock",
 };
+
+export const businessScenarioIds = {
+  product: "1b2c3d4e-5f60-4781-9234-567890abcdef",
+  ecommerce: "2b2c3d4e-5f60-4781-9234-567890abcdef",
+  contentMarketing: "3b2c3d4e-5f60-4781-9234-567890abcdef",
+  visualContent: "4b2c3d4e-5f60-4781-9234-567890abcdef",
+  customerOperations: "5b2c3d4e-5f60-4781-9234-567890abcdef",
+  channels: "6b2c3d4e-5f60-4781-9234-567890abcdef",
+  supplyChain: "7b2c3d4e-5f60-4781-9234-567890abcdef",
+  technology: "8b2c3d4e-5f60-4781-9234-567890abcdef",
+  aiAutomation: "9b2c3d4e-5f60-4781-9234-567890abcdef",
+  dataAnalysis: "ab2c3d4e-5f60-4781-9234-567890abcdef",
+  finance: "bb2c3d4e-5f60-4781-9234-567890abcdef",
+  hr: "cb2c3d4e-5f60-4781-9234-567890abcdef",
+} as const;
+
+export const mockBusinessScenarios: BusinessScenarioDto[] = [
+  [businessScenarioIds.product, "product-and-merchandising", "商品与产品", "商品规划、产品资料和商品生命周期管理"],
+  [businessScenarioIds.ecommerce, "ecommerce-operations", "电商运营", "电商店铺、商品上架和活动运营"],
+  [businessScenarioIds.contentMarketing, "content-marketing", "内容营销", "内容策划、分发和营销增长"],
+  [businessScenarioIds.visualContent, "visual-content-production", "视觉与内容生产", "图片、视频、设计和内容素材生产"],
+  [businessScenarioIds.customerOperations, "customer-and-user-operations", "客服与用户运营", "客服支持、用户维护和服务运营"],
+  [businessScenarioIds.channels, "channels-and-business", "渠道与商务", "渠道拓展、销售支持和商务协作"],
+  [businessScenarioIds.supplyChain, "supply-chain-and-production", "供应链与生产", "采购、生产、库存和供应链协同"],
+  [businessScenarioIds.technology, "technology-development", "技术研发", "软件开发、工程协作和技术交付"],
+  [businessScenarioIds.aiAutomation, "ai-automation", "AI 自动化", "AI 能力编排和业务流程自动化"],
+  [businessScenarioIds.dataAnalysis, "data-and-business-analysis", "数据与经营分析", "数据处理、指标分析和经营决策"],
+  [businessScenarioIds.finance, "financial-management", "财务管理", "财务核算、预算和经营财务"],
+  [businessScenarioIds.hr, "human-resources-and-administration", "人事行政", "人力资源、行政和组织管理"],
+].map(([id, slug, name, description], index) => ({
+  id,
+  slug,
+  name,
+  description,
+  sortOrder: (index + 1) * 10,
+  status: "ACTIVE" as const,
+  skillCount: 0,
+}));
 
 export const mockTags: TagDto[] = [
   { id: "2bb6b0f2-96f9-49e1-8c2c-a92503171001", name: "代码审查" },
@@ -135,6 +174,25 @@ export const skillIds = {
   nameConflict: "0c9c2f8d-3e84-4c0c-8a15-d41d87fd1015",
   withdrawn: "0c9c2f8d-3e84-4c0c-8a15-d41d87fd1016",
 } as const;
+
+const mockSkillScenarioIds: Record<string, string[]> = {
+  [skillIds.codeReview]: [businessScenarioIds.technology],
+  [skillIds.meetingNotes]: [businessScenarioIds.customerOperations],
+  [skillIds.dataInsight]: [businessScenarioIds.dataAnalysis],
+  [skillIds.apiDoc]: [businessScenarioIds.technology, businessScenarioIds.aiAutomation],
+  [skillIds.weeklyReport]: [businessScenarioIds.dataAnalysis, businessScenarioIds.contentMarketing],
+  [skillIds.sqlChecker]: [businessScenarioIds.technology, businessScenarioIds.dataAnalysis],
+  [skillIds.archived]: [],
+  [skillIds.localConflict]: [],
+  [skillIds.localModified]: [],
+  [skillIds.downgrade]: [],
+  [skillIds.derivedOverlap]: [businessScenarioIds.technology],
+  [skillIds.packageHash]: [],
+  [skillIds.rollback]: [],
+  [skillIds.claudeLink]: [],
+  [skillIds.nameConflict]: [],
+  [skillIds.withdrawn]: [businessScenarioIds.aiAutomation],
+};
 
 export interface MockInstallScenario {
   downloadError?: { code: string; message: string };
@@ -234,6 +292,10 @@ const skillOverrides: Partial<Record<string, Pick<SkillDetailDto, "derivedFrom" 
   },
 };
 
+const mockBusinessScenarioRefs = new Map(
+  mockBusinessScenarios.map(({ skillCount: _skillCount, ...scenario }) => [scenario.id, scenario]),
+);
+
 export const mockSkillDetails: SkillDetailDto[] = skillMeta.map((item) => {
   const [id, displayName, displayDescription, tagIndexes, owner, collaborators, installCount, createdAt, status] = item;
   const currentVersion = mockVersions[id][0];
@@ -248,6 +310,9 @@ export const mockSkillDetails: SkillDetailDto[] = skillMeta.map((item) => {
     owner,
     collaborators: [...collaborators],
     tags: [...tagIndexes.map((index) => mockTags[index]), mockDataTag],
+    businessScenarios: (mockSkillScenarioIds[id] ?? [])
+      .map((scenarioId) => mockBusinessScenarioRefs.get(scenarioId))
+      .filter((scenario): scenario is NonNullable<typeof scenario> => Boolean(scenario)),
     currentVersion,
     installCount,
     derivedFrom: override?.derivedFrom ?? null,

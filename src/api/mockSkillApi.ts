@@ -32,6 +32,7 @@ import {
 } from "./contracts";
 import {
   mockNotifications,
+  mockBusinessScenarios,
   mockInstallScenarios,
   mockSkillDetails,
   mockTags,
@@ -122,7 +123,19 @@ export class MockSkillApi implements SkillApi {
 
   async listBusinessScenarios(): Promise<BusinessScenarioDto[]> {
     await this.wait();
-    return [];
+    const activeSkills = this.skills.filter(
+      (skill) => skill.status === "ACTIVE" && skill.currentVersion.id,
+    );
+    return clone(
+      mockBusinessScenarios
+        .filter((scenario) => scenario.status === "ACTIVE")
+        .map((scenario) => ({
+          ...scenario,
+          skillCount: activeSkills.filter((skill) =>
+            skill.businessScenarios.some((item) => item.id === scenario.id),
+          ).length,
+        })),
+    );
   }
 
   /** 真实身份接入阶段用于同步 Mock 业务接口的当前用户。 */
@@ -184,6 +197,21 @@ export class MockSkillApi implements SkillApi {
 
   async listSkills(query: ListSkillsQuery = {}): Promise<SkillPageDto> {
     await this.wait();
+    if (query.businessScenarioId && query.businessScenario) {
+      throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数互斥");
+    }
+    if (
+      query.businessScenarioId !== undefined
+      && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.businessScenarioId)
+    ) {
+      throw new SkillApiError("INVALID_REQUEST", "业务场景 ID 无效");
+    }
+    if (
+      query.businessScenario !== undefined
+      && query.businessScenario !== "unclassified"
+    ) {
+      throw new SkillApiError("INVALID_REQUEST", "业务场景筛选参数无效");
+    }
     const keyword = query.query?.trim().toLocaleLowerCase() ?? "";
     const tagIds = query.tagIds?.length
       ? query.tagIds
@@ -194,6 +222,14 @@ export class MockSkillApi implements SkillApi {
       (skill) =>
         skill.status === "ACTIVE"
         && (tagIds.length === 0 || skill.tags.some((tag) => tagIds.includes(tag.id)))
+        && (
+          !query.businessScenarioId
+          || skill.businessScenarios.some((scenario) => scenario.id === query.businessScenarioId)
+        )
+        && (
+          query.businessScenario !== "unclassified"
+          || skill.businessScenarios.length === 0
+        )
         && (
           !query.departmentKey
           || JSON.stringify(skill.owner.departmentPath) === query.departmentKey
@@ -364,7 +400,7 @@ export class MockSkillApi implements SkillApi {
     const skill: SkillDetailDto = {
       id: skillId, skillName: version.skillName, displayName: input.displayName, skillDescription: version.skillDescription,
       displayDescription: input.displayDescription, status: "ACTIVE", owner: user, collaborators: [],
-      tags: resolvedTags, currentVersion: version, installCount: 0,
+      tags: resolvedTags, businessScenarios: [], currentVersion: version, installCount: 0,
       derivedFrom: derivedSkill && derivedVersion ? { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" } : null,
       derivedChain: derivedSkill && derivedVersion ? [...derivedSkill.derivedChain, { skillId: derivedSkill.id, skillName: derivedSkill.skillName, versionId: derivedVersion.id, version: derivedVersion.version, status: derivedSkill.status, linkable: derivedSkill.status === "ACTIVE" }] : [],
       updatedBy: user, archivedAt: null, archiveReason: null, nameConflictReason: null, createdAt: now, updatedAt: now,

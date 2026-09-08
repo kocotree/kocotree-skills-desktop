@@ -84,6 +84,18 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
       typeof query.departmentKey === "string"
         ? query.departmentKey.trim()
         : undefined;
+    if (
+      query.businessScenarioId !== undefined
+      && typeof query.businessScenarioId !== "string"
+    ) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 必须是单个字符串");
+    }
+    if (
+      query.businessScenario !== undefined
+      && typeof query.businessScenario !== "string"
+    ) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选必须是单个字符串");
+    }
     const businessScenarioId =
       typeof query.businessScenarioId === "string"
         ? query.businessScenarioId.trim()
@@ -94,6 +106,9 @@ export const catalogRoutes: FastifyPluginAsync = async (app) => {
         : undefined;
     if (businessScenarioId && businessScenario) {
       return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数互斥");
+    }
+    if (businessScenarioId && !UUID_PATTERN.test(businessScenarioId)) {
+      return failure(reply, 400, "INVALID_REQUEST", "业务场景 ID 无效");
     }
     if (businessScenario && businessScenario !== "unclassified") {
       return failure(reply, 400, "INVALID_REQUEST", "业务场景筛选参数无效");

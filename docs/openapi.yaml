@@ -12,6 +12,8 @@ tags:
     description: 当前用户和用户关联的 Skill。
   - name: Tags
     description: Skill 分类标签。
+  - name: BusinessScenarios
+    description: Skill 业务场景目录和筛选。
   - name: Translations
     description: Skill 展示信息中文本地化。
   - name: Skills
@@ -111,6 +113,22 @@ paths:
                 $ref: '#/components/schemas/TagListResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
+  /api/business-scenarios:
+    get:
+      tags: [BusinessScenarios]
+      summary: 获取业务场景列表
+      operationId: listBusinessScenarios
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: 激活业务场景及已发布 Skill 数量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessScenarioListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /api/skill-metadata/translations:
     post:
       tags: [Translations]
@@ -169,6 +187,20 @@ paths:
           schema:
             type: string
             maxLength: 2048
+        - name: businessScenarioId
+          in: query
+          required: false
+          description: 按业务场景 ID 筛选；与 businessScenario 互斥
+          schema:
+            type: string
+            format: uuid
+        - name: businessScenario
+          in: query
+          required: false
+          description: 特殊业务场景筛选；仅支持未归类
+          schema:
+            type: string
+            enum: [unclassified]
         - name: sort
           in: query
           required: false
@@ -866,6 +898,7 @@ components:
         - status
         - owner
         - tags
+        - businessScenarios
         - currentVersion
         - installCount
         - derivedFrom
@@ -904,6 +937,11 @@ components:
           maxItems: 5
           items:
             $ref: '#/components/schemas/Tag'
+        businessScenarios:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/BusinessScenarioRef'
         currentVersion:
           $ref: '#/components/schemas/SkillVersion'
         installCount:
@@ -928,6 +966,39 @@ components:
         updatedAt:
           type: string
           format: date-time
+    BusinessScenarioRef:
+      type: object
+      required: [id, slug, name, description, sortOrder, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 100
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          maxLength: 1000
+        sortOrder:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED]
+    BusinessScenario:
+      allOf:
+        - $ref: '#/components/schemas/BusinessScenarioRef'
+        - type: object
+          required: [skillCount]
+          properties:
+            skillCount:
+              type: integer
+              minimum: 0
     SkillDetail:
       allOf:
         - $ref: '#/components/schemas/SkillSummary'
@@ -1002,6 +1073,12 @@ components:
             type: string
             minLength: 1
             maxLength: 50
+        businessScenarioIds:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            format: uuid
         forkedFromSkillId:
           type: string
         forkedFromVersionId:
@@ -1315,6 +1392,16 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Tag'
+    BusinessScenarioListResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiOkMeta'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/BusinessScenario'
     SkillMetadataTranslationResponse:
       allOf:
         - $ref: '#/components/schemas/ApiOkMeta'
