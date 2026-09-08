@@ -69,7 +69,7 @@ export function TagFilter({
       );
       return;
     }
-    onChange?.(tagId);
+    onChange?.(activeTagIds.has(tagId) ? "all" : tagId);
   }
 
   return (
