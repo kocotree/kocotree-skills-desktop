@@ -5,6 +5,7 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { Button, Tooltip } from "./ui";
 import {
@@ -20,6 +21,7 @@ import {
   type SkillSummaryDto,
   type SkillPackageInspection,
   type TagDto,
+  type BusinessScenarioDto,
   type UserDto,
 } from "../api";
 import { nextDateSkillVersion } from "../api/skillVersion";
@@ -135,6 +137,8 @@ export function UploadPage({
     initialPackage?.inspection ?? null,
   );
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
+  const [businessScenarios, setBusinessScenarios] = useState<BusinessScenarioDto[]>([]);
+  const [selectedBusinessScenarioIds, setSelectedBusinessScenarioIds] = useState<string[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [newTagNames, setNewTagNames] = useState<string[]>([]);
   const [newTagDraft, setNewTagDraft] = useState("");
@@ -163,6 +167,9 @@ export function UploadPage({
     skillApi.listTags().then(setAvailableTags).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 上传页 Tag 加载失败", reason);
     });
+    skillApi.listBusinessScenarios().then(setBusinessScenarios).catch((reason: unknown) => {
+      console.error("[KocotreeSkills] 业务场景加载失败", reason);
+    });
   }, []);
 
   useEffect(() => {
@@ -174,6 +181,7 @@ export function UploadPage({
     setError("");
     setDuplicateConflicts([]);
     setSelectedTagIds(targetSkill?.tags.map((tag) => tag.id) ?? []);
+    setSelectedBusinessScenarioIds(targetSkill?.businessScenarios.map((scenario) => scenario.id) ?? []);
     if (targetSkill) {
       setDisplayName(targetSkill.displayName);
       setDisplayDescription(targetSkill.displayDescription);
@@ -524,6 +532,40 @@ export function UploadPage({
     );
   }
 
+  function renderBusinessScenarioSelection(): ReactNode {
+    return (
+      <fieldset className="tag-field field-wide" aria-required="false">
+        <legend>业务场景（可选，最多 3 个）</legend>
+        <div>
+          {businessScenarios.map((scenario) => {
+            const selected = selectedBusinessScenarioIds.includes(scenario.id);
+            return (
+              <button
+                className={selected ? "source-chip active" : "source-chip"}
+                type="button"
+                aria-pressed={selected}
+                key={scenario.id}
+                onClick={() => {
+                  setSelectedBusinessScenarioIds((current) => {
+                    if (current.includes(scenario.id)) return current.filter((id) => id !== scenario.id);
+                    if (current.length >= 3) {
+                      setError("每个 Skill 最多选择 3 个业务场景");
+                      return current;
+                    }
+                    setError("");
+                    return [...current, scenario.id];
+                  });
+                }}
+              >
+                {scenario.name}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+    );
+  }
+
   /**
    * 功能说明：根据当前模式提交创建请求或新版本发布请求。
    * @param event - React 表单提交事件。
@@ -562,6 +604,7 @@ export function UploadPage({
           changelog,
           tagIds: selectedTagIds,
           newTagNames,
+          businessScenarioIds: selectedBusinessScenarioIds,
           forkedFromSkillId: forkSource?.id,
           forkedFromVersionId: forkSource?.currentVersion.id,
           confirmDuplicateDisplayName,
@@ -764,6 +807,7 @@ export function UploadPage({
                   </div>
                 )}
                 {renderTagSelection("选择 Tag（可选，最多 5 个）")}
+                {!targetSkill && renderBusinessScenarioSelection()}
               </div>
             )}
 

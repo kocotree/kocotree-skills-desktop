@@ -44,6 +44,7 @@ export type CreateSkillInput = {
   changelog?: string;
   tagIds: string[];
   newTagNames: string[];
+  businessScenarioIds: string[];
   forkedFromSkillId?: string;
   forkedFromVersionId?: string;
   confirmDuplicateDisplayName: boolean;
@@ -186,6 +187,17 @@ function normalizeTags(
   };
 }
 
+function normalizeBusinessScenarioIds(ids: string[]): string[] {
+  const normalized = [...new Set(ids.map((id) => id.trim()))];
+  if (normalized.some((id) => !UUID_PATTERN.test(id))) {
+    throw new PublishingError(400, "INVALID_REQUEST", "业务场景 ID 无效");
+  }
+  if (normalized.length > 3) {
+    throw new PublishingError(400, "INVALID_REQUEST", "每个 Skill 最多选择 3 个业务场景");
+  }
+  return normalized;
+}
+
 function readIdentity(candidate: {
   slug: string;
   latestVersion: {
@@ -310,6 +322,9 @@ function mapPersistenceError(
         "只有 Owner 可以修改展示信息",
       );
     }
+    if (error.code === "BUSINESS_SCENARIO_NOT_FOUND") {
+      throw new PublishingError(400, "INVALID_REQUEST", "选择的业务场景不存在或已归档");
+    }
     throw new PublishingError(
       400,
       "INVALID_REQUEST",
@@ -408,6 +423,7 @@ export const publishingService = {
       ? validateText(input.changelog, "更新说明", 2_000)
       : "首次发布";
     const tags = normalizeTags(input.tagIds, input.newTagNames);
+    const businessScenarioIds = normalizeBusinessScenarioIds(input.businessScenarioIds);
     const prepared = await prepareSkillPackage(input.file);
     await ensureSkillNameAvailable(prepared.skillName);
     await ensureDisplayNameConfirmed(
@@ -460,6 +476,8 @@ export const publishingService = {
         readmeTitle: displayName,
         tagIds: tags.tagIds,
         newTags: tags.newTags,
+        businessScenarioIds,
+        assignedBy: input.userId,
         version: {
           id: versionId,
           version,

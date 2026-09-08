@@ -54,6 +54,7 @@ export class HttpPublishingApi {
     appendOptional(formData, "changelog", input.changelog);
     appendValues(formData, "tagIds", input.tagIds);
     appendValues(formData, "newTagNames", input.newTagNames);
+    appendValues(formData, "businessScenarioIds", input.businessScenarioIds);
     appendOptional(
       formData,
       "forkedFromSkillId",

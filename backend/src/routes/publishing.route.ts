@@ -238,6 +238,7 @@ export const publishingRoutes: FastifyPluginAsync = async (app) => {
         changelog: readSingle(fields, "changelog"),
         tagIds: readMany(fields, "tagIds") || [],
         newTagNames: readMany(fields, "newTagNames") || [],
+        businessScenarioIds: readMany(fields, "businessScenarioIds") || [],
         forkedFromSkillId: readSingle(
           fields,
           "forkedFromSkillId",

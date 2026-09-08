@@ -27,6 +27,7 @@ export class PublishingPersistenceError extends Error {
     readonly code:
       | "VERSION_CONFLICT"
       | "TAG_NOT_FOUND"
+      | "BUSINESS_SCENARIO_NOT_FOUND"
       | "OWNER_REQUIRED",
   ) {
     super(code);
@@ -227,6 +228,8 @@ export const publishingRepository = {
     version: StoredVersionInput;
     tagIds: string[];
     newTags: NewTag[];
+    businessScenarioIds: string[];
+    assignedBy: string;
   }): Promise<string> {
     return prisma.$transaction(async (tx) => {
       const skill = await tx.skill.create({
@@ -269,6 +272,22 @@ export const publishingRepository = {
         input.tagIds,
         input.newTags,
       );
+      if (input.businessScenarioIds.length > 0) {
+        const scenarios = await tx.businessScenario.findMany({
+          where: { id: { in: input.businessScenarioIds }, status: "ACTIVE" },
+          select: { id: true },
+        });
+        if (scenarios.length !== input.businessScenarioIds.length) {
+          throw new PublishingPersistenceError("BUSINESS_SCENARIO_NOT_FOUND");
+        }
+        await tx.skillBusinessScenario.createMany({
+          data: input.businessScenarioIds.map((scenarioId) => ({
+            skillId: skill.id,
+            scenarioId,
+            assignedBy: input.assignedBy,
+          })),
+        });
+      }
       await tx.skill.update({
         where: {
           id: skill.id,
