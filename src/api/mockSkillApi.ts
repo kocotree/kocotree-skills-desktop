@@ -499,9 +499,27 @@ export class MockSkillApi implements SkillApi {
     const resolvedTags = input.tagIds !== undefined || input.newTagNames !== undefined
       ? this.resolveTags(input.tagIds, input.newTagNames)
       : undefined;
+    const resolvedBusinessScenarios = input.businessScenarioIds === undefined
+      ? undefined
+      : input.businessScenarioIds.map((id) => {
+        const scenario = mockBusinessScenarios.find((item) => item.id === id && item.status === "ACTIVE");
+        if (!scenario) throw new SkillApiError("INVALID_REQUEST", "选择的业务场景不存在或已归档");
+        return {
+          id: scenario.id,
+          slug: scenario.slug,
+          name: scenario.name,
+          description: scenario.description,
+          sortOrder: scenario.sortOrder,
+          status: scenario.status,
+        };
+      });
+    if (resolvedBusinessScenarios && resolvedBusinessScenarios.length > 3) {
+      throw new SkillApiError("INVALID_REQUEST", "每个 Skill 最多选择 3 个业务场景");
+    }
     if (input.displayName !== undefined) skill.displayName = input.displayName;
     if (input.displayDescription !== undefined) skill.displayDescription = input.displayDescription;
     if (resolvedTags) skill.tags = resolvedTags;
+    if (resolvedBusinessScenarios) skill.businessScenarios = resolvedBusinessScenarios;
     skill.updatedBy = user;
     skill.updatedAt = new Date().toISOString();
     return clone(skill);

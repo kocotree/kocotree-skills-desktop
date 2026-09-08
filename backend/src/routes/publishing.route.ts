@@ -48,6 +48,7 @@ function parseMetadataBody(body: unknown): {
   displayDescription?: string;
   tagIds?: string[];
   newTagNames?: string[];
+  businessScenarioIds?: string[];
   confirmDuplicateDisplayName: boolean;
 } {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -106,6 +107,7 @@ function parseMetadataBody(body: unknown): {
     ),
     tagIds: readOptionalStrings("tagIds"),
     newTagNames: readOptionalStrings("newTagNames"),
+    businessScenarioIds: readOptionalStrings("businessScenarioIds"),
     confirmDuplicateDisplayName: confirmation === true,
   };
 }

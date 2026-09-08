@@ -71,6 +71,7 @@ export type UpdateSkillMetadataInput = {
   displayDescription?: string;
   tagIds?: string[];
   newTagNames?: string[];
+  businessScenarioIds?: string[];
   confirmDuplicateDisplayName: boolean;
   userId: string;
 };
@@ -518,7 +519,8 @@ export const publishingService = {
       input.displayName === undefined &&
       input.displayDescription === undefined &&
       input.tagIds === undefined &&
-      input.newTagNames === undefined
+      input.newTagNames === undefined &&
+      input.businessScenarioIds === undefined
     ) {
       throw new PublishingError(
         400,
@@ -548,6 +550,10 @@ export const publishingService = {
           input.newTagNames || [],
         )
       : undefined;
+    const businessScenarioIds =
+      input.businessScenarioIds === undefined
+        ? undefined
+        : normalizeBusinessScenarioIds(input.businessScenarioIds);
 
     const skill =
       await publishingRepository.getSkillForMetadataUpdate(
@@ -583,6 +589,8 @@ export const publishingService = {
         displayDescription,
         tagIds: tags?.tagIds,
         newTags: tags?.newTags,
+        businessScenarioIds,
+        assignedBy: input.userId,
       });
     } catch (error) {
       mapPersistenceError(error, "UPDATE");

@@ -1168,6 +1168,7 @@ components:
         - required: [displayDescription]
         - required: [tagIds]
         - required: [newTagNames]
+        - required: [businessScenarioIds]
       properties:
         displayName:
           type: string
@@ -1191,6 +1192,13 @@ components:
             type: string
             minLength: 1
             maxLength: 50
+        businessScenarioIds:
+          type: array
+          minItems: 0
+          maxItems: 3
+          items:
+            type: string
+            format: uuid
         confirmDuplicateDisplayName:
           type: boolean
           default: false

@@ -123,6 +123,7 @@ export class HttpPublishingApi {
         input.newTagNames && input.newTagNames.length > 0
           ? input.newTagNames
           : undefined,
+      businessScenarioIds: input.businessScenarioIds,
     };
     return this.http.request<SkillDetailDto>(
       `/api/skills/${encodeURIComponent(skillId)}`,

@@ -308,6 +308,8 @@ export const publishingRepository = {
     displayDescription?: string;
     tagIds?: string[];
     newTags?: NewTag[];
+    businessScenarioIds?: string[];
+    assignedBy: string;
   }): Promise<string> {
     return prisma.$transaction(async (tx) => {
       const updated = await tx.skill.updateMany({
@@ -336,6 +338,27 @@ export const publishingRepository = {
           input.tagIds,
           input.newTags || [],
         );
+      }
+      if (input.businessScenarioIds !== undefined) {
+        const scenarios = await tx.businessScenario.findMany({
+          where: { id: { in: input.businessScenarioIds }, status: "ACTIVE" },
+          select: { id: true },
+        });
+        if (scenarios.length !== input.businessScenarioIds.length) {
+          throw new PublishingPersistenceError("BUSINESS_SCENARIO_NOT_FOUND");
+        }
+        await tx.skillBusinessScenario.deleteMany({
+          where: { skillId: input.skillId },
+        });
+        if (input.businessScenarioIds.length > 0) {
+          await tx.skillBusinessScenario.createMany({
+            data: input.businessScenarioIds.map((scenarioId) => ({
+              skillId: input.skillId,
+              scenarioId,
+              assignedBy: input.assignedBy,
+            })),
+          });
+        }
       }
       return input.skillId;
     });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Modal, TextArea, Tooltip, Toast } from "./ui";
-import { skillApi, SkillApiError, type SkillDetailDto, type TagDto, type UserDto } from "../api";
+import { skillApi, SkillApiError, type BusinessScenarioDto, type SkillDetailDto, type TagDto, type UserDto } from "../api";
 import { AppIcon } from "./AppIcon";
 import { mergeTagNames, parseTagNames } from "./tagNames";
 
@@ -33,6 +33,8 @@ export function SkillMetadataModal({
   const [newTagNames, setNewTagNames] = useState<string[]>([]);
   const [newTagDraft, setNewTagDraft] = useState("");
   const [newTagVisible, setNewTagVisible] = useState(false);
+  const [businessScenarios, setBusinessScenarios] = useState<BusinessScenarioDto[]>([]);
+  const [selectedBusinessScenarioIds, setSelectedBusinessScenarioIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [needsDuplicateConfirmation, setNeedsDuplicateConfirmation] = useState(false);
@@ -46,12 +48,14 @@ export function SkillMetadataModal({
     setDisplayName(skill.displayName);
     setDisplayDescription(skill.displayDescription);
     setSelectedTagIds(skill.tags.map((tag) => tag.id));
+    setSelectedBusinessScenarioIds(skill.businessScenarios.map((scenario) => scenario.id));
     setNewTagNames([]);
     setNewTagDraft("");
     setNewTagVisible(false);
     setError("");
     setNeedsDuplicateConfirmation(false);
     skillApi.listTags().then(setTags).catch((reason: unknown) => console.error("[KocotreeSkills] 编辑信息时加载 Tag 失败", reason));
+    skillApi.listBusinessScenarios().then(setBusinessScenarios).catch((reason: unknown) => console.error("[KocotreeSkills] 编辑信息时加载业务场景失败", reason));
   }, [skill, visible]);
 
   function toggleTag(tagId: string): void {
@@ -103,6 +107,7 @@ export function SkillMetadataModal({
         displayDescription,
         tagIds: selectedTagIds,
         newTagNames,
+        businessScenarioIds: selectedBusinessScenarioIds,
         confirmDuplicateDisplayName,
       });
       const fullyUpdated = await onUpdated(updated);
@@ -192,6 +197,35 @@ export function SkillMetadataModal({
                 <button className="tag-create-button" type="button" aria-label="创建新 Tag" onClick={() => setNewTagVisible(true)}><AppIcon name="plus" size={15} /></button>
               </Tooltip>
             )}
+          </div>
+        </fieldset>
+        <fieldset className="tag-field" aria-required="false">
+          <legend>业务场景（可选，最多 3 个）</legend>
+          <div>
+            {businessScenarios.map((scenario) => {
+              const selected = selectedBusinessScenarioIds.includes(scenario.id);
+              return (
+                <button
+                  className={selected ? "source-chip active" : "source-chip"}
+                  type="button"
+                  aria-pressed={selected}
+                  key={scenario.id}
+                  onClick={() => {
+                    setSelectedBusinessScenarioIds((items) => {
+                      if (items.includes(scenario.id)) return items.filter((id) => id !== scenario.id);
+                      if (items.length >= 3) {
+                        setError("每个 Skill 最多选择 3 个业务场景");
+                        return items;
+                      }
+                      setError("");
+                      return [...items, scenario.id];
+                    });
+                  }}
+                >
+                  {scenario.name}
+                </button>
+              );
+            })}
           </div>
         </fieldset>
         {error && <div className="form-error">{error}</div>}

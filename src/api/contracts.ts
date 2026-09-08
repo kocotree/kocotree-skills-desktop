@@ -66,6 +66,7 @@ export interface UpdateSkillMetadataDto {
   displayDescription?: string;
   tagIds?: string[];
   newTagNames?: string[];
+  businessScenarioIds?: string[];
   confirmDuplicateDisplayName?: boolean;
 }
 export interface TranslateSkillMetadataDto {
