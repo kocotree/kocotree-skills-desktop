@@ -2003,30 +2003,10 @@ textarea:focus-visible,
   gap: 7px;
 }
 
-.scenario-ai-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0 0 9px;
-  padding: 5px 9px;
-  border: 1px solid #cfe8d8;
-  border-radius: 999px;
-  background: #f3fbf6;
-  color: #287548;
-  font-size: 12px;
-}
-
-.scenario-ai-status.is-failed {
+.translation-inline-status.is-failed {
   border-color: #eadfca;
   background: #fffaf2;
   color: #80643a;
-}
-
-.scenario-ai-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .scenario-chip-list {

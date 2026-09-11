@@ -140,7 +140,6 @@ export function UploadPage({
   const [availableTags, setAvailableTags] = useState<TagDto[]>([]);
   const [businessScenarios, setBusinessScenarios] = useState<BusinessScenarioDto[]>([]);
   const [selectedBusinessScenarioIds, setSelectedBusinessScenarioIds] = useState<string[]>([]);
-  const [suggestedBusinessScenarioIds, setSuggestedBusinessScenarioIds] = useState<string[]>([]);
   const [scenarioSuggestionState, setScenarioSuggestionState] = useState<"idle" | "loading" | "ready" | "failed">("idle");
   const scenarioSuggestionKey = useRef<File | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
@@ -186,7 +185,6 @@ export function UploadPage({
     setDuplicateConflicts([]);
     setSelectedTagIds(targetSkill?.tags.map((tag) => tag.id) ?? []);
     setSelectedBusinessScenarioIds(targetSkill?.businessScenarios.map((scenario) => scenario.id) ?? []);
-    setSuggestedBusinessScenarioIds([]);
     setScenarioSuggestionState("idle");
     if (targetSkill) {
       setDisplayName(targetSkill.displayName);
@@ -275,7 +273,6 @@ export function UploadPage({
         .map((scenario) => scenario.id);
       const availableIds = new Set(scenarios.map((scenario) => scenario.id));
       const ids = (result.scenarioIds.length ? result.scenarioIds : fallbackIds).filter((id) => availableIds.has(id)).slice(0, 3);
-      setSuggestedBusinessScenarioIds(ids);
       setSelectedBusinessScenarioIds((current) => current.length ? current : ids);
       setScenarioSuggestionState(ids.length ? "ready" : "failed");
     } catch (reason) {
@@ -579,13 +576,16 @@ export function UploadPage({
   function renderBusinessScenarioSelection(): ReactNode {
     return (
       <fieldset className="tag-field field-wide" aria-required="false">
-        <legend>业务场景（可选，最多 3 个） <small>AI 建议仅供确认</small></legend>
-        {(scenarioSuggestionState === "loading" || scenarioSuggestionState === "failed" || suggestedBusinessScenarioIds.length > 0) && (
-          <div className={`scenario-ai-status${scenarioSuggestionState === "failed" ? " is-failed" : ""}`} role="status">
-            <span className="scenario-ai-dot" aria-hidden="true" />
-            <span>{scenarioSuggestionState === "loading" ? "AI 正在分析 Skill 内容…" : scenarioSuggestionState === "failed" ? "AI 暂无建议，请手动选择" : `AI 已预选 ${suggestedBusinessScenarioIds.map((id) => businessScenarios.find((item) => item.id === id)?.name).filter(Boolean).join("、")}，可手动调整`}</span>
-          </div>
-        )}
+        <legend>
+          <span className="field-label-row">
+            <span>业务场景（可选，最多 3 个）</span>
+            {scenarioSuggestionState !== "idle" && (
+              <small className={`translation-inline-status${scenarioSuggestionState === "failed" ? " is-failed" : ""}`} role="status">
+                {scenarioSuggestionState === "loading" ? "AI 分析中…" : scenarioSuggestionState === "failed" ? "AI 暂无建议，请手动选择" : "AI 已预选，可编辑"}
+              </small>
+            )}
+          </span>
+        </legend>
         <div className="scenario-chip-list">
           {businessScenarios.map((scenario) => {
             const selected = selectedBusinessScenarioIds.includes(scenario.id);
