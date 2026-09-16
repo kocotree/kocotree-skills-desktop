@@ -1334,6 +1334,17 @@ textarea:focus-visible,
   scrollbar-gutter: auto;
 }
 
+/* 内容较少时分页紧随卡片，空间不足时只收缩列表并保留分页。 */
+.browse-page > .skill-grid {
+  flex: 0 1 auto;
+  padding-bottom: 16px;
+}
+
+.browse-page > .skill-pagination {
+  justify-content: flex-end;
+  padding-bottom: 8px;
+}
+
 .skill-card {
   min-width: 0;
   padding: 15px 16px 13px;
