@@ -79,7 +79,7 @@ let browseTagsCache: BrowseFilterCacheEntry<TagDto> | null = null;
 let browseDepartmentsCache:
   BrowseFilterCacheEntry<PublishedSkillDepartmentDto> | null = null;
 let browseBusinessScenariosCache:
-  BrowseFilterCacheEntry<BusinessScenarioDto> | null = null;
+  (BrowseFilterCacheEntry<BusinessScenarioDto> & { unclassifiedCount: number }) | null = null;
 
 function browsePageCacheKey(input: {
   query: string;
@@ -417,6 +417,7 @@ function BrowsePage({
     useState<PublishedSkillDepartmentDto[]>([]);
   const [businessScenarios, setBusinessScenarios] =
     useState<BusinessScenarioDto[]>([]);
+  const [unclassifiedCount, setUnclassifiedCount] = useState<number | null>(null);
   const departmentOptions = useMemo(
     () => departments.map((department) => ({
       id: department.id,
@@ -524,18 +525,29 @@ function BrowsePage({
   useEffect(() => {
     if (!authenticated) {
       setBusinessScenarios([]);
+      setUnclassifiedCount(null);
       return;
     }
     const cached = getUsableBrowseCache(browseBusinessScenariosCache, refreshKey);
     if (cached) {
       setBusinessScenarios(cached.items);
+      setUnclassifiedCount(cached.unclassifiedCount);
       if (Date.now() - cached.cachedAt < BROWSE_FILTER_CACHE_FRESH_MS) return;
     }
     let active = true;
-    skillApi.listBusinessScenarios().then((items) => {
+    Promise.all([
+      skillApi.listBusinessScenarios(),
+      skillApi.listSkills({ businessScenario: "unclassified", page: 1, pageSize: 1 }),
+    ]).then(([items, unclassifiedPage]) => {
       if (!active) return;
-      browseBusinessScenariosCache = { items, cachedAt: Date.now(), refreshKey };
+      browseBusinessScenariosCache = {
+        items,
+        unclassifiedCount: unclassifiedPage.total,
+        cachedAt: Date.now(),
+        refreshKey,
+      };
       setBusinessScenarios(items);
+      setUnclassifiedCount(unclassifiedPage.total);
     }).catch((reason: unknown) => {
       console.error("[KocotreeSkills] 业务场景加载失败", reason);
     });
@@ -788,25 +800,6 @@ function BrowsePage({
         </div>
 
         <TagFilter
-          tags={[
-            { id: "unclassified", name: "未归类" },
-            ...businessScenarios.map((scenario) => ({
-              id: scenario.id,
-              name: `${scenario.name}（${scenario.skillCount}）`,
-            })),
-          ]}
-          selectedTagIds={businessScenarioKeys}
-          showAll
-          label="业务场景"
-          allLabel="全部"
-          variant="chips"
-          onMultiChange={(nextScenarios) => {
-            setBusinessScenarioKeys(nextScenarios);
-            setPage(1);
-          }}
-        />
-
-        <TagFilter
           tags={tags}
           selectedTagIds={selectedTagIds}
           onMultiChange={(nextTagIds) => {
@@ -822,6 +815,23 @@ function BrowsePage({
           allLabel="全部"
           onChange={(nextDepartmentKey) => {
             setDepartmentKey(nextDepartmentKey);
+            setPage(1);
+          }}
+        />
+
+        <TagFilter
+          tags={[
+            { id: "unclassified", name: `未归类（${unclassifiedCount ?? "…"}）` },
+            ...businessScenarios.map((scenario) => ({
+              id: scenario.id,
+              name: `${scenario.name}（${scenario.skillCount}）`,
+            })),
+          ]}
+          selectedTagIds={businessScenarioKeys}
+          label="业务场景"
+          variant="chips"
+          onMultiChange={(nextScenarios) => {
+            setBusinessScenarioKeys(nextScenarios);
             setPage(1);
           }}
         />
