@@ -111,7 +111,7 @@ DEEPSEEK_API_KEY
 ```
 
 `OSS_SIGNED_URL_EXPIRES_SECONDS` 控制下载凭证有效期，默认 300 秒。
-`SKILL_UPLOAD_MAX_MB` 控制上传 ZIP 的压缩包大小上限，默认 50 MB。服务端会移除
+`SKILL_UPLOAD_MAX_MB` 控制上传 ZIP 的压缩包大小上限，默认 200 MB。解压后总大小最多 500 MB，普通文件最多 5,000 个（包含目录的文件树最多 10,000 个条目），`SKILL.md` 最多 1 MB。已部署环境若显式设置了 `SKILL_UPLOAD_MAX_MB`，需同步改为 `200` 并重启后端。服务端会移除
 `__MACOSX`、`.DS_Store`、`._*`、`__pycache__`、`*.pyc`、`*.pyo` 等系统元数据与缓存，
 保留 `.gitkeep` 占位文件及其文件夹，再重新生成 ZIP、计算哈希并上传 OSS。
 `DEEPSEEK_API_KEY` 只写入 `backend/.env`，由服务端调用

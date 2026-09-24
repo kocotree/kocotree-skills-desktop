@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 use tempfile::Builder as TempDirBuilder;
 use zip::{write::SimpleFileOptions, ZipArchive, ZipWriter};
 
-const MAX_PACKAGE_SIZE: usize = 50 * 1024 * 1024;
-const MAX_FILE_COUNT: usize = 2_000;
-const MAX_UNCOMPRESSED_SIZE: u64 = 200 * 1024 * 1024;
+const MAX_PACKAGE_SIZE: usize = 200 * 1024 * 1024;
+const MAX_FILE_COUNT: usize = 5_000;
+const MAX_UNCOMPRESSED_SIZE: u64 = 500 * 1024 * 1024;
 const MAX_SKILL_MD_SIZE: u64 = 1024 * 1024;
 const INSTALL_METADATA_FILE: &str = ".kocotree-skill.json";
 const MANAGER_STATE_FILE: &str = ".kocotree-skills-desktop.json";
@@ -670,7 +670,7 @@ async fn download_package(download_url: &str) -> Result<Vec<u8>, InstallError> {
         if bytes.len() > MAX_PACKAGE_SIZE {
             return Err(InstallError::new(
                 "PACKAGE_TOO_LARGE",
-                "安装包不能超过 50 MB",
+                "安装包不能超过 200 MB",
             ));
         }
         return Ok(bytes);
@@ -707,7 +707,7 @@ async fn download_package(download_url: &str) -> Result<Vec<u8>, InstallError> {
     {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "安装包不能超过 50 MB",
+            "安装包不能超过 200 MB",
         ));
     }
     let bytes = response.bytes().await.map_err(|error| {
@@ -716,7 +716,7 @@ async fn download_package(download_url: &str) -> Result<Vec<u8>, InstallError> {
     if bytes.len() > MAX_PACKAGE_SIZE {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "安装包不能超过 50 MB",
+            "安装包不能超过 200 MB",
         ));
     }
     Ok(bytes.to_vec())
@@ -866,13 +866,13 @@ fn extract_package(
     if regular_file_count > MAX_FILE_COUNT {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "ZIP 中的普通文件不能超过 2000 个",
+            "ZIP 中的普通文件不能超过 5000 个",
         ));
     }
     if total_declared_size > MAX_UNCOMPRESSED_SIZE {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "ZIP 解压后的总大小不能超过 200 MB",
+            "ZIP 解压后的总大小不能超过 500 MB",
         ));
     }
     if skill_md_candidates.len() != 1 {
@@ -941,7 +941,7 @@ fn extract_package(
         if total_written_size > MAX_UNCOMPRESSED_SIZE {
             return Err(InstallError::new(
                 "PACKAGE_TOO_LARGE",
-                "ZIP 解压后的总大小不能超过 200 MB",
+                "ZIP 解压后的总大小不能超过 500 MB",
             ));
         }
     }
@@ -3247,7 +3247,7 @@ fn collect_upload_files(
         if *total_size > MAX_UNCOMPRESSED_SIZE {
             return Err(InstallError::new(
                 "PACKAGE_TOO_LARGE",
-                "Skill 文件总大小不能超过 200 MB",
+                "Skill 文件总大小不能超过 500 MB",
             ));
         }
         files.push((relative_path.to_path_buf(), path));
@@ -3349,7 +3349,7 @@ fn package_local_skill_on_disk(source_path: String) -> Result<Vec<u8>, InstallEr
     if bytes.len() > MAX_PACKAGE_SIZE {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "压缩后的 Skill ZIP 不能超过 50 MB",
+            "压缩后的 Skill ZIP 不能超过 200 MB",
         ));
     }
     Ok(bytes)
@@ -3376,7 +3376,7 @@ fn read_skill_upload_source_on_disk(source_path: String) -> Result<Vec<u8>, Inst
     if metadata.len() > MAX_PACKAGE_SIZE as u64 {
         return Err(InstallError::new(
             "PACKAGE_TOO_LARGE",
-            "ZIP 不能超过 50 MB",
+            "ZIP 不能超过 200 MB",
         ));
     }
     fs::read(source).map_err(|error| io_error("读取 Skill ZIP", error))

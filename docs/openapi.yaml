@@ -872,7 +872,7 @@ components:
         packageSize:
           type: integer
           minimum: 1
-          maximum: 52428800
+          maximum: 209715200
         packageSha256:
           type: string
         contentHash:

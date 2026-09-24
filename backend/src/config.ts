@@ -46,7 +46,7 @@ export const config = {
         "SKILL_PREVIEW_TEXT_MAX_KB",
         1024,
     ),
-    skillUploadMaxMb: readNumber("SKILL_UPLOAD_MAX_MB", 50),
+    skillUploadMaxMb: readNumber("SKILL_UPLOAD_MAX_MB", 200),
     deepseekApiKey: process.env.DEEPSEEK_API_KEY || "",
     deepseekApiBaseUrl:
         process.env.DEEPSEEK_API_BASE_URL || "https://api.deepseek.com",

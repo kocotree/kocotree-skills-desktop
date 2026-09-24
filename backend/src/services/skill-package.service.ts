@@ -6,9 +6,9 @@ import yauzl from "yauzl";
 import yazl from "yazl";
 import { config } from "../config";
 
-const MAX_FILE_COUNT = 2_000;
-const MAX_TREE_ENTRY_COUNT = 5_000;
-const MAX_UNCOMPRESSED_SIZE = 200 * 1024 * 1024;
+const MAX_FILE_COUNT = 5_000;
+const MAX_TREE_ENTRY_COUNT = 10_000;
+const MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024;
 const MAX_SKILL_MD_SIZE = 1024 * 1024;
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -251,7 +251,7 @@ async function collectEntries(buffer: Buffer): Promise<{
             }
             if (totalUncompressedSize > MAX_UNCOMPRESSED_SIZE) {
               packageError(
-                "ZIP 解压后的总大小不能超过 200 MB",
+                "ZIP 解压后的总大小不能超过 500 MB",
                 "PACKAGE_TOO_LARGE",
               );
             }

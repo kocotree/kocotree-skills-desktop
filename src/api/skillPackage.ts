@@ -7,9 +7,9 @@ import {
   type SkillArchiveSource,
 } from "./zipInspector";
 
-const MAX_PACKAGE_SIZE = 50 * 1024 * 1024;
-const MAX_FOLDER_FILE_COUNT = 2_000;
-const MAX_FOLDER_SIZE = 200 * 1024 * 1024;
+const MAX_PACKAGE_SIZE = 200 * 1024 * 1024;
+const MAX_FOLDER_FILE_COUNT = 5_000;
+const MAX_FOLDER_SIZE = 500 * 1024 * 1024;
 
 /** 客户端本地展示的 ZIP 解析结果，不属于服务端 DTO。 */
 export interface SkillPackageInspection {
@@ -59,7 +59,7 @@ export async function inspectPreparedLocalSkillPackage(
     throw new SkillApiError("INVALID_SKILL_PACKAGE", "请选择 ZIP 格式的 Skill 包");
   }
   if (file.size > MAX_PACKAGE_SIZE) {
-    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 50 MB");
+    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 200 MB");
   }
 
   const buffer = await file.arrayBuffer();
@@ -117,7 +117,7 @@ export async function parseSkillPackage(file: File): Promise<ParsedSkillPackage>
     throw new SkillApiError("INVALID_SKILL_PACKAGE", "请选择 ZIP 格式的 Skill 包");
   }
   if (file.size > MAX_PACKAGE_SIZE) {
-    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 50 MB");
+    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 不能超过 200 MB");
   }
 
   const originalBuffer = await file.arrayBuffer();
@@ -146,7 +146,7 @@ export async function parseSkillPackage(file: File): Promise<ParsedSkillPackage>
   if (uploadFile.size > MAX_PACKAGE_SIZE) {
     throw new SkillApiError(
       "PACKAGE_TOO_LARGE",
-      "清理 macOS 系统文件后的 ZIP 不能超过 50 MB",
+      "清理 macOS 系统文件后的 ZIP 不能超过 200 MB",
     );
   }
 
@@ -234,7 +234,7 @@ export async function parseSkillFolder(
   if (totalSize > MAX_FOLDER_SIZE) {
     throw new SkillApiError(
       "PACKAGE_TOO_LARGE",
-      "文件夹中的文件总大小不能超过 200 MB",
+      "文件夹中的文件总大小不能超过 500 MB",
     );
   }
 

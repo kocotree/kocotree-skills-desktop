@@ -2,9 +2,9 @@ import JSZip, { type JSZipObject } from "jszip";
 import { parse as parseYaml } from "yaml";
 import { SkillApiError, type SkillFileEntryDto } from "./contracts";
 
-const MAX_FILE_COUNT = 2_000;
-const MAX_TREE_ENTRY_COUNT = 5_000;
-const MAX_UNCOMPRESSED_SIZE = 200 * 1024 * 1024;
+const MAX_FILE_COUNT = 5_000;
+const MAX_TREE_ENTRY_COUNT = 10_000;
+const MAX_UNCOMPRESSED_SIZE = 500 * 1024 * 1024;
 const MAX_PREVIEW_SIZE = 1024 * 1024;
 const SKILL_MD_NAME = "SKILL.md";
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -257,7 +257,7 @@ export async function inspectSkillZip(buffer: ArrayBuffer): Promise<ZipInspectio
   }
 
   if (totalUncompressedSize > MAX_UNCOMPRESSED_SIZE) {
-    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 解压后的总大小不能超过 200 MB");
+    throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 解压后的总大小不能超过 500 MB");
   }
   if (directoryPaths.size + fileEntries.length > MAX_TREE_ENTRY_COUNT) {
     throw new SkillApiError("PACKAGE_TOO_LARGE", `ZIP 文件树不能超过 ${MAX_TREE_ENTRY_COUNT} 个条目`);
@@ -272,7 +272,7 @@ export async function inspectSkillZip(buffer: ArrayBuffer): Promise<ZipInspectio
       ? bytes.byteLength
       : 0;
     if (totalUncompressedSize > MAX_UNCOMPRESSED_SIZE) {
-      throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 解压后的总大小不能超过 200 MB");
+      throw new SkillApiError("PACKAGE_TOO_LARGE", "ZIP 解压后的总大小不能超过 500 MB");
     }
     const fileHash = await digestHex(toArrayBuffer(bytes));
     fileEntry.sha256 = `sha256:${fileHash}`;
